@@ -36,7 +36,7 @@
     $("#i-buscar").dispatchEvent(new Event("input"));
     const ver = setInterval(() => {
       const fila = $("#i-lista [aria-selected=true]");
-      if (fila && fila.dataset.clave === nombre) { clearInterval(ver); fila.scrollIntoView({ block: "nearest" }); }
+      if (fila && fila.dataset.clave === nombre) { clearInterval(ver); fila.scrollIntoView({ block: "nearest" }); if (AP.proyectos && AP.proyectos.abrirPanel) AP.proyectos.abrirPanel(nombre, fila); }
     }, 150);
     setTimeout(() => clearInterval(ver), 3000);
   }

@@ -81,8 +81,10 @@ def _carpetas_sesiones(g: Guardian, nombre: str, ruta: str | os.PathLike, compar
     return cs
 
 
-def _calcular_meta(g: Guardian, nombre: str, ruta: str, compartido: bool, limites: dict) -> dict:
+def _sesiones_de(g: Guardian, nombre: str, ruta: str | os.PathLike, compartido: bool) -> tuple[int, set[str], list[str]]:
+    """(nº de sesiones, fechas AAAA-MM-DD distintas, fecha de CADA sesión) por los nombres de fichero de las carpetas de sesiones (sin leer ningún fichero)."""
     fechas: set[str] = set()
+    todas: list[str] = []
     n_ses = 0
     vistos: set[str] = set()
     for c in _carpetas_sesiones(g, nombre, ruta, compartido):
@@ -94,8 +96,14 @@ def _calcular_meta(g: Guardian, nombre: str, ruta: str, compartido: bool, limite
                         vistos.add(e.name.lower())
                         n_ses += 1
                         fechas.add(m.group(1))
+                        todas.append(m.group(1))
         except OSError:
             continue
+    return n_ses, fechas, todas
+
+
+def _calcular_meta(g: Guardian, nombre: str, ruta: str, compartido: bool, limites: dict) -> dict:
+    n_ses, fechas, _todas = _sesiones_de(g, nombre, ruta, compartido)
     n_md = None
     try:
         r = g.md_del_proyecto(nombre, profundidad=limites.get("profundidad", 4), plazo_s=1.0, max_visitas=2500)

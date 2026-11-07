@@ -340,6 +340,7 @@
       UI.proy = typeof UI.sel === "string" ? (r.proyectos.find((p) => p.nombre === UI.sel) || null) : null;
       $("#i-raiz").textContent = "Raíz de proyectos: " + r.raiz + (r.proyectos.length ? "" : " (sin coincidencias)");
       pintarLista(); pintarSesiones(); validarInicio();
+      if (AP.hooks.proyectosCargados) AP.hooks.proyectosCargados(r);   // proyectos.js: pide el resumen visual (descripción, actividad, calidad…)
     } catch (e) {
       $("#i-raiz").textContent = "No se pudieron cargar los proyectos: " + e.message;
       if (AP.hooks.errorLista) AP.hooks.errorLista(e);
@@ -850,7 +851,7 @@
     if (v === "reunion") { pintarEstadoReunion(); pintarChecksReunion(); }
     else if (!$("#r-drawer").hidden) cerrarCajon();
     if (v === "revision") pintarRevision();
-    if (v === "inicio" && vistaAntes !== "inicio") { validarInicio(); cargarProyectos(); }
+    if (v === "inicio" && vistaAntes !== "inicio") { if (AP.hooks.alVolverAInicio) AP.hooks.alVolverAInicio(); validarInicio(); cargarProyectos(); }
     vistaAntes = v;
   }
   function manejar(d) {
@@ -879,7 +880,7 @@
     }
   }
 
-  Object.assign(AP, { S, UI, h, $, $$, api, safe, elegirProyecto, cargarProyectos, mmss, kfmt, md, GRUPOS, crearChecks, tarjetaCambio, seccionPublicacion, alerta, reiniciarReunion,
+  Object.assign(AP, { S, UI, h, $, $$, api, safe, elegirProyecto, cargarProyectos, pintarContexto, mmss, kfmt, md, GRUPOS, crearChecks, tarjetaCambio, seccionPublicacion, alerta, reiniciarReunion,
     repintar: () => repintar(), pintarEstadoReunion: () => pintarEstadoReunion(), hms: (s) => { s = Math.max(0, Math.floor(s || 0)); return `${String(Math.floor(s / 3600)).padStart(2, "0")}:${mmss(s % 3600)}`; } });
 
   // ------------------------------------------------------------ arranque

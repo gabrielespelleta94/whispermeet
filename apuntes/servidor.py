@@ -21,6 +21,7 @@ from . import __version__
 from . import contexto as CX
 from . import aviso as AV
 from . import backlog as BL
+from . import resumen as RS
 from . import llamadas as LL
 from . import planes as PL
 from .audio import listar_dispositivos
@@ -283,6 +284,50 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         # n_sesiones, ultima_sesion y n_md: acotado y en caché; un proyecto lento (OneDrive) sale sin ellos en vez de bloquear la lista
         lista = await asyncio.to_thread(CX.enriquecer_proyectos, guardian, lista, CX.limites_md(cfg))
         return {"raiz": str(guardian.raiz), "proyectos": lista}
+
+    async def _backlog_por_proyecto(plazo_s: float = 2.5) -> dict | None:
+        """Pendientes abiertos y última sesión por proyecto, del backlog (que ya aplica `backlog/estado.json`), con plazo: None si no se
+        pudo leer a tiempo (el hilo sigue y deja la caché lista)."""
+        fut = asyncio.ensure_future(asyncio.to_thread(bl.resumen_proyectos, False))
+        hecho, _ = await asyncio.wait({fut}, timeout=plazo_s)
+        if not hecho:
+            return None
+        if fut.exception() is not None:
+            return None
+        return fut.result()
+
+    @app.get("/api/proyectos/resumen")
+    async def proyectos_resumen():
+        """Resumen visual por proyecto para la galería (descripción, sesiones por semana, pendientes abiertos, próximo hito, calidad del
+        contexto, tema de la última sesión). Acotado en tiempo y en caché por fecha de modificación: lo lento sale sin esos campos
+        (`parcial`), nunca bloquea."""
+        planes = await asyncio.to_thread(PL.cargar_planes, guardian)
+        ahora = datetime.now()
+        planes = {k: PL.enriquecer(v, ahora) for k, v in planes.items()}
+        lista = CX.listar_proyectos(guardian, "", (APP_DIR,), planes)
+        por_proyecto, r = await asyncio.gather(
+            _backlog_por_proyecto(),
+            asyncio.to_thread(RS.resumir, guardian, lista, CX.limites_md(cfg), planes, None, ahora.date()))
+        if por_proyecto is None:
+            r["parcial"] = True
+        else:
+            for nombre, v in r["resumen"].items():
+                b = por_proyecto.get(nombre.lower())
+                v["pendientes_abiertos"] = b["abiertos"] if b else 0
+                if b and b["ultima"] and b["ultima"]["tema"]:
+                    v["ultima_sesion_tema"] = b["ultima"]["tema"]
+                    v["ultima_sesion_fecha"] = b["ultima"]["fecha"]
+        return r
+
+    @app.get("/api/proyectos/{nombre}/pendientes")
+    @envolver
+    async def proyecto_pendientes(nombre: str):
+        """Los 5 pendientes abiertos más recientes del proyecto y el total (del backlog: no relee nada si ya está cargado)."""
+        por_proyecto = await _backlog_por_proyecto(4.0)
+        if por_proyecto is None:
+            return {"pendientes": [], "total": None, "avisos": ["Todavía se están leyendo las sesiones."]}
+        b = por_proyecto.get(nombre.lower())
+        return {"total": b["abiertos"] if b else 0, "pendientes": b["pendientes"] if b else [], "avisos": []}
 
     # ------------------------------------------------------------ vista previa del contexto de un proyecto (ids opacos, nunca rutas)
     ids_md: dict[str, tuple[str, Path]] = {}   # id opaco -> (proyecto en minúsculas, ruta): lo rellena el listado, solo vale lo que dio el servidor

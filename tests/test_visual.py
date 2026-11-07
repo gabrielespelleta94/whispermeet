@@ -83,7 +83,9 @@ def test_backdrop_filter_solo_donde_lo_permite_el_diseno():
 def test_recorte_con_elipsis_solo_en_las_excepciones_admitidas():
     """Sin textos cortados (requisito del autor): ni elipsis ni line-clamp salvo barras geométricas estrechas, `.pie-ctx` y el dato del nodo (DESIGN-visual.md §14.5)."""
     css = _quita_comentarios(TODO_CSS)
-    permitidos = {".g-barra .g-bt", ".sb-tema-t", ".pie-ctx"}
+    permitidos = {".g-barra .g-bt", ".sb-tema-t", ".pie-ctx",
+                  # galería de proyectos del inicio (recorte con tooltip: el nombre, la descripción y los chips llevan su texto completo en `title`)
+                  ".pcard .n", ".prow .n", ".pc-desc", ".pc-desc.una", ".pc-desc.hero-desc", ".pc-ult", ".prow-ult", ".chip-t", ".cal-txt", ".pp-tit h2", ".pp-tit .t-meta", ".proy-nom", ".proy-desc"}
     for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
         sel, cuerpo = m.group(1).strip(), m.group(2)
         if "text-overflow: ellipsis" in cuerpo or re.search(r"line-clamp: (?!unset|none)", cuerpo):
@@ -479,6 +481,8 @@ def test_movimiento_reducido_deja_solo_estado_fijo(tmp_path, pagina):
 def test_inicio_y_revision_cargan_con_el_nuevo_acabado(edge, pagina):
     arrancar(edge, pagina, snapshot=foto(estado="inactivo", sesion=None, revision=None))
     time.sleep(0.4)
+    edge.js("AP.proyectos.etapa('preparar'); 1")                                            # la lámina de vidrio del formulario es la etapa «preparar» (la galería va a todo el ancho)
+    time.sleep(0.2)
     r = edge.js("""(() => { const l = document.querySelector('.ini-izq'); const c = getComputedStyle(l);
       return { vista: document.body.dataset.vista, radio: c.borderRadius, filtro: c.backdropFilter, ancho: Math.round(l.getBoundingClientRect().width), btn: getComputedStyle(document.querySelector('#i-empezar')).height }; })()""")
     assert r["vista"] == "inicio" and r["radio"] == "14px" and r["filtro"] != "none" and r["ancho"] == 400 and r["btn"] == "40px", r   # lámina de vidrio flotante única, 400 px
@@ -583,7 +587,7 @@ def test_leyenda_de_la_banda_sesion_con_colores_reales_y_contraste(tmp_path, pag
         e.cerrar()
 
 
-SELECTORES_SIN_CORTE = ".reunion-id, .reunion-tema, .reunion-meta, .item .n, .item .tag, .orq-estado, .orq-ult, .traza-b, .ctx-proy, .cambio-h .m, .tarj, .notif, .bj-f, .eq-fila, .eq-def-fila, .eq-tarj"
+SELECTORES_SIN_CORTE = ".reunion-id, .reunion-tema, .reunion-meta, .acc-t .n, .orq-estado, .orq-ult, .traza-b, .ctx-proy, .cambio-h .m, .tarj, .notif, .bj-f, .eq-fila, .eq-def-fila, .eq-tarj"
 
 
 def _sin_cortes(e):
@@ -630,20 +634,18 @@ def test_cabecera_y_lineas_sin_texto_cortado_ni_desborde_horizontal(tmp_path, pa
 def test_inicio_ruta_cadencia_papel_y_boton_empezar(edge, pagina):
     arrancar(edge, pagina, snapshot=foto(estado="inactivo", sesion=None, revision=None))
     time.sleep(0.4)
-    edge.js("""(() => { document.querySelector('#i-raiz').textContent = 'Raíz de proyectos: C:\\\\Proyectos\\\\apuntes\\\\pruebas\\\\proyectos\\\\una\\\\ruta\\\\muy\\\\larga\\\\sin\\\\espacios\\\\ni\\\\saltos';
-      document.querySelector('#i-obj-campo').hidden = false;
-      const l = document.querySelector('#i-lista'); const it = document.createElement('button'); it.className = 'item'; it.innerHTML = '<span class="n">Bandeja (reunión sin proyecto)</span><span class="tag">se guarda en apuntes bandeja y es un texto largo</span>'; l.append(it); return 1; })()""")
+    # galería: la ruta de la raíz, larga y sin espacios, envuelve dentro de la página (sin scroll horizontal)
+    edge.js("document.querySelector('#i-raiz').textContent = 'Raíz de proyectos: C:\\\\Proyectos\\\\apuntes\\\\pruebas\\\\proyectos\\\\una\\\\ruta\\\\muy\\\\larga\\\\sin\\\\espacios\\\\ni\\\\saltos\\\\que\\\\no\\\\acaba\\\\nunca\\\\jamas\\\\en\\\\la\\\\vida'; 1")
+    g = edge.js("""(() => { const raiz = document.querySelector('#i-raiz'), r = raiz.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+      return { dentro: r.right <= vw + 0.5 && r.left >= 0, scroll: raiz.scrollWidth <= raiz.clientWidth + 1, pagina: document.documentElement.scrollWidth <= vw }; })()""")
+    assert g == {"dentro": True, "scroll": True, "pagina": True}, g
+    # preparar la reunión: lámina de vidrio, cadencia 2×2, bloque de papel y botón «Empezar reunión» alcanzable
+    edge.js("AP.proyectos.etapa('preparar'); document.querySelector('#i-obj-campo').hidden = false; 1")
     time.sleep(0.3)
-    r = edge.js("""(() => { const p = document.querySelector('.ini-izq').getBoundingClientRect(), raiz = document.querySelector('#i-raiz').getBoundingClientRect();
-      const bs = [...document.querySelectorAll('.seg-4 button')].map((b) => b.getBoundingClientRect()); const papel = getComputedStyle(document.querySelector('#i-obj-campo'));
-      const it = document.querySelector('#i-lista .item:last-child'), ik = it.querySelector('.n'), tg = it.querySelector('.tag');
+    r = edge.js("""(() => { const bs = [...document.querySelectorAll('.seg-4 button')].map((b) => b.getBoundingClientRect()); const papel = getComputedStyle(document.querySelector('#i-obj-campo'));
       const v = document.querySelector('#v-inicio'); v.scrollTop = v.scrollHeight; const b = document.querySelector('#i-empezar').getBoundingClientRect(), m = document.querySelector('main').getBoundingClientRect();
-      return { raizDentro: raiz.right <= p.right + 0.5 && raiz.left >= p.left, raizScroll: document.querySelector('#i-raiz').scrollWidth <= document.querySelector('#i-raiz').clientWidth + 1,
-        filas: new Set(bs.map((x) => Math.round(x.top))).size, cols: new Set(bs.map((x) => Math.round(x.left))).size, anchos: bs.map((x) => Math.round(x.width)), alturas: new Set(bs.map((x) => Math.round(x.height))).size,
-        papelPad: [papel.paddingTop, papel.paddingLeft, papel.marginTop], filaCorte: [ik.scrollWidth > ik.clientWidth + 1, tg.scrollWidth > tg.clientWidth + 1, getComputedStyle(ik).textOverflow, getComputedStyle(tg).textOverflow],
-        botonVisible: b.top >= m.top && b.bottom <= m.bottom + 0.5 }; })()""")
-    assert r["raizDentro"] and r["raizScroll"], r                                          # la ruta envuelve dentro de la lámina
+      return { filas: new Set(bs.map((x) => Math.round(x.top))).size, cols: new Set(bs.map((x) => Math.round(x.left))).size, anchos: bs.map((x) => Math.round(x.width)), alturas: new Set(bs.map((x) => Math.round(x.height))).size,
+        papelPad: [papel.paddingTop, papel.paddingLeft, papel.marginTop], botonVisible: b.top >= m.top && b.bottom <= m.bottom + 0.5 }; })()""")
     assert r["filas"] == 2 and r["cols"] == 2 and r["alturas"] == 1 and max(r["anchos"]) - min(r["anchos"]) <= 1, r   # cadencia: rejilla 2×2 sin huecos
     assert all(float(x[:-2]) >= 12 for x in r["papelPad"]), r                               # el bloque de papel con aire
-    assert r["filaCorte"] == [False, False, "clip", "clip"], r                              # «se guarda en apunt…» ya no se corta
     assert r["botonVisible"], r                                                             # «Empezar reunión» se alcanza en el scroll a 900 px de alto

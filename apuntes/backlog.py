@@ -713,6 +713,24 @@ class Backlog:
         proyectos = sorted({s["proyecto"] for s in lista}, key=str.lower)
         return {"sesiones": lista, "proyectos": proyectos, "avisos": ix["avisos"]}
 
+    def resumen_proyectos(self, refrescar: bool = False, top: int = 5) -> dict[str, dict]:
+        """Por proyecto (en minúsculas): pendientes abiertos (con el estado local ya aplicado), los `top` más recientes y la última sesión
+        (`fecha`, `tema`, `id`). Solo lee la caché del índice (si no está cargada, la carga con los tiempos acotados de siempre)."""
+        ix = self._indice_actual(refrescar)
+        out: dict[str, dict] = {}
+        for i in ix["orden"]:                      # de la más reciente a la más antigua
+            s = ix["sesiones"][i]
+            r = out.setdefault((s["proyecto"] or "").lower(), {"abiertos": 0, "pendientes": [], "ultima": None})
+            if r["ultima"] is None:
+                r["ultima"] = {"fecha": s["fecha"], "tema": s["tema"], "id": s["id"]}
+            for it in s["_items"]:
+                if it["tipo"] == "pendiente" and it["estado"] == "abierto":
+                    r["abiertos"] += 1
+                    if len(r["pendientes"]) < top:
+                        r["pendientes"].append({"id": it["id"], "texto": it["texto"], "minuto": it["minuto"], "responsable": it["responsable"],
+                                                "fecha": s["fecha"], "tema": s["tema"], "sesion_id": s["id"]})
+        return out
+
     def items(self, refrescar: bool = False) -> dict:
         ix = self._indice_actual(refrescar)
         lista = [it for i in ix["orden"] for it in ix["sesiones"][i]["_items"]]

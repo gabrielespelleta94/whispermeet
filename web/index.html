@@ -67,19 +67,37 @@
   <main id="vistas">
     <!-- ================= INICIO ================= -->
     <section class="vista" id="v-inicio" hidden>
-      <div class="inicio">
-        <div class="ini-izq">
-          <h1 class="t-display">Nueva reunión</h1>
-          <p class="lead t-body">Elige dónde se guardará la transcripción y qué contexto se usará para analizarla.</p>
-
-          <div class="campo">
-            <label class="t-label" for="i-buscar">Proyecto</label>
-            <input class="input" id="i-buscar" type="search" placeholder="Buscar proyecto…" autocomplete="off">
-            <div class="lista" id="i-lista" role="listbox" aria-label="Proyectos"></div>
-            <div class="t-meta pista-teclas" id="i-teclas">↑ ↓ para moverte · Intro para elegir · Ctrl+K o / para buscar</div>
-            <div class="nota-pie t-meta" id="i-raiz"></div>
-            <details class="add-carpeta" id="i-add-carpeta">
-              <summary class="t-meta">Añadir carpeta de proyecto</summary>
+      <!-- Etapa 1: galería de proyectos a todo el ancho (web/proyectos.js). Etapa 2 (#i-preparar): preparar la reunión con el proyecto ya elegido. -->
+      <div class="galeria" id="i-galeria">
+        <div class="gal-barra" id="i-barra">
+          <div class="gal-fila1">
+            <div class="gal-tit"><h1 class="t-display">Proyectos</h1><span class="t-meta soft" id="i-cuenta"></span></div>
+            <div class="gal-busca">
+              <input class="input" id="i-buscar" type="search" placeholder="Buscar proyecto…" autocomplete="off" aria-label="Buscar proyecto" aria-controls="i-lista">
+              <kbd class="gal-kbd t-meta" aria-hidden="true">Ctrl K</kbd>
+            </div>
+            <label class="gal-orden t-meta" for="i-orden">Ordenar<select class="input" id="i-orden" aria-label="Ordenar proyectos">
+              <option value="recientes">Recientes</option><option value="actividad">Actividad</option><option value="pendientes">Pendientes</option><option value="nombre">Nombre</option></select></label>
+            <div class="seg gal-modo" id="i-modo" role="radiogroup" aria-label="Vista de proyectos">
+              <button type="button" role="radio" data-modo="rejilla" aria-checked="true" title="Tarjetas"><span class="gal-ic" data-ic="rejilla"></span>Rejilla</button>
+              <button type="button" role="radio" data-modo="lista" aria-checked="false" title="Lista compacta"><span class="gal-ic" data-ic="lista"></span>Lista</button>
+            </div>
+          </div>
+          <div class="gal-chips" id="i-filtros" role="group" aria-label="Filtrar proyectos"></div>
+        </div>
+        <div class="banner info banner-ancho" id="i-llamada" hidden>
+          <p class="t-body">Parece que estás en una llamada de Teams. ¿Quieres grabarla?</p>
+          <div class="acciones">
+            <button class="btn btn-primary" id="i-llamada-si" type="button">Preparar grabación</button>
+            <button class="btn btn-ghost" id="i-llamada-no" type="button">Ahora no</button>
+          </div>
+        </div>
+        <div class="gal-lista" id="i-lista" role="listbox" aria-label="Proyectos"></div>
+        <div class="t-meta pista-teclas" id="i-teclas">Flechas para moverte · Intro abre la ficha · E empieza la reunión · Ctrl+K o / para buscar</div>
+        <div class="nota-pie t-meta" id="i-raiz"></div>
+        <div class="gal-add" id="i-add-zona">
+          <details class="add-carpeta" id="i-add-carpeta">
+            <summary class="t-meta">Añadir carpeta de proyecto</summary>
               <form id="f-add-carpeta" autocomplete="off">
                 <input class="input" name="nombre" type="text" maxlength="80" placeholder="Nombre del proyecto" aria-label="Nombre del proyecto">
                 <div class="ruta-fila"><input class="input" name="ruta" type="text" placeholder="Ruta de la carpeta" title="Ruta absoluta, por ejemplo D:\Clientes\Proyecto" aria-label="Ruta de la carpeta"><button class="btn btn-ghost" type="button" data-elegir-carpeta hidden title="Abre el selector de carpetas de Windows (también sirven las de OneDrive o Google Drive que tengas sincronizadas)">Elegir carpeta…</button></div>
@@ -99,17 +117,13 @@
                 <div class="error" data-error hidden></div>
               </form>
             </details>
-          </div>
+        </div>
+      </div>
 
+      <div class="inicio" id="i-preparar" hidden>
+        <div class="ini-izq">
+          <div class="proy-cab" id="i-proy-cab"></div>
           <div class="banner info banner-ancho" id="i-compartido" hidden></div>
-
-          <div class="banner info banner-ancho" id="i-llamada" hidden>
-            <p class="t-body">Parece que estás en una llamada de Teams. ¿Quieres grabarla?</p>
-            <div class="acciones">
-              <button class="btn btn-primary" id="i-llamada-si" type="button">Preparar grabación</button>
-              <button class="btn btn-ghost" id="i-llamada-no" type="button">Ahora no</button>
-            </div>
-          </div>
 
           <div class="campo" id="i-sesion-campo" hidden>
             <span class="t-label" id="i-ses-l">Sesión del plan</span>
@@ -184,10 +198,12 @@
           <div class="error" id="i-error" hidden></div>
         </div>
         <div class="ini-der">
-          <section class="vista-previa" id="i-preview" hidden aria-label="Contexto que se usará del proyecto" aria-live="polite"></section>
           <section class="contexto" id="i-contexto" hidden aria-label="Contexto del proyecto y de la reunión"></section>
         </div>
       </div>
+
+      <div class="scrim" id="i-scrim" hidden></div>
+      <aside class="panel-proy" id="i-panel" role="dialog" aria-modal="true" aria-labelledby="pp-titulo" hidden></aside>
     </section>
 
     <!-- ================= REUNIÓN ================= -->
