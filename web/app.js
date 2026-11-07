@@ -36,6 +36,75 @@
   const AP = (window.AP = { hooks: {} });   // puente con agentes.js, reunion.js y revision.js (rediseño agéntico)
   const UI = { proyectos: [], sel: undefined, proy: null, sesionPlan: undefined, temaAuto: "", cad: 5, decisiones: {}, info: null, ultimoSeg: 0, seguir: true };
 
+  // Movimiento reducido: las animaciones hechas con la Web Animations API (avisos que vuelan, trazos…) duran 0 ms; el CSS ya las desactiva por su lado.
+  const mqReducido = matchMedia("(prefers-reduced-motion: reduce)");
+  if (typeof Element.prototype.animate === "function") {
+    const animar = Element.prototype.animate;
+    Element.prototype.animate = function (claves, op) {
+      if (!mqReducido.matches) return animar.call(this, claves, op);
+      return animar.call(this, claves, { ...(typeof op === "number" ? { duration: op } : op || {}), duration: 0, delay: 0, endDelay: 0, iterations: 1 });
+    };
+  }
+
+  // ------------------------------------------------------------ diálogo propio (sustituye a confirm / alert / prompt del navegador)
+  // AP.confirmar({titulo, texto, aceptar, cancelar, peligro}) -> Promise<boolean>; AP.avisar({titulo, texto}) -> Promise<void> (un solo botón);
+  // AP.pedirTexto({titulo, texto, valor, aceptar}) -> Promise<string|null>. Esc cancela, Intro acepta, el foco queda atrapado dentro y vuelve
+  // al disparador al cerrar; el resto de la app queda `inert` mientras está abierto.
+  let nDialogo = 0;
+  function dialogoPropio(op) {
+    return new Promise((resolve) => {
+      const previo = document.activeElement;
+      const id = "dp-" + (++nDialogo);
+      const campo = op.campo ? h("input", { class: "input dp-campo", type: "text", value: op.valor || "", maxlength: "200", "aria-label": op.titulo || "Texto" }) : null;
+      const bOk = h("button", { type: "button", class: "btn " + (op.peligro ? "btn-peligro" : "btn-primary"), "data-dp": "aceptar" }, op.aceptar || "Aceptar");
+      const bNo = op.sinCancelar ? null : h("button", { type: "button", class: "btn btn-ghost", "data-dp": "cancelar" }, op.cancelar || "Cancelar");
+      const caja = h("div", { class: "dp-caja" + (op.peligro ? " peligro" : ""), role: "alertdialog", "aria-modal": "true", "aria-labelledby": id + "-t", "aria-describedby": id + "-d" },
+        h("h2", { class: "t-title dp-titulo", id: id + "-t" }, op.titulo || ""),
+        h("p", { class: "t-body dp-texto", id: id + "-d" }, op.texto || ""), campo,
+        h("div", { class: "dp-pie" }, ...[bNo, bOk].filter(Boolean)));
+      const fondo = h("div", { class: "dp-fondo", "data-dp-fondo": "" }, caja);
+      const bloqueados = [...document.body.children].filter((e) => e.tagName !== "SCRIPT").map((e) => [e, e.inert]);
+      bloqueados.forEach(([e]) => { e.inert = true; });
+      document.body.append(fondo);
+      let cerrado = false;
+      const cerrar = (valor) => {
+        if (cerrado) return;
+        cerrado = true;
+        document.removeEventListener("keydown", tecla, true);
+        fondo.remove();
+        bloqueados.forEach(([e, v]) => { e.inert = v; });
+        if (previo && previo.isConnected && typeof previo.focus === "function") previo.focus();
+        resolve(valor);
+      };
+      const aceptar = () => cerrar(campo ? campo.value : true);
+      const cancelar = () => cerrar(campo ? null : false);
+      const tecla = (ev) => {
+        if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); if (bNo) cancelar(); else aceptar(); return; }
+        if (ev.key === "Enter" && !ev.isComposing) {
+          if (ev.target === bNo) return;          // Intro sobre «Cancelar» pulsa Cancelar (comportamiento nativo del botón)
+          ev.preventDefault(); ev.stopPropagation(); aceptar(); return;
+        }
+        if (ev.key === "Tab") {
+          const f = [...caja.querySelectorAll("button, input")].filter((e) => !e.disabled);
+          const i = f.indexOf(document.activeElement);
+          ev.preventDefault();
+          f[(i + (ev.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+        }
+      };
+      document.addEventListener("keydown", tecla, true);
+      bOk.addEventListener("click", aceptar);
+      if (bNo) bNo.addEventListener("click", cancelar);
+      fondo.addEventListener("mousedown", (ev) => { if (ev.target === fondo && bNo) cancelar(); });
+      (campo || bOk).focus();
+      if (campo) campo.select();
+    });
+  }
+  AP.confirmar = (op) => dialogoPropio(op || {});
+  AP.avisar = (op) => dialogoPropio({ aceptar: "Entendido", sinCancelar: true, ...(typeof op === "string" ? { titulo: "Aviso", texto: op } : op) });
+  AP.pedirTexto = (op) => dialogoPropio({ campo: true, ...op });
+  const avisarError = (e) => AP.avisar({ titulo: "No se pudo completar", texto: (e && e.message) || String(e) });
+  AP.avisarError = avisarError;
+
   // ------------------------------------------------------------ tema
   function aplicarTema(t) {
     if (t === "claro" || t === "oscuro") document.documentElement.dataset.theme = t === "claro" ? "light" : "dark";
@@ -140,7 +209,7 @@
       h("i"), h("div", { class: "l" }, x.nombre.replace(/\s*\([^)]*\)/g, "").trim()));
     }))));
     const ph = pct(plan.hoy);
-    if (ph >= 0 && ph <= 100) raiz.append(h("div", { class: "g-capa", "aria-hidden": "true" }, h("div", { class: "g-hoy", style: `left:${ph}%` }, h("span", {}, "Hoy · " + fmtDia(plan.hoy)))));
+    if (ph >= 0 && ph <= 100) raiz.append(h("div", { class: "g-capa", "aria-hidden": "true" }, h("div", { class: "g-hoy" + (ph < 6 ? " izq" : ph > 88 ? " der" : ""), style: `left:${ph}%` }, h("span", {}, "Hoy · " + fmtDia(plan.hoy)))));
     if (typeof ResizeObserver === "function") new ResizeObserver(() => ajustarGantt(raiz)).observe(raiz);
     return raiz;
   }
@@ -291,8 +360,9 @@
   function pintarContexto(cont, ctx) {
     const plan = ctx.plan, ses = plan && ctx.sesion ? plan.sesiones.find((s) => s.id === ctx.sesion) : null;
     const sinObjetivos = !!ses && !ses.objetivos.length;
-    cont.replaceChildren(h("div", { class: "ctx-cab" }, h("span", { class: "caps" }, ctx.enReunion ? "Contexto de la reunión" : "Contexto"),
-      h("span", { class: "ctx-proy", title: ctx.proyecto || "Bandeja" }, ctx.proyecto || "Bandeja")));
+    // En Preparar el nombre del proyecto ya está en la tarjeta de la izquierda: aquí solo se repite durante la reunión
+    cont.replaceChildren(h("div", { class: "ctx-cab" }, h("span", { class: "caps" }, ctx.enReunion ? "Contexto de la reunión" : "Plan y checks del proyecto"),
+      ctx.enReunion ? h("span", { class: "ctx-proy", title: ctx.proyecto || "Bandeja" }, ctx.proyecto || "Bandeja") : null));
     if (plan && !sinObjetivos) {
       if (plan.ficha) cont.append(fichaEl(plan.ficha));
       if (plan.gantt) {
@@ -372,7 +442,7 @@
     const av = $("#i-compartido");
     av.hidden = !(p && p.compartido);
     if (p && p.compartido) av.replaceChildren(h("b", {}, "Carpeta compartida"),
-      "Este proyecto vive en una carpeta compartida de otra persona. Durante la reunión la transcripción se guarda solo en local (apuntes\\sesiones). Al terminar, la revisión te enseña la ruta y publica el documento final en «02. Sesiones» de esa carpeta (sin sobrescribir nunca; puedes elegir «No publicar»). Los cambios a «00. CONTEXTO (IA)» solo se escriben si los aceptas.");
+      "Es una carpeta de otra persona: la transcripción se guarda solo en tu equipo y se publica al terminar, sin sobrescribir nada.");
     $("#i-sesion-campo").hidden = !plan;
     const l = $("#i-sesiones");
     l.replaceChildren();
@@ -422,10 +492,17 @@
   }
   fijarIdioma(idiomaGuardado(), false);
   $$("[data-idioma]").forEach((b) => b.addEventListener("click", () => fijarIdioma(b.dataset.idioma, true)));
-  $$("[data-cad]").forEach((b) => b.addEventListener("click", () => {
-    UI.cad = b.dataset.cad;
-    $$("[data-cad]").forEach((x) => x.setAttribute("aria-checked", String(x === b)));
-  }));
+  // «Ritmo del equipo» (antes «Cadencia»): equipo | 5 | 10 | manual. Se recuerda entre reuniones (localStorage con try/catch) y viaja como `cadencia`.
+  const RITMOS = ["equipo", "5", "10", "manual"];
+  const ETQ_RITMO = { equipo: "según lo que se diga", 5: "cada 5 min", 10: "cada 10 min", manual: "solo si lo pido" };
+  function fijarRitmo(v, guardar) {
+    UI.cad = RITMOS.includes(String(v)) ? String(v) : "equipo";
+    $$("[data-cad]").forEach((x) => x.setAttribute("aria-checked", String(x.dataset.cad === UI.cad)));
+    const est = $("#i-opciones-estado"); if (est) est.textContent = "Ritmo del equipo: " + ETQ_RITMO[UI.cad];
+    if (guardar) { try { localStorage.setItem("apuntes_ritmo", UI.cad); } catch { /* sin almacenamiento */ } }
+  }
+  fijarRitmo(safe(() => localStorage.getItem("apuntes_ritmo"), "equipo"), false);
+  $$("[data-cad]").forEach((b) => b.addEventListener("click", () => fijarRitmo(b.dataset.cad, true)));
   $("#i-empezar").addEventListener("click", async () => {
     $("#i-error").hidden = true;
     $("#i-empezar").disabled = true;
@@ -495,7 +572,7 @@
     if (AP.hooks.pintarInsights) return AP.hooks.pintarInsights();
     const c = $("#r-insights");
     c.replaceChildren();
-    if (!S.tarjetas.length) { c.append(h("div", { class: "vacio-i" }, "Todavía no hay insights. Aparecerán tras el primer análisis.")); }
+    if (!S.tarjetas.length) { c.append(h("div", { class: "vacio-i" }, "Aquí irán apareciendo las decisiones, los pendientes, los riesgos y las preguntas que salgan de la conversación.")); }
     GRUPOS.forEach(([cat, titulo, clase]) => {
       const ts = S.tarjetas.filter((t) => t.categoria === cat);
       if (!ts.length) return;
@@ -542,9 +619,7 @@
     $("#r-terminar").textContent = terminando ? "Terminando…" : "Terminar";
     $("#r-reloj").classList.toggle("pausa", pausada);
     // avisos de captura
-    const av = $("#r-avisos");
-    av.hidden = !S.avisos.length;
-    av.textContent = S.avisos.join(" · ");
+    pintarAvisos();
     if (AP.hooks.linea) { AP.hooks.linea(); pie(); return; }
     // análisis (respaldo si el módulo de orquestación no carga)
     const a = S.analisis || {};
@@ -575,7 +650,7 @@
     $("#p-trans").textContent = S.simulacion ? "Modo simulación" : tr ? "Transcripción: " + ({ cargando: "cargando modelo", listo: "lista", error: "con error", sin_cargar: "en espera" }[tr.estado] || tr.estado)
       + (tr.velocidad_x ? ` · ${tr.velocidad_x.toFixed(1).replace(".", ",")}× tiempo real` : "") : "Transcripción: en espera";
     const d = S.digest || {};
-    $("#p-digest").textContent = d.origen ? "Contexto: " + ({ generado: "resumido ahora", cache: "desde caché", vacio: "sin contenido útil en el proyecto", sin_proyecto: "sin proyecto", contexto_usuario: "el que aceptaste antes de empezar", error: "no disponible" }[d.origen] || d.origen) : "";
+    $("#p-digest").textContent = d.origen ? "Contexto: " + ({ generado: "resumido ahora", cache: "ya preparado antes", vacio: "sin contenido útil en el proyecto", sin_proyecto: "sin proyecto", contexto_usuario: "el que aceptaste antes de empezar", error: "no disponible" }[d.origen] || d.origen) : "";
     const c = S.consumo;
     if (!c || !c.llamadas) { $("#p-consumo").textContent = "Consumo: sin llamadas"; return; }
     const ent = c.total.entrada + c.total.cache_creacion + c.total.cache_lectura;
@@ -589,7 +664,7 @@
     try { await api("POST", "/api/sesion/analizar"); } catch (e) { alerta(e); }
   });
   $("#r-terminar").addEventListener("click", async () => {
-    if (!confirm("¿Terminar la reunión? Se generará el resumen final y la propuesta de cambios.")) return;
+    if (!(await AP.confirmar({ titulo: "¿Terminar la reunión?", texto: "Se generará el resumen final y la propuesta de cambios. Podrás revisarlos antes de aplicar nada.", aceptar: "Terminar", cancelar: "Seguir grabando" }))) return;
     try { await api("POST", "/api/sesion/terminar"); } catch (e) { alerta(e); }
   });
   let tNotas;
@@ -601,7 +676,17 @@
       catch (e) { $("#r-notas-estado").textContent = "No se guardaron"; }
     }, 700);
   });
-  function alerta(e) { $("#r-avisos").hidden = false; $("#r-avisos").textContent = e.message || String(e); }
+  // Avisos de la reunión (captura, fichero prioritario no disponible, errores): cada uno se puede cerrar y no vuelve en esa sesión.
+  function pintarAvisos() {
+    const av = $("#r-avisos"), sid = S.sesion ? S.sesion.id : "";
+    const cerrados = UI.avisosCerrados || (UI.avisosCerrados = new Set());
+    const lista = [...S.avisos, ...(UI.avisoExtra ? [UI.avisoExtra] : [])].filter((a) => !cerrados.has(sid + "|" + a));
+    av.hidden = !lista.length;
+    av.replaceChildren(...lista.map((a) => h("span", { class: "aviso-it" }, h("span", { class: "aviso-tx" }, a),
+      h("button", { type: "button", class: "aviso-x", "aria-label": "Cerrar este aviso", title: "Cerrar este aviso",
+        onclick: () => { cerrados.add(sid + "|" + a); if (UI.avisoExtra === a) UI.avisoExtra = ""; pintarAvisos(); } }, "×"))));
+  }
+  function alerta(e) { UI.avisoExtra = (e && e.message) || String(e); pintarAvisos(); }
 
   // medidores con caída suave
   const nivel = { yo: { v: 0, t: 0 }, reunion: { v: 0, t: 0 } };
@@ -688,7 +773,7 @@
     }
     $("#v-rev-aplicar").hidden = false;
     const pu = rev.pulido || { estado: "ninguno" };
-    const elegir = (v) => api("POST", "/api/revision/resumen", { version: v }).catch((e) => alert(e.message));
+    const elegir = (v) => api("POST", "/api/revision/resumen", { version: v }).catch((e) => avisarError(e));
     if ((rev.avisos || []).length) {
       cuerpo.append(h("section", { class: "sec aviso", id: "v-rev-avisos" }, h("span", { class: "caps" }, "Aviso sobre el resumen"),
         h("ul", {}, rev.avisos.map((a) => h("li", {}, a)))));
@@ -704,7 +789,7 @@
     } else {
       cuerpo.append(h("section", { class: "sec" }, h("span", { class: "caps" }, "Resumen final"), md(rev.resumen || "Sin resumen."),
         pu.estado === "generando" ? h("p", { class: "soft" }, "Puliendo con Opus…") : h("div", { class: "acciones" },
-          h("button", { class: "btn", type: "button", id: "v-rev-pulir", onclick: () => api("POST", "/api/revision/pulir").catch((e) => alert(e.message)) },
+          h("button", { class: "btn", type: "button", id: "v-rev-pulir", onclick: () => api("POST", "/api/revision/pulir").catch((e) => avisarError(e)) },
             pu.estado === "error" ? "Volver a pulir con Opus" : "Pulir con Opus"),
           h("span", { class: "soft" }, " Opcional: gasta bastante más de tu licencia que el resto del análisis. Solo se ejecuta si lo pulsas; se muestran las dos versiones y eliges."),
           pu.estado === "error" ? h("div", { class: "error", id: "v-rev-pulir-error" }, "No se pudo pulir: " + pu.error + " La revisión sigue con la versión de Sonnet.") : null)));
@@ -756,13 +841,13 @@
         h("span", { class: "ruta" }, p.destino || p.carpeta),
         h("p", { class: "soft" }, (p.carpeta_existe ? "" : "La carpeta «02. Sesiones» no existe y se creará al publicar. ") + "Nunca se sobrescribe: si el nombre ya existe, se añade un sufijo. Es una carpeta compartida de otra persona."),
         h("label", { class: "check" }, h("input", { type: "checkbox", id: "v-rev-publicar", checked: p.publicar, disabled: bloqueado,
-          onchange: (ev) => api("POST", "/api/revision/publicacion", { publicar: ev.target.checked }).catch((e) => { alert(e.message); ev.target.checked = p.publicar; }) }),
+          onchange: (ev) => api("POST", "/api/revision/publicacion", { publicar: ev.target.checked }).catch((e) => { avisarError(e); ev.target.checked = p.publicar; }) }),
         "Publicar en la carpeta compartida"),
         !p.publicar ? h("p", { class: "soft" }, "No se publicará: la carpeta compartida no se toca y el documento solo queda en la copia local.") : null].filter(Boolean));
     }
     if (p.estado === "error") caja.append(h("div", { class: "error", id: "v-rev-pub-error" }, p.error),
       h("div", { class: "acciones" }, h("button", { class: "btn btn-primary", type: "button", id: "v-rev-reintentar-pub",
-        onclick: () => api("POST", "/api/revision/publicar").catch((e) => alert(e.message)) }, "Reintentar publicación")));
+        onclick: () => api("POST", "/api/revision/publicar").catch((e) => avisarError(e)) }, "Reintentar publicación")));
     return h("section", { class: "sec" }, h("span", { class: "caps" }, "Publicación"), caja);
   }
   function tarjetaCambio(c, bloqueado) {
@@ -778,15 +863,15 @@
         : h("div", { class: "cambio-error" }, "Descartado automáticamente: " + c.error));
   }
   $("#v-rev-aplicar").addEventListener("click", async () => {
-    if (S.revision && S.revision.compartido && !confirm("Vas a escribir en una carpeta COMPARTIDA de otra persona:\n" + S.revision.destino_contexto + "\n\n¿Aplicar los cambios aceptados?")) return;
+    if (S.revision && S.revision.compartido && !(await AP.confirmar({ titulo: "Carpeta compartida", texto: "Vas a escribir en una carpeta compartida de otra persona:\n" + S.revision.destino_contexto + "\n\n¿Aplicar los cambios aceptados?", aceptar: "Aplicar cambios", peligro: true }))) return;
     const aceptados = Object.entries(UI.decisiones).filter(([, v]) => v === "si").map(([k]) => k);
     $("#v-rev-aplicar").disabled = true;
-    try { await api("POST", "/api/revision/aplicar", { aceptados }); } catch (e) { alert(e.message); }
+    try { await api("POST", "/api/revision/aplicar", { aceptados }); } catch (e) { avisarError(e); }
   });
   $("#v-rev-cerrar").addEventListener("click", async () => {
     const rev = S.revision;
-    if (rev && !rev.aplicado && rev.estado === "lista" && Object.values(UI.decisiones).some((v) => v === "si") && !confirm("Hay cambios aceptados sin aplicar. ¿Cerrar y descartarlos?")) return;
-    try { const r = await api("POST", "/api/revision/cerrar", {}); if (r && r.ok === false) $("#v-rev-pub") && $("#v-rev-pub").scrollIntoView({ block: "center" }); } catch (e) { alert(e.message); }
+    if (rev && !rev.aplicado && rev.estado === "lista" && Object.values(UI.decisiones).some((v) => v === "si") && !(await AP.confirmar({ titulo: "Cambios sin aplicar", texto: "Hay cambios aceptados que todavía no se han aplicado. ¿Cerrar y descartarlos?", aceptar: "Descartar y cerrar", cancelar: "Volver", peligro: true }))) return;
+    try { const r = await api("POST", "/api/revision/cerrar", {}); if (r && r.ok === false) $("#v-rev-pub") && $("#v-rev-pub").scrollIntoView({ block: "center" }); } catch (e) { avisarError(e); }
   });
 
   // ------------------------------------------------------------ AJUSTES

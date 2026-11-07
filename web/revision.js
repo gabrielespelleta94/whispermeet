@@ -161,7 +161,7 @@
     }
     $("#v-rev-aplicar").hidden = false;
     const pu = rev.pulido || { estado: "ninguno" };
-    const elegir = (v) => AP.api("POST", "/api/revision/resumen", { version: v }).catch((e) => alert(e.message));
+    const elegir = (v) => AP.api("POST", "/api/revision/resumen", { version: v }).catch((e) => AP.avisarError(e));
     let comparacion = null;
     const izq = h("div", { class: "rev-izq" });
     const der = h("div", { class: "rev-der" });
@@ -181,7 +181,7 @@
     } else {
       izq.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, "Resumen final"), AP.md(rev.resumen || "Sin resumen."),
         pu.estado === "generando" ? h("p", { class: "t-meta soft" }, "Puliendo con opus…") : h("div", { class: "acciones pulir" },
-          h("button", { class: "btn btn-ghost", type: "button", id: "v-rev-pulir", onclick: () => AP.api("POST", "/api/revision/pulir").catch((e) => alert(e.message)) },
+          h("button", { class: "btn btn-ghost", type: "button", id: "v-rev-pulir", onclick: () => AP.api("POST", "/api/revision/pulir").catch((e) => AP.avisarError(e)) },
             pu.estado === "error" ? "Volver a pulir con Opus" : "Pulir con Opus"),
           h("span", { class: "t-meta soft" }, "Opcional: gasta bastante más de tu licencia que el resto del análisis. Solo se ejecuta si lo pulsas; se muestran las dos versiones y eliges."),
           pu.estado === "error" ? h("div", { class: "error", id: "v-rev-pulir-error" }, "No se pudo pulir: " + pu.error + " La revisión sigue con la versión de Sonnet.") : null)));

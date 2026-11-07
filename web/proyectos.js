@@ -553,8 +553,8 @@
         h("div", { class: "vp-gtit t-label" }, `${g.titulo} · ${g.ficheros.length}`),
         h("ul", { class: "vp-lista" }, vistos.map((f) => h("li", { class: "vp-fila" + (f.dejado ? " fuera" : ""), "data-id": f.id },
           h("span", { class: "vp-n", title: f.rel }, f.nombre),
-          h("span", { class: "vp-tam t-meta" }, kb(f.tam)),
           f.dejado ? h("span", { class: "vp-marca", title: MOTIVOS[f.dejado] || f.dejado }, MOTIVOS[f.dejado] || "fuera") : null,
+          h("span", { class: "vp-tam t-meta" }, kb(f.tam)),   // el tamaño va siempre el último antes de «Abrir», en columna fija (con o sin nota)
           h("button", { type: "button", class: "btn btn-ghost btn-mini", "aria-label": "Abrir " + f.rel, onclick: (ev) => abrirMd(nombre, f.id, ev.currentTarget) }, "Abrir")))),
         g.ficheros.length > VISIBLES ? h("button", { type: "button", class: "btn btn-ghost btn-mini vp-mas", onclick: () => { P.expandido[g.clave] = !abierto; pintarPanel(); } },
           abierto ? "Ver menos" : `Ver los ${g.ficheros.length}`) : null));
@@ -583,7 +583,7 @@
     if (!l.length) return h("div", { class: "vp-bloque" }, cab, h("p", { class: "t-meta", id: "vp-sin-pend" }, "No hay pendientes abiertos. Los que salgan en las reuniones aparecerán aquí."));
     return h("div", { class: "vp-bloque" }, cab, h("ul", { class: "vp-lista", id: "vp-pendientes" }, l.map((x) => h("li", { class: "vp-fila pend-fila" },
       h("span", { class: "vp-n", title: x.texto }, x.texto, x.responsable ? h("span", { class: "t-meta soft" }, ` (${x.responsable})`) : null),
-      h("span", { class: "t-meta soft vp-tam", title: x.tema || "" }, x.fecha || "")))),
+      h("span", { class: "t-meta soft vp-tam", title: x.tema || "" }, (x.veces > 1 ? `${x.veces} sesiones · ` : "") + (x.fecha || ""))))),
       s.d.total > l.length ? h("button", { type: "button", class: "btn btn-ghost btn-mini vp-mas", onclick: () => { if (AP.backlog) { cerrarPanel(false); AP.backlog.abrir(); } } }, "Ver todos en «Sesiones»") : null);
   }
   function bloqueCalidad(p) {

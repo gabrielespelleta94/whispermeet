@@ -163,7 +163,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
     }
     el.className = "traza-f t-meta " + e.fila;
     if (e.fila === "analisis") {
-      const partes = [e.perfil ? `Turno ${e.n}` : `Análisis ${e.n}`, e.perfil ? NOMBRE_PERFIL[e.perfil] || e.perfil : null, e.tramo, e.motivo || null, e.modelo, e.ms != null ? AP.seg(e.ms) : null, e.tokens != null ? kfmt(e.tokens) : null, ...AP.conteos(e)].filter(Boolean);
+      const partes = [e.perfil ? `Intervención ${e.n}` : `Análisis ${e.n}`, e.perfil ? NOMBRE_PERFIL[e.perfil] || e.perfil : null, e.tramo, e.motivo || null, e.modelo, e.ms != null ? AP.seg(e.ms) : null, e.tokens != null ? kfmt(e.tokens) : null, ...AP.conteos(e)].filter(Boolean);
       const b = h("button", { type: "button", class: "traza-b t-meta", "aria-pressed": "false", title: "Resaltar las líneas de este tramo",
         onclick: () => resaltarTramo(e, b) }, partes.join(" · "));
       el.replaceChildren(b);
@@ -236,7 +236,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
       }
     }
     for (const [n, ts] of porAnalisis) if (n === 0) ts.forEach((t) => { nodos.push(tarjetaEl(t)); usadas.add(t.id); if (!I.vistas.has(t.id)) { I.vistas.add(t.id); nuevas.push(I.tarjetas.get(t.id)); } });
-    if (!nodos.length) nodos.push(h("div", { class: "vacio-i t-body" }, "Todavía no hay insights. Aparecerán tras el primer análisis."));
+    if (!nodos.length) nodos.push(AP.vacioInsights ? AP.vacioInsights() : h("div", { class: "vacio-i t-body" }, "Aquí irán apareciendo las decisiones, los pendientes, los riesgos y las preguntas que salgan de la conversación."));
     for (const k of [...I.tarjetas.keys()]) if (!usadas.has(k)) I.tarjetas.delete(k);
     const desplazada = sc.scrollTop > 1;
     reconciliar(c, nodos);

@@ -22,7 +22,7 @@
   --sombra-f: 0 16px 48px rgba(27, 27, 32, .14), 0 1px 0 #FFFFFF inset; --sombra: 0 1px 2px rgba(27, 27, 32, .06); --sombra-l: -16px 0 48px rgba(27, 27, 32, .10); --sombra-h: rgba(27, 27, 32, .10);
   --papel: #F7F2EA; --papel-canto: rgba(120, 90, 40, .14); --elev-solido: #FFFFFF;
   --hover: rgba(27, 27, 32, .045); --sel: rgba(46, 124, 246, .10); --hair: rgba(27, 27, 32, .08); --hair2: rgba(27, 27, 32, .16);
-  --ink: #17181C; --body: #363842; --soft: #5F6170;
+  --ink: #17181C; --body: #363842; --soft: #565868;
   --acc-t: #1D5FC4; --acc-soft: rgba(46, 124, 246, .10); --luz: rgba(46, 124, 246, .45);
   --halo: 0 0 0 1px rgba(46, 124, 246, .35), 0 0 28px rgba(46, 124, 246, .18);
   --ok: #1E8A4C; --err: #B3261E; --warn: #B25E09; --ok-bg: rgba(30, 138, 76, .12); --err-bg: rgba(179, 38, 30, .12); --warn-bg: rgba(178, 94, 9, .12);
@@ -43,7 +43,7 @@
   --sombra-f: 0 16px 48px rgba(0, 0, 0, .45), 0 1px 0 rgba(255, 255, 255, .06) inset; --sombra: 0 1px 2px rgba(0, 0, 0, .3); --sombra-l: -16px 0 48px rgba(0, 0, 0, .25); --sombra-h: rgba(0, 0, 0, .2);
   --papel: #26231F; --papel-canto: rgba(255, 228, 190, .10); --elev-solido: #1E1F26;
   --hover: rgba(255, 255, 255, .05); --sel: rgba(46, 124, 246, .14); --hair: rgba(255, 255, 255, .07); --hair2: rgba(255, 255, 255, .14);
-  --ink: #F4F4F6; --body: #BDBDC7; --soft: #9A9AA6;
+  --ink: #F4F4F6; --body: #BDBDC7; --soft: #A6A6B2;
   --acc-t: #7EB4FF; --acc-soft: rgba(46, 124, 246, .16); --luz: rgba(46, 124, 246, .55);
   --halo: 0 0 0 1px rgba(46, 124, 246, .35), 0 0 28px rgba(46, 124, 246, .22);
   --ok: #5ED38B; --err: #F28B82; --warn: #F0A94E; --ok-bg: rgba(94, 211, 139, .12); --err-bg: rgba(242, 139, 130, .12); --warn-bg: rgba(240, 169, 78, .12);
@@ -63,7 +63,7 @@
     --sombra-f: 0 16px 48px rgba(0, 0, 0, .45), 0 1px 0 rgba(255, 255, 255, .06) inset; --sombra: 0 1px 2px rgba(0, 0, 0, .3); --sombra-l: -16px 0 48px rgba(0, 0, 0, .25); --sombra-h: rgba(0, 0, 0, .2);
     --papel: #26231F; --papel-canto: rgba(255, 228, 190, .10); --elev-solido: #1E1F26;
     --hover: rgba(255, 255, 255, .05); --sel: rgba(46, 124, 246, .14); --hair: rgba(255, 255, 255, .07); --hair2: rgba(255, 255, 255, .14);
-    --ink: #F4F4F6; --body: #BDBDC7; --soft: #9A9AA6;
+    --ink: #F4F4F6; --body: #BDBDC7; --soft: #A6A6B2;
     --acc-t: #7EB4FF; --acc-soft: rgba(46, 124, 246, .16); --luz: rgba(46, 124, 246, .55);
     --halo: 0 0 0 1px rgba(46, 124, 246, .35), 0 0 28px rgba(46, 124, 246, .22);
     --ok: #5ED38B; --err: #F28B82; --warn: #F0A94E; --ok-bg: rgba(94, 211, 139, .12); --err-bg: rgba(242, 139, 130, .12); --warn-bg: rgba(240, 169, 78, .12);
@@ -371,7 +371,7 @@ body[data-efectos="apagado"] .eq-tarj::after, body[data-efectos="apagado"] .nodo
 .trans-vacio { color: var(--soft); padding: 16px 8px; }
 .btn-final { position: absolute; right: 16px; bottom: 8px; background: var(--elev-solido); border-color: var(--hair2); }
 .panel-notas { flex: none; padding: 6px 12px 10px; margin: 8px 0 0; }
-.panel-notas > summary { display: flex; cursor: pointer; list-style: none; border-bottom: 0; min-height: 28px; padding: 0; }
+.panel-notas > summary { display: flex; align-items: center; cursor: pointer; list-style: none; border-bottom: 0; min-height: 32px; padding: 0; }
 .panel-notas:not([open]) > summary { padding: 0; }
 .panel-notas > summary::after { content: "Mostrar"; color: var(--acc-t); font-size: var(--f-12); line-height: 16px; font-weight: 500; }
 .panel-notas[open] > summary::after { content: "Plegar"; }
@@ -986,3 +986,132 @@ summary.lista-cab::before { content: ""; flex: none; align-self: center; width: 
 .vp-ses { display: flex; gap: 8px; width: 100%; min-width: 0; padding: 4px 0; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--body); }
 .vp-ses:hover .vp-n { color: var(--acc-t); }
 .vp-mas { margin-top: 4px; }
+
+
+/* =====================================================================================================================================================
+   OLA 1 (2026-11-07): diálogo propio, Ajustes centrado, avisos que se cierran, Gantt sin solapes, preparar sin scroll, cabecera con una acción principal,
+   Orquestación en una tira de 36 px, estado vacío útil, áreas de pulsación de 32 px, foco y movimiento reducido.
+   ===================================================================================================================================================== */
+
+/* ---------- diálogo propio (AP.confirmar / AP.avisar / AP.pedirTexto): role="alertdialog", foco atrapado, Esc cancela e Intro acepta ---------- */
+.dp-fondo { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(10, 10, 14, .5); animation: pop 120ms var(--salida) backwards; }
+.dp-caja { width: min(440px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 20px 24px 16px; background: var(--elev-solido); color: var(--body); border: 1px solid var(--canto); border-radius: 14px; box-shadow: var(--sombra-f); }
+.dp-titulo { color: var(--ink); margin: 0; }
+.dp-texto { margin: 8px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+.dp-campo { width: 100%; margin-top: 12px; }
+.dp-pie { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.btn-peligro { background: var(--err); color: #FFFFFF; font-weight: 600; }
+.btn-peligro:hover:not(:disabled) { background: color-mix(in srgb, var(--err), #000 10%); color: #FFFFFF; border-color: transparent; }
+
+/* ---------- Ajustes: el reset global (`* { margin: 0 }`) quitaba el centrado automático del <dialog>: centrado, con tope de alto y el título siempre entero ---------- */
+.dialogo { margin: auto; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); overflow: hidden; }
+.dialogo[open] { display: flex; flex-direction: column; }
+.dialogo > form { display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 34px); }
+.d-titulo { flex: none; padding: 20px 24px 8px; overflow: visible; white-space: normal; overflow-wrap: anywhere; line-height: 22px; }
+.d-cuerpo { flex: 1 1 auto; min-height: 0; max-height: none; }
+.d-pie { flex: none; border-top: 1px solid var(--hair); }
+
+/* ---------- avisos de la reunión: cada uno con su botón de cerrar ---------- */
+.avisos { display: flex; flex-wrap: wrap; gap: 0 16px; padding: 0 8px 0 16px; }
+.aviso-it { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; }
+.aviso-x { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font-size: var(--f-15); line-height: 1; cursor: pointer; }
+.aviso-x:hover { background: var(--hover); }
+
+/* ---------- Gantt del proyecto: «Hoy» sobre la fila de semanas (antes tapaba «S2»); si la línea está a la derecha, el rótulo se alinea a su izquierda ---------- */
+.gantt { padding-top: 22px; }
+.g-hoy span { top: -16px; left: 0; transform: translateX(-50%); padding: 0 4px; border-radius: 4px; background: var(--elev-solido); }
+.g-hoy.izq span { transform: none; left: -1px; }
+.g-hoy.der span { transform: none; left: auto; right: -1px; }
+
+/* ---------- ficheros de contexto: el tamaño siempre en su columna fija a la derecha, lleve o no nota la fila ---------- */
+.vp-lista .vp-tam { flex: 0 0 64px; min-width: 64px; text-align: right; }
+.vp-lista .pend-fila .vp-tam { flex: none; min-width: 0; width: auto; }
+.vp-fila .vp-marca { flex: 0 1 38%; }
+
+/* ---------- Preparar la reunión sin scroll a 1280×720: dos columnas y barra fija abajo con el consentimiento y «Empezar reunión» ---------- */
+.inicio { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; padding: 16px 24px 0; max-width: 1200px; }
+.inicio .ini-izq { padding: 16px 20px 20px; }
+.inicio .ini-izq .campo:first-child { margin-top: 0; }
+.inicio .lista { max-height: min(224px, 22vh); }
+.inicio .ini-der { min-width: 0; padding-top: 0; }
+.ini-der .campo-idioma { margin-top: 0; }
+.ini-der > details { margin-top: 12px; }
+.opciones { padding: 10px 14px; border-radius: 10px; background: var(--vidrio); border: 1px solid var(--canto); box-shadow: var(--brillo); }
+.opciones > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; cursor: pointer; list-style: none; }
+.opciones > summary::-webkit-details-marker { display: none; }
+.opciones > summary .t-label::after { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 0 2px 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: -45deg; }
+.opciones[open] > summary .t-label::after { rotate: 45deg; margin-bottom: 4px; }
+.opciones .campo { margin-top: 8px; }
+.ini-der .contexto { margin-top: 12px; max-height: calc(100vh - 470px); min-height: 160px; overflow: auto; }
+.ini-barra { grid-column: 1 / -1; align-self: end; position: sticky; bottom: 12px; z-index: 6; display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 16px; margin-top: 12px; margin-bottom: 12px; padding: 12px 16px;
+  background: var(--elev-solido); border: 1px solid var(--canto); border-radius: 14px; box-shadow: var(--sombra-f); }
+.ini-barra .check { margin-top: 0; min-height: 32px; flex: 1 1 auto; min-width: 0; }
+.ini-aviso-nota { display: none; }
+.ini-ayuda { margin: 0 0 0 auto; text-align: right; max-width: 300px; flex: 0 1 auto; }
+.ini-ayuda:empty { display: none; }
+.ini-barra #i-empezar { flex: none; margin-left: auto; }
+.ini-ayuda:not(:empty) + #i-empezar { margin-left: 0; }
+.ini-barra .error { position: absolute; left: 16px; right: 16px; bottom: calc(100% + 6px); margin: 0; }
+.inicio:not([hidden]) { min-height: 100%; grid-template-rows: minmax(0, 1fr) auto; }
+@media (min-width: 1500px) { .ini-aviso-nota { display: inline; flex: 0 1 auto; } }
+@media (max-width: 1100px) { .inicio { grid-template-columns: 1fr; } .ini-der .contexto { max-height: none; } }
+
+/* ---------- cabecera de la reunión: «Terminar» es la acción principal; lo demás, en «Más» ---------- */
+.barra-b { align-items: center; gap: 8px; }
+.mas-reunion { position: relative; display: flex; }
+.mas-reunion .mas-panel { right: auto; left: 0; min-width: 200px; }
+.mas-reunion #r-mas .n { margin-left: 6px; }
+#r-mas .n { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--acc-soft); color: var(--acc-t); font-size: var(--f-12); }
+#r-mas .n[hidden] { display: none; }
+.top-mas-panel .btn { min-height: 32px; }
+
+/* ---------- Orquestación plegada: una tira de 36 px con las iniciales de los agentes; solo se anima el que tiene una llamada abierta ---------- */
+body:not([data-modo="reunion"]) .orq[data-plegado="true"] { height: 36px; min-height: 36px; box-sizing: border-box; overflow: hidden; }
+body:not([data-modo="reunion"]) .orq[data-plegado="true"] .orq-linea { min-height: 35px; height: 35px; padding: 0 16px; cursor: pointer; flex-wrap: nowrap; }
+body:not([data-modo="reunion"]) .orq[data-plegado="true"] .orq-l-txt { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; }
+body:not([data-modo="reunion"]) .orq[data-plegado="true"] .orq-estado, body:not([data-modo="reunion"]) .orq[data-plegado="true"] .orq-resumen { white-space: nowrap; overflow-wrap: normal; }
+.orq-avatares { display: none; align-items: center; gap: 6px; flex: none; }
+.orq[data-plegado="true"] .orq-avatares { display: inline-flex; }
+.av { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; flex: none; background: transparent; border: 1px solid var(--hair2); color: var(--soft);
+  font-size: var(--f-11); line-height: 14px; font-weight: 600; letter-spacing: .04em; }
+.av[data-estado="hecho"] { color: var(--body); border-color: var(--hair2); background: var(--acc-soft); }
+.av[data-estado="escucha"] { border-style: dashed; color: var(--body); }
+.av[data-estado="trabajando"] { color: var(--acc-t); background: var(--acc-soft); border-color: rgba(var(--acc-rgb), .5); box-shadow: var(--halo); }
+.av[data-estado="trabajando"]::after { content: ""; position: absolute; inset: -2px; border-radius: 8px; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--ang), transparent 0deg, transparent 230deg, var(--acc) 330deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: gira 1600ms linear infinite; }
+body[data-efectos="apagado"] .av::after { display: none; }
+
+/* ---------- estado vacío útil de Insights ---------- */
+.vacio-util { display: flex; flex-direction: column; gap: 8px; padding: 16px 0; }
+.vacio-lista { list-style: none; margin: 0; padding: 0; }
+.vacio-fila { display: flex; gap: 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--hair); }
+.vacio-min { flex: 0 0 44px; }
+
+/* ---------- accesibilidad: áreas de pulsación de al menos 32 px ---------- */
+.btn-mini { height: 32px; }
+.obj .btn-mini, .chk-b, .min, .eq-fila, .bl-min { min-height: 32px; }
+.top { z-index: 30; }   /* los menús de la cabecera se posan por encima de la banda Orquestación y de las vistas */
+
+/* ---------- áreas de pulsación (≥ 32 px) sin cambiar el aspecto: lo pequeño crece con un pseudo-elemento transparente centrado ---------- */
+.sb-filtro, .sb-plegar, .chipf, .bj-chip, .bl-min, .bl-chip, .chk-b, .min, .nuevos, .n-x, .mr-tabs button, .eq-fila, .traza-b, .chk-caja, .check input, .g-chip { position: relative; }
+.sb-filtro::after, .sb-plegar::after, .chipf::after, .bj-chip::after, .bl-min::after, .bl-chip::after, .chk-b::after, .min::after, .nuevos::after, .n-x::after, .mr-tabs button::after,
+.eq-fila::after, .traza-b::after, .chk-caja::after, .g-chip::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 32px); height: max(100%, 32px); translate: -50% -50%; }
+.fav::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 32px); height: max(100%, 32px); translate: -50% -50%; }
+summary { min-height: 32px; }
+summary:not(.t-label):not(.panel-h) { display: flex; align-items: center; }
+button.btn-mini, .btn.btn-mini { height: 32px; }
+.seg button { height: 32px; }
+.filtro-ideas { height: 32px; }
+.check { min-height: 32px; }
+.inicio .campo { margin-top: 12px; }
+.inicio .ini-izq { padding: 12px 16px 16px; }
+.inicio .ini-izq .banner { margin: 8px 0; padding: 6px 12px; }
+.inicio .proy-cab { margin-bottom: 4px; }
+.inicio .proy-top h1 { margin: 0; }
+.ini-barra { margin-top: 8px; margin-bottom: 8px; bottom: 8px; padding: 8px 16px; }
+.inicio { padding-top: 12px; }
+.inicio .ini-izq { padding: 10px 16px 8px; }
+.inicio .campo > .t-label { margin-bottom: 4px; }
+.inicio { padding-top: 8px; }
+.d-cuerpo:focus-visible { outline-offset: -2px; box-shadow: none !important; }

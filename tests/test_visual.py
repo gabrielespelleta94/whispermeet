@@ -31,9 +31,9 @@ def test_tokens_del_diseno():
     claro = app[app.index(":root {"):app.index(':root[data-theme="dark"]')]
     oscuro = app[app.index(':root[data-theme="dark"]'):app.index("@media (prefers-color-scheme: dark)")]
     sistema = app[app.index("@media (prefers-color-scheme: dark)"):app.index("body { --blur-n")]
-    esperado_oscuro = {"--bg0": "#121317", "--ink": "#F4F4F6", "--body": "#BDBDC7", "--soft": "#9A9AA6", "--acc-t": "#7EB4FF", "--papel": "#26231F", "--elev-solido": "#1E1F26",
+    esperado_oscuro = {"--bg0": "#121317", "--ink": "#F4F4F6", "--body": "#BDBDC7", "--soft": "#A6A6B2", "--acc-t": "#7EB4FF", "--papel": "#26231F", "--elev-solido": "#1E1F26",
                        "--grafito-op": "#18191F", "--ok": "#5ED38B", "--err": "#F28B82", "--warn": "#F0A94E"}
-    esperado_claro = {"--bg0": "#EEF0F4", "--ink": "#17181C", "--body": "#363842", "--soft": "#5F6170", "--acc-t": "#1D5FC4", "--papel": "#F7F2EA", "--elev-solido": "#FFFFFF",
+    esperado_claro = {"--bg0": "#EEF0F4", "--ink": "#17181C", "--body": "#363842", "--soft": "#565868", "--acc-t": "#1D5FC4", "--papel": "#F7F2EA", "--elev-solido": "#FFFFFF",
                       "--grafito-op": "#FFFFFF", "--ok": "#1E8A4C", "--err": "#B3261E", "--warn": "#B25E09", "--acc": "#2E7CF6"}
     for tokens, bloque in ((esperado_oscuro, oscuro), (esperado_oscuro, sistema), (esperado_claro, claro)):
         for k, v in tokens.items():
@@ -142,9 +142,9 @@ def _mezcla(frente, alfa, fondo):
 def test_contraste_sobre_el_vidrio_flotante_en_su_punto_mas_iluminado(tema):
     """§14.4: --body ≥ 7:1; --soft, --acc-t y las etiquetas ≥ 4,5:1, sobre el color efectivo del vidrio flotante en el punto donde más lo ilumina el ambiente."""
     if tema == "oscuro":
-        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#121317"), (0.20, (46, 124, 246)), (0.90, (28, 29, 36)), (0.92, (24, 25, 31)), "#BDBDC7", "#9A9AA6", "#7EB4FF", "#F4F4F6", "#F4F4F6"
+        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#121317"), (0.20, (46, 124, 246)), (0.90, (28, 29, 36)), (0.92, (24, 25, 31)), "#BDBDC7", "#A6A6B2", "#7EB4FF", "#F4F4F6", "#F4F4F6"
     else:
-        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#EEF0F4"), (0.16, (46, 124, 246)), (0.90, (255, 255, 255)), (0.90, (255, 255, 255)), "#363842", "#5F6170", "#1D5FC4", "#17181C", "#17181C"
+        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#EEF0F4"), (0.16, (46, 124, 246)), (0.90, (255, 255, 255)), (0.90, (255, 255, 255)), "#363842", "#565868", "#1D5FC4", "#17181C", "#17181C"
     iluminado = _mezcla(ambiente[1], ambiente[0], bg0)
     for alfa_rgb in (vf, vfl):
         fondo = _mezcla(alfa_rgb[1], alfa_rgb[0], iluminado)
@@ -297,7 +297,7 @@ def test_efecto_apagado_sin_filtros_ni_ambiente_ni_anillo_y_estados_distinguible
       }
       c.dataset.estado = 'espera'; return out; })()""")
     assert len(set(est.values())) == 6, est                                              # seis estados, seis aspectos (canto, halo, marca, punto y barra), sin anillo
-    for etiqueta in ("En espera", "Su turno", "Trabajando", "Hecho", "Error", "Sin presupuesto"):
+    for etiqueta in ("En espera", "Le toca", "Trabajando", "Hecho", "Error", "Sin presupuesto"):
         assert f'"{etiqueta}"' in JS["equipo.js"]                                      # y cada uno con su texto
 
 
@@ -485,7 +485,7 @@ def test_inicio_y_revision_cargan_con_el_nuevo_acabado(edge, pagina):
     time.sleep(0.2)
     r = edge.js("""(() => { const l = document.querySelector('.ini-izq'); const c = getComputedStyle(l);
       return { vista: document.body.dataset.vista, radio: c.borderRadius, filtro: c.backdropFilter, ancho: Math.round(l.getBoundingClientRect().width), btn: getComputedStyle(document.querySelector('#i-empezar')).height }; })()""")
-    assert r["vista"] == "inicio" and r["radio"] == "14px" and r["filtro"] != "none" and r["ancho"] == 400 and r["btn"] == "40px", r   # lámina de vidrio flotante única, 400 px
+    assert r["vista"] == "inicio" and r["radio"] == "14px" and r["filtro"] != "none" and 380 <= r["ancho"] <= 620 and r["btn"] == "40px", r   # lámina de vidrio flotante única (la columna izquierda de «preparar», de dos columnas desde la ola 1)
     arrancar(edge, pagina, snapshot=foto(estado="revision", revision={"estado": "generando"}))
     time.sleep(0.6)
     assert edge.js("document.body.dataset.vista") == "revision" and edge.js("document.querySelector('#orq').dataset.plegado") == "false"   # la revisión llega con la banda desplegada
@@ -520,7 +520,7 @@ MEDIR_PANEL = """(() => { const dentro = (e) => { const r = e.getBoundingClientR
   const objetivos = [document.querySelector('#r-bandeja-x'), ...document.querySelectorAll('#r-bandeja-filtros .bj-chip:not([hidden])'), document.querySelector('#r-bandeja .t-title')];
   const pila = document.querySelector('#r-notifs').getBoundingClientRect(), panel = document.querySelector('#r-bandeja').getBoundingClientRect();
   return { n: objetivos.length, fallan: objetivos.filter(e => !dentro(e)).map(e => e.id || e.textContent), notifs: document.querySelectorAll('.notif').length, pilaDer: Math.round(pila.right), panelIzq: Math.round(panel.left),
-    boton: dentro(document.querySelector('#r-bandeja-btn')) }; })()"""
+    boton: dentro(document.querySelector('#r-mas')) }; })()"""   # «Hallazgos» vive en el menú «Más»: lo que se ve y se pulsa es el botón «Más»
 
 
 def test_la_pila_de_avisos_no_tapa_cerrar_ni_los_filtros_de_hallazgos(edge, pagina):

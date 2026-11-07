@@ -26,7 +26,7 @@
   const ETQ_TIPO = Object.fromEntries(TIPOS.map(([k, , s]) => [k, s]));
   const ETQ_ESTADO = { abierto: "Abierto", hecho: "Hecho", descartado: "Descartado", nueva: "Nueva", aprovechada: "Aprovechada", descartada: "Descartada" };
   const ETQ_SESION = { en_curso: "En curso", sin_cerrar: "Sin cerrar", interrumpida: "Interrumpida" };
-  const TITULO_SESION = { en_curso: "La sesión se está grabando o se cerró hace poco", sin_cerrar: "Quedó «en curso» hace más de 12 h y el fichero no se ha escrito desde hace rato: la app se cerró sin terminar la sesión",
+  const TITULO_SESION = { en_curso: "La sesión se está grabando o se cerró hace poco", sin_cerrar: "Empezó hace más de 12 h y no llegó a cerrarse: la app se cerró sin terminar la sesión",
     interrumpida: "La sesión se interrumpió antes de terminar" };
   const ORIGEN = { bandeja: "Bandeja", local: "Copia local (proyecto compartido)", publicada: "Publicada en la carpeta compartida", proyecto: "Carpeta del proyecto" };
   const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -367,6 +367,7 @@
     if (it.responsable) meta.push(h("span", { class: "bl-resp", title: "Responsable que figura en el texto" }, it.responsable));
     if (it.origen === "tu") meta.push(h("span", { class: "bl-resp", title: "Lo anotaste tú durante la reunión" }, "tú"));
     if (it.origen === "resumen") meta.push(h("span", { class: "bl-resp", title: "Solo aparece en el resumen de la sesión" }, "del resumen"));
+    if (it.veces > 1) meta.push(h("span", { class: "bl-resp", title: "El mismo pendiente salió en varias sesiones; aquí se muestra el de la más reciente" }, `Salió en ${it.veces} sesiones`));
     if (it.recortado) meta.push(h("span", { class: "bl-resp", title: "El texto original estaba recortado" }, "recortado"));
     const enlace = it.minuto
       ? h("button", { class: "bl-min", type: "button", title: "Ver la transcripción en ese minuto", onclick: () => irAMinuto(it.sesion_id, it.minuto) }, it.minuto + " →")
@@ -407,7 +408,7 @@
   let tToast = 0;
   function toast(texto, deshacer) {
     clearTimeout(tToast);
-    D.toast.replaceChildren(h("span", { class: "t-body" }, texto), deshacer ? h("button", { class: "btn btn-mini", type: "button", onclick: () => { D.toast.hidden = true; deshacer(); } }, "Deshacer") : null);
+    D.toast.replaceChildren(...[h("span", { class: "t-body" }, texto), deshacer ? h("button", { class: "btn btn-mini", type: "button", onclick: () => { D.toast.hidden = true; deshacer(); } }, "Deshacer") : null].filter(Boolean));
     D.toast.hidden = false;
     tToast = setTimeout(() => { D.toast.hidden = true; }, deshacer ? 7000 : 4500);
   }

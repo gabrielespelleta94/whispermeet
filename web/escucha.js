@@ -124,7 +124,7 @@
     if (e.tipo === "pregunta") acc.append(h("button", { type: "button", class: "btn btn-ghost btn-mini", title: "Lanza esta pregunta a «Pregúntale» (una llamada)", onclick: () => preguntar(e.texto, "haiku") }, "Preguntar a la IA"));
     acc.append(h("button", { type: "button", class: "btn btn-ghost btn-mini", onclick: () => { T.editando = e.id; pintarTuyas(); } }, "Editar"),
       h("button", { type: "button", class: "btn btn-ghost btn-mini", onclick: async () => { try { await api("DELETE", "/api/sesion/entradas/" + e.id); } catch (x) { aviso(x); } } }, "Borrar"));
-    p.c.replaceChildren(h("span", { class: "t-label cat" }, ETQ[e.tipo] || e.tipo), h("span", { class: "yo", title: "Anotación tuya" }, "tú"), chipMin(e.minuto, e.t_seg), enReunion() ? acc : null);
+    p.c.replaceChildren(h("span", { class: "t-label cat" }, ETQ[e.tipo] || e.tipo), h("span", { class: "yo", title: "Anotación tuya" }, "tú"), chipMin(e.minuto, e.t_seg), ...(enReunion() ? [acc] : []));
     el.className = "tuya" + (el.classList.contains("barra") ? " barra" : "") + (el.classList.contains("barra-fuera") ? " barra-fuera" : "");
     el.dataset.tipo = e.tipo;
     return el;
@@ -215,8 +215,8 @@
     if (chip.dataset.k === clave) return;
     chip.dataset.k = clave;
     chip.classList.toggle("completo", cub.length === activos.length);
-    chip.replaceChildren(h("span", { class: "op-n" }, `${cub.length} de ${activos.length}`), h("span", { class: "op-pal" }, " objetivos"),
-      ult ? h("span", { class: "op-min" }, ` · ${ult.minuto}`) : null);
+    chip.replaceChildren(...[h("span", { class: "op-n" }, `${cub.length} de ${activos.length}`), h("span", { class: "op-pal" }, " objetivos"),
+      ult ? h("span", { class: "op-min" }, ` · ${ult.minuto}`) : null].filter(Boolean));   // replaceChildren(null) escribiría «null»
     chip.title = `${cub.length} de ${activos.length} objetivos cubiertos` + (ult ? `; el último, en el minuto ${ult.minuto}` : "");
   }
   function decorarObjetivos() {
@@ -237,8 +237,8 @@
         botones.push(h("button", { type: "button", class: "btn btn-mini", title: "Confirma el objetivo: desde ahora se evalúa en cada análisis", onclick: () => opObjetivo("confirmar", o.n) }, "Confirmar"),
           h("button", { type: "button", class: "btn btn-ghost btn-mini", onclick: () => opObjetivo("descartar", o.n) }, "Descartar"));
       } else if (o.origen !== "plan" && enReunion()) {
-        botones.push(h("button", { type: "button", class: "btn btn-ghost btn-mini", onclick: () => {
-          const nuevo = window.prompt("Editar el objetivo", o.texto);
+        botones.push(h("button", { type: "button", class: "btn btn-ghost btn-mini", onclick: async () => {
+          const nuevo = await AP.pedirTexto({ titulo: "Editar el objetivo", texto: "Escribe cómo debe quedar.", valor: o.texto, aceptar: "Guardar" });
           if (nuevo != null && nuevo.trim()) opObjetivo("editar", o.n, nuevo);
         } }, "Editar"), h("button", { type: "button", class: "btn btn-ghost btn-mini", onclick: () => opObjetivo("borrar", o.n) }, "Quitar"));
       }

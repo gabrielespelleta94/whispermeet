@@ -29,24 +29,29 @@
       </div>
       <div class="reloj t-cron" id="r-reloj" aria-label="Tiempo de reunión">00:00:00</div>
       <div class="barra-b">
-        <button class="btn btn-ghost btn-bandeja" id="r-bandeja-btn" type="button" aria-expanded="false" aria-controls="r-bandeja" title="Todo lo que ha salido de la reunión: decisiones, preguntas, pendientes, definiciones…">Hallazgos 0</button>
-        <button class="btn btn-ghost" id="r-contexto" type="button" aria-expanded="false" aria-controls="r-drawer" title="Ver el Gantt, el contexto y los checks sin perder el directo">Contexto</button>
+        <div class="mas-reunion" id="r-mas-caja">
+          <button class="btn btn-ghost" id="r-mas" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="r-mas-panel" aria-label="Más acciones de la reunión" title="Analizar ahora, pausa, contexto del proyecto y hallazgos">Más<span class="n" id="r-mas-n" hidden></span></button>
+          <div class="top-mas-panel mas-panel" id="r-mas-panel" role="menu" aria-label="Más acciones de la reunión" hidden>
+            <button class="btn btn-ghost btn-bandeja" id="r-bandeja-btn" type="button" role="menuitem" aria-expanded="false" aria-controls="r-bandeja" title="Todo lo que ha salido de la reunión: decisiones, preguntas, pendientes, definiciones…">Hallazgos 0</button>
+            <button class="btn btn-ghost" id="r-contexto" type="button" role="menuitem" aria-expanded="false" aria-controls="r-drawer" title="Ver el Gantt, el contexto y los checks sin perder el directo">Contexto</button>
+            <button class="btn btn-ghost" id="r-pausa" type="button" role="menuitem">Pausa</button>
+            <button class="btn btn-ghost" id="r-analizar" type="button" role="menuitem" title="Pide un análisis ahora, sin esperar al siguiente">Analizar ahora</button>
+          </div>
+        </div>
         <button class="btn btn-ghost" id="mr-entrar" type="button" aria-pressed="false" hidden title="Compacta la app en dos paneles laterales, siempre encima, para seguir la reunión con Teams en el hueco central">Modo reunión</button>
-        <button class="btn btn-ghost" id="r-pausa" type="button">Pausa</button>
-        <button class="btn btn-primary" id="r-analizar" type="button">Analizar ahora</button>
-        <button class="btn btn-ghost" id="r-terminar" type="button">Terminar</button>
+        <button class="btn btn-primary" id="r-terminar" type="button">Terminar</button>
       </div>
     </div>
     <div class="top-r">
       <button class="btn btn-ghost btn-captura" id="b-captura" type="button" aria-pressed="true" title="La ventana está excluida de la captura y de compartir pantalla. Pulsa para cambiarlo (es el mismo interruptor de Ajustes)." hidden>Oculta al compartir</button>
       <button class="btn btn-ghost" id="b-sesiones" type="button" aria-pressed="false" aria-controls="v-backlog" title="Todas las sesiones pasadas y la lista conjunta de pendientes, ideas, decisiones, riesgos y preguntas (sin llamadas al modelo)">Sesiones</button>
-      <button class="btn btn-ghost" id="b-efectos" type="button" title="Efectos visuales: alto, medio (sin capa ambiente ni desenfoque en las notificaciones) o apagado (sin desenfoque ni anillo). Con Modo reunión, medio por defecto.">Efectos: alto</button>
+      <button class="btn btn-ghost" id="b-efectos" type="button" title="Efectos visuales: alto, medio (sin fondo con luz ni desenfoque en los avisos) o apagado (sin desenfoque ni anillo). Con Modo reunión, medio por defecto.">Efectos: alto</button>
       <button class="btn btn-ghost" id="b-tema" type="button" title="Cambiar entre modo claro y oscuro">Modo</button>
       <button class="btn btn-ghost" id="b-ajustes" type="button">Ajustes</button>
     </div>
   </header>
 
-  <div class="orq" id="orq" aria-label="Orquestación de agentes" hidden></div>
+  <div class="orq" id="orq" aria-label="Estado del equipo y de las llamadas" hidden></div>
 
   <!-- Modo reunión: barra de mandos, divisores y pestañas del panel único (solo existen dentro del modo; ver modo-reunion.js) -->
   <div class="mr-barra" id="mr-barra" hidden>
@@ -135,7 +140,15 @@
             <label class="t-label" for="i-tema">Tema de la reunión</label>
             <input class="input" id="i-tema" type="text" maxlength="120" placeholder="Por ejemplo, seguimiento de alcance" autocomplete="off">
           </div>
-          <div class="campo">
+          <div class="campo obj-propios" id="i-obj-campo" hidden>
+            <span class="t-label" id="i-obj-l">Objetivos de esta reunión</span>
+            <p class="t-meta" id="i-obj-nota">Opcional. Sin plan, el contexto puede sugerirte objetivos al empezar.</p>
+            <ul id="i-obj-lista" aria-labelledby="i-obj-l"></ul>
+            <div class="obj-edit"><input class="input" id="i-obj-nuevo" type="text" maxlength="200" placeholder="Escribe un objetivo y pulsa Intro" aria-label="Nuevo objetivo"><button class="btn btn-ghost" id="i-obj-add" type="button">Añadir</button></div>
+          </div>
+        </div>
+        <div class="ini-der">
+          <div class="campo campo-idioma">
             <span class="t-label" id="i-idioma-l">Idioma de la reunión</span>
             <div class="seg" id="i-idioma" role="radiogroup" aria-labelledby="i-idioma-l">
               <button type="button" role="radio" data-idioma="auto" aria-checked="true" title="Reconoce el idioma de cada intervención (español, catalán o inglés), también si se alternan durante la reunión">Automático</button>
@@ -144,21 +157,19 @@
               <button type="button" role="radio" data-idioma="en" aria-checked="false">English</button>
             </div>
           </div>
-          <div class="campo">
-            <span class="t-label" id="i-cad-l">Cadencia de análisis</span>
-            <div class="seg seg-4" role="radiogroup" aria-labelledby="i-cad-l">
-              <button type="button" role="radio" data-cad="equipo" aria-checked="true" title="Un vigía local escucha cada 30 s y da el turno a un compañero (Coordinador, Analista funcional, Constructor o Revisor) cuando se dice algo que lo merece; sin señal ni contenido, no hay llamada">Equipo</button>
-              <button type="button" role="radio" data-cad="5" aria-checked="false">Cada 5 min</button>
-              <button type="button" role="radio" data-cad="10" aria-checked="false">Cada 10 min</button>
-              <button type="button" role="radio" data-cad="manual" aria-checked="false">Solo cuando lo pida</button>
+
+          <details class="opciones" id="i-opciones">
+            <summary><span class="t-label">Opciones</span><span class="t-meta soft" id="i-opciones-estado"></span></summary>
+            <div class="campo">
+              <span class="t-label" id="i-cad-l">Ritmo del equipo</span>
+              <div class="seg seg-4" role="radiogroup" aria-labelledby="i-cad-l">
+                <button type="button" role="radio" data-cad="equipo" aria-checked="true" title="Un asistente local escucha cada 30 s y avisa a un compañero (Coordinador, Analista funcional, Constructor o Revisor) cuando se dice algo que lo merece; si no hay nada nuevo, no se llama al modelo">Según lo que se diga</button>
+                <button type="button" role="radio" data-cad="5" aria-checked="false">Cada 5 min</button>
+                <button type="button" role="radio" data-cad="10" aria-checked="false">Cada 10 min</button>
+                <button type="button" role="radio" data-cad="manual" aria-checked="false">Solo si lo pido</button>
+              </div>
             </div>
-          </div>
-          <div class="campo obj-propios" id="i-obj-campo" hidden>
-            <span class="t-label" id="i-obj-l">Objetivos de esta reunión</span>
-            <p class="t-meta" id="i-obj-nota">Opcional. Sin plan, el contexto del proyecto puede sugerirte objetivos y checks al empezar.</p>
-            <ul id="i-obj-lista" aria-labelledby="i-obj-l"></ul>
-            <div class="obj-edit"><input class="input" id="i-obj-nuevo" type="text" maxlength="200" placeholder="Escribe un objetivo y pulsa Intro" aria-label="Nuevo objetivo"><button class="btn btn-ghost" id="i-obj-add" type="button">Añadir</button></div>
-          </div>
+          </details>
 
           <details class="ctxr" id="i-ctxr">
             <summary><span class="t-label">Contexto de la reunión</span><span class="t-meta soft" id="i-ctxr-estado">Opcional</span></summary>
@@ -185,20 +196,14 @@
             </div>
           </details>
 
-          <div class="aviso" role="note">
-            <span class="t-label">Antes de grabar</span>
-            <p class="t-body">Avisa a los asistentes de que vas a transcribir la reunión. La app no guarda audio, pero sí el texto, y la transcripción se enviará a Claude para analizarla.</p>
-            <label class="check"><input type="checkbox" id="i-aviso"> He avisado a los asistentes</label>
-          </div>
-
-          <div class="acciones">
-            <button class="btn btn-primary btn-grande" id="i-empezar" type="button" disabled>Empezar reunión</button>
-            <span class="nota-pie t-meta" id="i-ayuda"></span>
-          </div>
-          <div class="error" id="i-error" hidden></div>
-        </div>
-        <div class="ini-der">
           <section class="contexto" id="i-contexto" hidden aria-label="Contexto del proyecto y de la reunión"></section>
+        </div>
+        <div class="ini-barra" id="i-barra-empezar">
+          <label class="check ini-aviso" title="La app no guarda audio, pero sí el texto, y la transcripción se enviará a Claude para analizarla."><input type="checkbox" id="i-aviso"> He avisado a los asistentes de que voy a transcribir la reunión</label>
+          <span class="t-meta soft ini-aviso-nota">Sin audio guardado; el texto se envía a Claude.</span>
+          <span class="nota-pie t-meta ini-ayuda" id="i-ayuda"></span>
+          <button class="btn btn-primary btn-grande" id="i-empezar" type="button" disabled>Empezar reunión</button>
+          <div class="error" id="i-error" hidden></div>
         </div>
       </div>
 
@@ -359,12 +364,12 @@
       </div>
       <fieldset class="campo"><legend class="t-label">Cuándo habla el equipo</legend>
         <div class="fila3">
-          <label>Cadencia por defecto<select class="input" name="cadencia_defecto"><option value="equipo">Equipo</option><option value="5">Cada 5 min</option><option value="10">Cada 10 min</option><option value="manual">Solo cuando lo pida</option></select></label>
-          <label>El Monitor mira cada (s)<input class="input" name="adaptativo_comprobar_s" type="number" min="5" max="600"></label>
-          <label>Puntos para hablar<input class="input" name="equipo_puntuacion_min" type="number" min="1" max="20"></label>
-          <label>Entre dos turnos (s)<input class="input" name="equipo_enfriamiento_global_s" type="number" min="30" max="1800"></label>
-          <label>Entre turnos del mismo perfil (s)<input class="input" name="equipo_enfriamiento_perfil_s" type="number" min="60" max="3600"></label>
-          <label>Rotación si nadie habla (s)<input class="input" name="equipo_rotacion_s" type="number" min="60" max="3600"></label>
+          <label>Ritmo del equipo por defecto<select class="input" name="cadencia_defecto"><option value="equipo">Según lo que se diga</option><option value="5">Cada 5 min</option><option value="10">Cada 10 min</option><option value="manual">Solo si lo pido</option></select></label>
+          <label>El asistente local revisa la conversación cada (s)<input class="input" name="adaptativo_comprobar_s" type="number" min="5" max="600"></label>
+          <label>Puntos para que el equipo intervenga<input class="input" name="equipo_puntuacion_min" type="number" min="1" max="20"></label>
+          <label>Pausa entre dos intervenciones (s)<input class="input" name="equipo_enfriamiento_global_s" type="number" min="30" max="1800"></label>
+          <label>Pausa entre intervenciones de la misma persona del equipo (s)<input class="input" name="equipo_enfriamiento_perfil_s" type="number" min="60" max="3600"></label>
+          <label>Cada cuánto interviene alguien aunque no haya novedades (s)<input class="input" name="equipo_rotacion_s" type="number" min="60" max="3600"></label>
           <label>Palabras nuevas mínimas<input class="input" name="equipo_palabras_min" type="number" min="20" max="2000"></label>
           <label>Aviso de objetivo sin tratar (min)<input class="input" name="equipo_objetivo_sin_tratar_min" type="number" min="5" max="120"></label>
           <label title="Ventana de 60 minutos de la reunión. Al 80 % el equipo ahorra y al 100 % solo responde a petición">Presupuesto por hora (tokens)<input class="input" name="presupuesto_tokens_hora" type="number" min="5000" max="1000000" step="1000"></label>
@@ -372,7 +377,7 @@
       </fieldset>
       <fieldset class="campo"><legend class="t-label">Modelos de Claude por tarea</legend>
         <div class="fila3">
-          <label>Contexto (digest)<input class="input" name="m_digest" type="text"></label>
+          <label>Resumen del contexto del proyecto<input class="input" name="m_digest" type="text"></label>
           <label>Análisis periódico<input class="input" name="m_periodico" type="text"></label>
           <label>Confirmar contradicciones<input class="input" name="m_contradicciones_confirmar" type="text"></label>
           <label>Resumen final y cambios<input class="input" name="m_final" type="text"></label>
@@ -390,9 +395,9 @@
       <label class="campo"><span class="t-label">Efectos visuales</span>
         <select class="input" id="s-efectos" aria-label="Efectos visuales">
           <option value="auto">Automático: alto en vista completa y medio en Modo reunión</option>
-          <option value="alto">Alto: capa ambiente, desenfoque y luz de trabajo</option>
-          <option value="medio">Medio: sin capa ambiente; desenfoque solo en Hallazgos y Registro</option>
-          <option value="apagado">Apagado: sin desenfoque ni anillo; el trabajo se indica con halo y cronómetro</option>
+          <option value="alto">Alto: fondo con luz, desenfoque y brillo en lo que trabaja</option>
+          <option value="medio">Medio: sin fondo con luz; desenfoque solo en Hallazgos y Registro</option>
+          <option value="apagado">Apagado: sin desenfoque ni anillo; lo que trabaja se indica con un resplandor fijo y el cronómetro</option>
         </select></label>
       <div class="error" id="s-error" hidden></div>
     </div>

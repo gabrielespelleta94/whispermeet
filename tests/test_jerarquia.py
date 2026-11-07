@@ -142,7 +142,7 @@ def test_una_fila_en_la_cabecera_sin_scroll_de_pagina_y_solo_la_escala(tmp_path,
         assert r["docAlto"] <= r["alto"] and r["docAncho"] <= r["ancho"], r                      # la página no se desplaza
         assert set(r["tamanos"]) <= ESCALA, r["tamanos"]                                         # solo los cinco tamaños de la escala
         assert r["orq"] == "true" and r["orqAlto"] <= 40 and r["cron"] == 22.0 and r["notas"] is False, r   # Orquestación y Notas plegadas; cronómetro del titular
-        assert re.fullmatch(r"Equipo: [^·]+ · Monitor [^·]+ · \d+ (turno|turnos|análisis)( · [\d,.]+k?)?", r["resumen"]), r["resumen"]
+        assert re.fullmatch(r"Equipo [^·]+ · Monitor [^·]+ · \d+ (intervención|intervenciones|análisis)( · [\d,.]+k? tokens)?", r["resumen"]), r["resumen"]
     finally:
         e.cerrar()
 

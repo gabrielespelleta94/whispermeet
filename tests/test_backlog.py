@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from apuntes import backlog as BL
 from apuntes.analisis import ModeloLLM
-from apuntes.backlog import Backlog, normalizar, parsear_sesion
+from apuntes.backlog import Backlog, clave_repetido, normalizar, parsear_sesion
 from apuntes.config import Config
 from apuntes.consumo import Consumo
 from apuntes.gestor import Gestor
@@ -313,12 +313,13 @@ def test_nunca_se_modifica_ningun_md_ni_se_llama_al_modelo(mundo):
 def test_sin_cerrar_segun_antiguedad_y_escritura_reciente(mundo):
     g, tmp, *_ = mundo
     escribir(tmp / "bandeja", "2026-11-04-vieja.md", sesion_md(tema="vieja", fecha="2026-11-04", inicio="08:00", estado="en curso"), 20)         # 31 h en curso, sin escribir
-    escribir(tmp / "bandeja", "2026-11-04-escribiendo.md", sesion_md(tema="escribiendo", fecha="2026-11-04", inicio="08:00", estado="en curso"), 0.001)   # en curso y escribiendo ahora
+    escribir(tmp / "bandeja", "2026-11-05-escribiendo.md", sesion_md(tema="escribiendo", fecha="2026-11-05", inicio="01:00", estado="en curso"), 0.001)   # 14 h y escribiendo ahora
+    escribir(tmp / "bandeja", "2026-11-04-tocada.md", sesion_md(tema="tocada", fecha="2026-11-04", inicio="08:00", estado="en curso"), 0.001)   # 31 h: el fichero se tocó hace poco, pero no puede seguir en curso
     escribir(tmp / "bandeja", "2026-11-05-hace-poco.md", sesion_md(tema="hace poco", fecha="2026-11-05", inicio="12:00", estado="en curso"), 1)   # 3 h: aún no
     escribir(tmp / "bandeja", "2026-11-05-terminada.md", sesion_md(tema="terminada", fecha="2026-11-05", inicio="09:00", estado="finalizada"), 5)
     escribir(tmp / "bandeja", "2026-11-05-sin-hora.md", sesion_md(tema="sin hora", fecha="2026-11-05", inicio="", estado="en curso"), 14)           # sin hora: manda el fichero
     por = {s["tema"]: s["estado"] for s in backlog(g).sesiones()["sesiones"]}
-    assert por == {"vieja": "sin_cerrar", "escribiendo": "en_curso", "hace poco": "en_curso", "terminada": "finalizada", "sin hora": "sin_cerrar"}
+    assert por == {"vieja": "sin_cerrar", "escribiendo": "en_curso", "tocada": "sin_cerrar", "hace poco": "en_curso", "terminada": "finalizada", "sin hora": "sin_cerrar"}
 
 
 # ------------------------------------------------------------------ compartida local + publicada
@@ -704,3 +705,29 @@ def test_ui_pantalla_sesiones_con_datos_ficticios_en_el_navegador(tmp_path):
         assert e.js("document.querySelector('.bl-lin.destino') && document.querySelector('.bl-lin.destino').dataset.t") == "20"
     finally:
         e.cerrar()
+
+
+# ------------------------------------------------------------------ ola 1: consejos tras «## Asesor», pendientes repetidos
+def test_consejos_del_asesor_cuentan_aunque_asesor_vaya_antes_que_insights():
+    md = sesion_md(tema="X", insights=["- [01:00] **Decisión:** Hacemos X."])
+    asesor = ("## Asesor\n\n### Consejos\n\n- [02:00] **Consejo (valor):** Proponer un piloto — por qué: baja el riesgo\n"
+              "- [03:30] **Consejo (cierre):** Fijar la fecha — por qué: mantiene el ritmo\n\n## Insights")
+    md = md.replace("## Insights", asesor, 1)   # «## Asesor» va ANTES que «## Insights», como lo escribe Sesion.render
+    r = parsear_sesion(md, "2026-11-01-x.md")
+    assert [i["tipo"] for i in r["items"]].count("consejo") == 2
+    assert any(i["tipo"] == "decision" for i in r["items"])
+
+
+def test_pendiente_repetido_sale_una_vez_con_el_numero_de_sesiones(mundo):
+    g, tmp, *_ = mundo
+    textos = ["Enviar el listado de habitaciones al cliente", "enviar el listado de habitaciónes al cliente.", "¡Enviar el listado de habitaciones al  cliente!"]
+    for n, t in enumerate(textos):
+        escribir(tmp / "bandeja", f"2026-11-0{n + 1}-r.md", sesion_md(tema=f"S{n}", fecha=f"2026-11-0{n + 1}", insights=[f"- [01:00] **Pendiente:** {t}", "- [02:00] **Pendiente:** Otro distinto."]))
+    d = backlog(g)
+    pend = [i for i in d.items()["items"] if i["tipo"] == "pendiente"]
+    repetido = [i for i in pend if clave_repetido(i["texto"]) == clave_repetido(textos[0])]
+    assert len(repetido) == 1 and repetido[0]["veces"] == 3 and repetido[0]["sesion_tema"] == "S2"   # el de la sesión más reciente
+    assert len([i for i in pend if i["texto"].startswith("Otro")]) == 1 and len(pend) == 2
+    (proy,) = d.resumen_proyectos().values()
+    assert proy["abiertos"] == 2 and {p["texto"] for p in proy["pendientes"]} == {repetido[0]["texto"], "Otro distinto."}
+    assert next(p for p in proy["pendientes"] if p["texto"] == repetido[0]["texto"])["veces"] == 3

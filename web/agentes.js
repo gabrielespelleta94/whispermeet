@@ -29,8 +29,8 @@
     { id: "reunion", mono: "R", nombre: "Reunión", completo: "Escucha del audio de la reunión (captura)", col: 0, fila: 1, local: true },
     { id: "transcriptor", mono: "TR", nombre: "Transcriptor", completo: "Transcriptor (Whisper, local)", col: 1, fila: 0, local: true, discreto: true },
     { id: "contexto", mono: "CX", nombre: "Contexto", completo: "Contexto (resumen de los ficheros del proyecto)", col: 1, fila: 1, discreto: true, tarea: "digest" },
-    { id: "monitor", mono: "MO", nombre: "Monitor", completo: "Monitor (escucha local cada 30 s: señales, definiciones y turnos; sin modelo)", col: 2, fila: 0, local: true },
-    { id: "equipo", mono: "EQ", nombre: "Equipo", completo: "Equipo (Coordinador, Analista funcional, Constructor, Revisor y Estratega: un turno es una llamada; el asesor responde a las preguntas del cliente)", col: 3, fila: 0.5, discreto: true, tarea: "equipo" },
+    { id: "monitor", mono: "MO", nombre: "Monitor", completo: "Monitor (asistente local: revisa la conversación cada 30 s, detecta señales y definiciones y decide a quién le toca intervenir; sin modelo)", col: 2, fila: 0, local: true },
+    { id: "equipo", mono: "EQ", nombre: "Equipo", completo: "Equipo (Coordinador, Analista funcional, Constructor, Revisor y Estratega: cada intervención es una llamada al modelo; el asesor responde a las preguntas del cliente)", col: 3, fila: 0.5, discreto: true, tarea: "equipo" },
     { id: "verificador", mono: "VE", nombre: "Verificador", completo: "Verificador de contradicciones", col: 4, fila: 0, discreto: true, tarea: "contradicciones_confirmar" },
     { id: "consultas", mono: "PR", nombre: "Consultas", completo: "Consultas («Pregúntale»: una llamada por pregunta, solo si la lanzas)", col: 4, fila: 1, discreto: true, tarea: "consulta" },
     { id: "redactor", mono: "RE", nombre: "Redactor", completo: "Redactor del resumen final", col: 5, fila: 0.5, discreto: true, tarea: "final" },
@@ -43,7 +43,9 @@
   const ETQ = { espera: "En espera", trabajando: "Trabajando", hecho: "Hecho", error: "Error", omitido: "Omitido" };
 
   const MONO_PERFIL = { coordinador: "CO", funcional: "AF", constructor: "CT", revisor: "RV", analista: "AN", estratega: "ES", asesor: "AS" };   // monogramas de agente (única iconografía de perfil)
-  const DOM = { nodos: {}, monos: {}, enlaces: {}, svg: null, linea: {}, haz: null, hazG: null, activos: [] };
+  const AVATARES = [["monitor", "MO", "Monitor"], ["coordinador", "CO", "Coordinador"], ["funcional", "AF", "Analista funcional"], ["constructor", "CT", "Constructor"],
+    ["revisor", "RV", "Revisor"], ["estratega", "ES", "Estratega"], ["asesor", "AS", "Asesor"]];
+  const DOM = { avatares: {}, nodos: {}, monos: {}, enlaces: {}, svg: null, linea: {}, haz: null, hazG: null, activos: [] };
 
   // ------------------------------------------------------------ datos reales
   const tareasDe = (agente) => [...O.tareas.values()].filter((t) => (agente === "equipo" ? AGENTES_EQUIPO.includes(t.agente) : t.agente === agente)).sort((a, b) => String(a.id).localeCompare(String(b.id), "es", { numeric: true }));
@@ -112,18 +114,18 @@
     }
     if (n.id === "contexto" && !ult) {
       const o = (S.digest || {}).origen;
-      if (o === "cache") { res.estado = "hecho"; res.partes = ["desde caché"]; }
+      if (o === "cache") { res.estado = "hecho"; res.partes = ["ya preparado antes"]; }
       else if (o === "vacio") { res.estado = "omitido"; res.partes = ["sin contenido útil"]; }
       else if (o === "sin_proyecto") { res.estado = "omitido"; res.partes = ["sin proyecto"]; }
       else if (o === "contexto_usuario") { res.estado = "hecho"; res.partes = ["el que aceptaste"]; }
       else if (o === "error") { res.estado = "error"; res.partes = ["no disponible"]; }
     }
-    if (n.id === "contexto" && ult && ult.estado !== "error" && (S.digest || {}).origen === "cache") res.partes = ["desde caché"];
+    if (n.id === "contexto" && ult && ult.estado !== "error" && (S.digest || {}).origen === "cache") res.partes = ["ya preparado antes"];
     if (n.id === "equipo" && !ult) {
       const pr = S.equipo && S.equipo.presupuesto;
       if (S.sesion && S.sesion.cadencia !== "equipo") res.partes = ["no habla en este modo"];
       else if (pr && pr.nivel === "agotado") { res.estado = "omitido"; res.partes = ["sin presupuesto esta hora"]; }
-      else res.partes = ["sin turno todavía"];
+      else res.partes = ["aún no ha intervenido"];
     }
     if (n.id === "equipo" && a.bloqueo && S.estado !== "revision") { res.estado = "error"; res.partes = [a.bloqueo.tipo === "limite" ? "límite del plan" : "sesión no iniciada"]; }
     if (n.id === "analista") {
@@ -157,13 +159,17 @@
     const reg = h("button", { class: "btn btn-ghost btn-mini", type: "button", id: "orq-registro", "aria-haspopup": "dialog", "aria-expanded": "false",
       onclick: (ev) => { ev.stopPropagation(); O.filtro = null; abrirRegistro(); } }, "Registro");
     const plegar = h("button", { class: "btn btn-ghost btn-mini", type: "button", id: "orq-plegar", "aria-expanded": String(!O.plegado), "aria-controls": "orq-cuerpo",
-      title: "Plegar o desplegar la orquestación", onclick: () => {
+      title: "Plegar o desplegar el detalle del equipo", onclick: () => {
         if (document.body.dataset.vista === "revision") O.plegadoRev = !O.plegadoRev;   // en la revisión llega desplegada; plegarla no cambia la preferencia de la reunión
         else { O.plegado = !O.plegado; try { localStorage.setItem("apuntes_orq_plegado", O.plegado ? "1" : "0"); } catch { /* ok */ } }
         aplicarPliegue(true);
-      } }, "Orquestación");
-    const linea = h("div", { class: "orq-linea" }, ind, h("div", { class: "orq-l-txt" }, est, res, h("span", { class: "orq-fila-barra" }, barra, pal, prox), ult),
+      } }, "Detalle");
+    // Tira plegada (36 px): iniciales de los agentes; solo "trabaja" el que tiene una llamada abierta (evento `tarea`). Un clic en la tira despliega el detalle.
+    const avatares = h("span", { class: "orq-avatares", role: "group", "aria-label": "Agentes del equipo" },
+      AVATARES.map(([id, mono, nombre]) => { const a = h("span", { class: "av", "data-agente": id, "data-estado": "espera", title: nombre + ": en espera" }, mono); DOM.avatares[id] = a; return a; }));
+    const linea = h("div", { class: "orq-linea" }, ind, avatares, h("div", { class: "orq-l-txt" }, est, res, h("span", { class: "orq-fila-barra" }, barra, pal, prox), ult),
       h("span", { class: "orq-acc" }, reg, plegar));
+    linea.addEventListener("click", (ev) => { if (!ev.target.closest("button, a, input")) plegar.click(); });
     Object.assign(DOM.linea, { ind, est, res, barra, pal, prox, ult, reg, plegar });
     const cuerpo = h("div", { class: "orq-cuerpo", id: "orq-cuerpo" });
     DOM.svg = sv("svg", { class: "orq-svg", "aria-hidden": "true" });
@@ -214,7 +220,7 @@
       DOM.raiz.dataset.plegado = String(pleg);
     }
     DOM.linea.plegar.setAttribute("aria-expanded", String(!usuario));
-    DOM.linea.plegar.textContent = usuario ? "Orquestación" : "Plegar";
+    DOM.linea.plegar.textContent = usuario ? "Detalle" : "Plegar";
     requestAnimationFrame(trazarEnlaces);
   }
 
@@ -271,6 +277,12 @@
     // haz: solo en los conectores que ENTRAN al nodo que trabaja de verdad (con tarea abierta y anillo): lo que está leyendo
     DOM.activos = Object.values(DOM.enlaces).filter((e) => estados[e.b].estado === "trabajando" && !!estados[e.b].curso && !estados[e.b].sinAnillo);
     pintarHaz();
+    for (const [id, , nombre] of AVATARES) {
+      const a = DOM.avatares[id]; if (!a) continue;
+      const trabaja = id !== "monitor" && enCurso(id).length > 0;
+      const est = trabaja ? "trabajando" : id === "monitor" ? (S.estado === "grabando" ? "escucha" : "espera") : ultima(id) ? "hecho" : "espera";
+      if (a.dataset.estado !== est) { a.dataset.estado = est; a.title = nombre + ": " + ({ trabajando: "trabajando ahora", escucha: "escuchando (local)", hecho: "ya ha intervenido", espera: "en espera" })[est]; }
+    }
     linea(estados);
     resumenPlegado(estados);
     ritmoCrono();
@@ -294,17 +306,17 @@
     else if (perfil) { ind = "analizando"; txt = `${perfil.p.nombre} trabajando ${perfil.t.tramo ? perfil.t.tramo + " " : ""}con ${perfil.t.modelo || "haiku"}…`; }
     else if (S.estado === "revision" || S.estado === "terminando") {
       const tok = tokensTotal();
-      txt = `Reunión terminada · ${eq.turnos || 0} turno${eq.turnos === 1 ? "" : "s"}${tok ? ` · ${kfmt(tok)} tokens` : ""}`;
+      txt = `Reunión terminada · ${eq.turnos || 0} intervencion${eq.turnos === 1 ? "" : "es"}${tok ? ` · ${kfmt(tok)} tokens` : ""}`;
     }
-    else if (a.bloqueo) { ind = "error"; txt = a.bloqueo.tipo === "sesion" ? "Sesión no iniciada en Claude Code" : "Límite del plan alcanzado · turnos detenidos"; }
+    else if (a.bloqueo) { ind = "error"; txt = a.bloqueo.tipo === "sesion" ? "Sesión no iniciada en Claude Code" : "Límite del plan alcanzado · equipo detenido"; }
     else if (S.estado === "pausada") { ind = "pausa"; txt = "En pausa · análisis detenido"; }
-    else if (a.ultimo_error) { ind = "error"; txt = "Sin respuesta del modelo · reintento en el próximo turno"; }
+    else if (a.ultimo_error) { ind = "error"; txt = "Sin respuesta del modelo · se reintentará en la próxima intervención"; }
     else if (pr.nivel === "agotado") txt = `Monitor · sin presupuesto esta hora${pr.libera_a ? " · siguiente a las " + pr.libera_a : ""} · solo detección local`;
     else {
       const sig = eq.perfiles.filter((p) => p.siguiente).sort((x, y) => x.siguiente.en - y.siguiente.en)[0];
       const tiempo = mmss(S.t || 0), pal = `${miles(m.palabras)} palabras`;
       const cola = sig ? (sig.siguiente.motivo === "rotación" ? `${sig.nombre} habla por rotación en ${mmss(sig.siguiente.en)}` : `${sig.nombre} habla en ${mmss(sig.siguiente.en)} (${sig.siguiente.motivo})`)
-        : (m.senales ? "Sin turno pendiente" : "Sin turno pendiente · sin señales");
+        : (m.senales ? "Nadie por intervenir" : "Nadie por intervenir · sin señales");
       txt = `Monitor · ${tiempo} · ${pal} · ${cola}${pr.nivel === "ahorro" ? " · ahorro" : ""}`;
     }
     d.ind.dataset.estado = ind; d.est.textContent = txt; d.est.dataset.estado = ind;
@@ -383,8 +395,10 @@
     const modoEquipo = S.sesion && S.sesion.cadencia === "equipo" && S.equipo;
     const n = modoEquipo ? (S.equipo.turnos || 0) : O.traza.filter((x) => x.fila === "analisis").length;
     const tok = tokensTotal();
-    const partes = [`Equipo: ${etq(eq)}`, `Monitor ${etq(mon)}`, `${n} ${modoEquipo ? (n === 1 ? "turno" : "turnos") : (n === 1 ? "análisis" : "análisis")}`];
-    if (tok) partes.push(kfmt(tok));
+    // En la línea plegada, «hecho» se lee raro para un equipo que sigue escuchando: es «al día»
+    const etqEquipo = ({ espera: "en espera", trabajando: "trabajando", hecho: "al día", error: "con un error", omitido: "en pausa" })[eq.estado] || etq(eq);
+    const partes = [`Equipo ${etqEquipo}`, `Monitor ${etq(mon)}`, `${n} ${modoEquipo ? (n === 1 ? "intervención" : "intervenciones") : (n === 1 ? "análisis" : "análisis")}`];
+    if (tok) partes.push(kfmt(tok) + " tokens");
     const txt = partes.join(" · ");
     if (el.textContent !== txt) el.textContent = txt;
   }
@@ -526,7 +540,7 @@
     return O.traza.slice(-20).reverse().map(filaTraza);
   }
   function filaTraza(e) {
-    if (e.fila === "analisis") return { hora: mmss(e.t), partes: [e.perfil ? `Turno ${e.n}` : `Análisis ${e.n}`, e.perfil ? NOMBRE_AGENTE[e.perfil] : null, e.tramo, e.motivo || null, e.modelo, e.ms != null ? seg(e.ms) : null, e.tokens != null ? kfmt(e.tokens) : null, ...conteos(e)].filter(Boolean), res: null };
+    if (e.fila === "analisis") return { hora: mmss(e.t), partes: [e.perfil ? `Intervención ${e.n}` : `Análisis ${e.n}`, e.perfil ? NOMBRE_AGENTE[e.perfil] : null, e.tramo, e.motivo || null, e.modelo, e.ms != null ? seg(e.ms) : null, e.tokens != null ? kfmt(e.tokens) : null, ...conteos(e)].filter(Boolean), res: null };
     if (e.fila === "omitido") return { hora: mmss(e.t), partes: ["Omitido", `${e.palabras} palabras nuevas (mín. ${e.minimo})`], res: null, apagado: true };
     return { hora: mmss(e.t), partes: ["Fallo", e.mensaje], res: null, error: true };
   }

@@ -29,6 +29,7 @@ ETIQUETA = {"pendiente": "Pendiente", "idea": "Idea", "decision": "Decisión", "
 ESTADOS = {"pendiente": ("abierto", "hecho", "descartado"), "idea": ("nueva", "aprovechada", "descartada")}   # el resto solo se consulta
 ESTADO_INICIAL = {"pendiente": "abierto", "idea": "nueva"}
 
+SIN_CERRAR_SIEMPRE_H = 24    # …y con más de estas horas desde el inicio no puede seguir en curso aunque el fichero se haya tocado hace poco
 SIN_CERRAR_H = 12            # «en curso» desde hace más de estas horas…
 ESCRITURA_RECIENTE_MIN = 30  # …y sin que el fichero haya cambiado en este tiempo = «sin cerrar»
 TIEMPO_FUENTE_S = 8.0        # tiempo máximo de espera por la lectura de todas las carpetas
@@ -53,6 +54,11 @@ def normalizar(texto: str) -> str:
     """Minúsculas, sin acentos ni signos, espacios colapsados: la base de la comparación y de los identificadores."""
     t = sin_acentos(str(texto or "")).lower()
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", t)).strip()
+
+
+def clave_repetido(texto: str) -> str:
+    """Clave para detectar el mismo pendiente escrito dos veces (ver `Backlog._marcar_repetidos`)."""
+    return normalizar(texto)
 
 
 def a_segundos(minuto: str | None) -> int | None:
@@ -399,7 +405,7 @@ def parsear_sesion(texto: str, nombre: str = "", proyecto_fuente: str | None = N
             avisos.append("La cabecera no trae el tema; se usa el título o el nombre del fichero.")
         r["proyecto"] = (meta.get("proyecto") or "").strip() or proyecto_fuente or "Sin proyecto"
 
-        insights, ilegibles, desconocidos, tuyos = [], 0, 0, []
+        insights, ilegibles, desconocidos, tuyos, consejos = [], 0, 0, [], []
         resumen_md: list[str] = []
         for norm, titulo, ls in secs:
             if norm == "insights" or norm.startswith("insights "):
@@ -407,7 +413,7 @@ def parsear_sesion(texto: str, nombre: str = "", proyecto_fuente: str | None = N
             elif norm.startswith("tus comentarios"):
                 tuyos, _, _ = _extraer_insights(ls, tu=True)
             elif norm == "asesor":   # respuestas sugeridas y consejos: solo los consejos son elementos del backlog (las preguntas del cliente no son tuyas)
-                insights += [i for i in _extraer_insights(ls)[0] if i["tipo"] == "consejo"]
+                consejos += [i for i in _extraer_insights(ls)[0] if i["tipo"] == "consejo"]   # aparte: «## Asesor» va ANTES que «## Insights» en el .md y éste reasigna la lista
             elif norm.startswith("transcripcion"):
                 for s in ls:
                     m = _RE_SEGMENTO.match(s)
@@ -431,7 +437,7 @@ def parsear_sesion(texto: str, nombre: str = "", proyecto_fuente: str | None = N
             avisos.append(f"{ilegibles} línea(s) de Insights no se pudieron leer.")
         if desconocidos:
             avisos.append(f"{desconocidos} insight(s) con un tipo que no es de la lista se han dejado fuera.")
-        r["items"] = _unir(insights + tuyos, _extraer_resumen(secs))
+        r["items"] = _unir(insights + consejos + tuyos, _extraer_resumen(secs))
         if not r["transcripcion"] and not any(n.startswith("transcripcion") for n, _, _ in secs):
             avisos.append("El fichero no tiene sección de transcripción.")
         if texto and str(texto).rstrip().endswith(_MARCA_RECORTE):
@@ -550,7 +556,9 @@ class Backlog:
                 inicio = None
             antiguedad_h = ((ahora - inicio).total_seconds() if inicio else (ahora.timestamp() - rec["mtime"])) / 3600
             sin_escribir_min = (ahora.timestamp() - rec["mtime"]) / 60
-            if antiguedad_h > SIN_CERRAR_H and sin_escribir_min > ESCRITURA_RECIENTE_MIN:
+            # Pasadas SIN_CERRAR_H horas de la hora de inicio, solo sigue «en curso» si el fichero se está escribiendo ahora; y con más de
+            # SIN_CERRAR_SIEMPRE_H desde el inicio, nunca (una copia o la sincronización de OneDrive cambian la fecha de modificación).
+            if antiguedad_h > SIN_CERRAR_H and (sin_escribir_min > ESCRITURA_RECIENTE_MIN or (inicio is not None and antiguedad_h > SIN_CERRAR_SIEMPRE_H)):
                 return "sin_cerrar", "Sin cerrar"
             return "en_curso", "En curso"
         if raw.startswith("interrump"):
@@ -686,10 +694,32 @@ class Backlog:
             for it in items:
                 it.update(sesion_tema=tema, proyecto=pref["proyecto"], fecha=pref["fecha"], inicio=pref["inicio"], sesion_estado=codigo)
         orden = sorted(res_sesiones.values(), key=lambda s: (s["fecha"] or "", s["inicio"] or "", s["archivo"]), reverse=True)
+        self._marcar_repetidos(orden)
         todos_avisos = list(avisos)
         if self._aviso_estado_roto:
             todos_avisos.append(self._aviso_estado_roto)
         return {"sesiones": {s["id"]: s for s in orden}, "orden": [s["id"] for s in orden], "items": res_items, "alias": alias, "avisos": todos_avisos}
+
+    @staticmethod
+    def _marcar_repetidos(orden: list[dict]) -> None:
+        """El mismo pendiente dicho en varias sesiones del mismo proyecto (texto normalizado: minúsculas, sin acentos ni signos, espacios
+        colapsados) sale UNA vez: el de la sesión más reciente (`orden` va de más reciente a más antigua), con `veces` = en cuántas sesiones
+        salió. Los demás quedan con `duplicado: True` (siguen en su sesión, pero no cuentan en la lista conjunta ni en los recuentos del proyecto).
+        No cierra nada: el estado de cada uno sigue siendo el suyo."""
+        grupos: dict[tuple[str, str], list[dict]] = {}
+        for s in orden:
+            for it in s["_items"]:
+                it["veces"], it["duplicado"] = 1, False
+                if it["tipo"] != "pendiente":
+                    continue
+                clave = clave_repetido(it["texto"])
+                if clave:
+                    grupos.setdefault(((s["proyecto"] or "").lower(), clave), []).append(it)
+        for its in grupos.values():
+            sesiones = {it["sesion_id"] for it in its}
+            its[0]["veces"] = len(sesiones)
+            for it in its[1:]:
+                it["duplicado"] = True
 
     def _indice_actual(self, refrescar: bool = True) -> dict:
         with self._carga:
@@ -724,16 +754,16 @@ class Backlog:
             if r["ultima"] is None:
                 r["ultima"] = {"fecha": s["fecha"], "tema": s["tema"], "id": s["id"]}
             for it in s["_items"]:
-                if it["tipo"] == "pendiente" and it["estado"] == "abierto":
+                if it["tipo"] == "pendiente" and it["estado"] == "abierto" and not it.get("duplicado"):
                     r["abiertos"] += 1
                     if len(r["pendientes"]) < top:
                         r["pendientes"].append({"id": it["id"], "texto": it["texto"], "minuto": it["minuto"], "responsable": it["responsable"],
-                                                "fecha": s["fecha"], "tema": s["tema"], "sesion_id": s["id"]})
+                                                "fecha": s["fecha"], "tema": s["tema"], "sesion_id": s["id"], "veces": it.get("veces", 1)})
         return out
 
     def items(self, refrescar: bool = False) -> dict:
         ix = self._indice_actual(refrescar)
-        lista = [it for i in ix["orden"] for it in ix["sesiones"][i]["_items"]]
+        lista = [it for i in ix["orden"] for it in ix["sesiones"][i]["_items"] if not it.get("duplicado")]   # un pendiente repetido sale una vez (el más reciente)
         return {"items": lista, "tipos": [{"tipo": t, "etiqueta": ETIQUETA[t]} for t in TIPOS], "avisos": ix["avisos"]}
 
     def sesion(self, sid: str) -> dict | None:

@@ -21,7 +21,7 @@
   S.monitor = S.monitor || { feed: [], definiciones: [], pasadas: [] };
   const E = { tarjetas: new Map(), vistasDef: new Set(), vistasFeed: new Set(), primera: true, verTodas: false, ultPasada: null, indTimer: null, cronometro: null, estadoPrev: new Map() };
   const MONO = { coordinador: "CO", funcional: "AF", constructor: "CT", revisor: "RV", estratega: "ES" };   // monogramas: la única «iconografía» de agente
-  const ESTADO = { espera: "En espera", turno: "Su turno", trabajando: "Trabajando", hecho: "Hecho", error: "Error", sin_presupuesto: "Sin presupuesto" };
+  const ESTADO = { espera: "En espera", turno: "Le toca", trabajando: "Trabajando", hecho: "Hecho", error: "Error", sin_presupuesto: "Sin presupuesto" };
 
   // ------------------------------------------------------------ datos reales de las llamadas
   function enCursoReal(id) {
@@ -52,7 +52,7 @@
     $("#eq-ind").classList.toggle("sin", nivel === "agotado" || nivel === "ahorro");
     $("#eq-ind").classList.toggle("pausa", S.estado === "pausada");
     const eq = S.equipo, c = $("#eq-cuenta");
-    const cuenta = eq && eq.turnos ? `${eq.turnos} turno${eq.turnos === 1 ? "" : "s"} · ${kfmt(eq.tokens || 0)}` : "";
+    const cuenta = eq && eq.turnos ? `${eq.turnos} intervencion${eq.turnos === 1 ? "" : "es"} · ${kfmt(eq.tokens || 0)}` : "";
     if (c.textContent !== cuenta) c.textContent = cuenta;
   }
   // relleno fijo de 300 ms en cada pasada del Monitor (un cambio de estado, sin bucle)
@@ -87,18 +87,18 @@
       return partes.filter(Boolean).join("");
     }
     if (estado === "turno") return p.motivo ? `motivo: ${p.motivo}` : "";
-    if (estado === "error") return S.analisis && S.analisis.bloqueo ? "límite del plan · turnos detenidos" : "sin respuesta · reintento en el próximo turno";
+    if (estado === "error") return S.analisis && S.analisis.bloqueo ? "límite del plan · equipo detenido" : "sin respuesta · se reintentará en la próxima intervención";
     if (estado === "sin_presupuesto") {
       const pr = S.equipo && S.equipo.presupuesto;
       return `Sin presupuesto esta hora${pr && pr.libera_a ? ` · siguiente a las ${pr.libera_a}` : ""}`;
     }
     const a = [];
-    if (t) a.push(["último turno " + (t.desde && t.hasta ? `${t.desde}–${t.hasta}` : ""), t.modelo, t.ms != null ? segs(t.ms) : null, t.tokens != null ? kfmt(t.tokens) : null].filter((x) => x && x.trim()).join(" · "));
+    if (t) a.push(["última intervención " + (t.desde && t.hasta ? `${t.desde}–${t.hasta}` : ""), t.modelo, t.ms != null ? segs(t.ms) : null, t.tokens != null ? kfmt(t.tokens) : null].filter((x) => x && x.trim()).join(" · "));
     if (p.siguiente && S.estado === "grabando") {
       const s = p.siguiente;
       a.push(s.motivo === "rotación" ? `siguiente: por rotación en ${crono(s.en * 1000)}` : `siguiente: en ${crono(s.en * 1000)} · motivo: ${s.motivo}`);
     }
-    if (!a.length) return "sin turno todavía";
+    if (!a.length) return "aún no ha intervenido";
     return a.join(" · ");
   }
   function textoAporte(p) {
@@ -123,7 +123,7 @@
       const etq = ESTADO[estado] + (estado === "trabajando" && real ? " " + crono(Date.now() - inicioMs(real)) : "");
       if (el._p.estado.textContent !== etq) el._p.estado.textContent = etq;
       const ap = textoAporte(p);
-      const l2 = ap || (enModoEquipo() ? `Se pregunta: ${p.pregunta}` : "En este modo no hay turnos del equipo");
+      const l2 = ap || (enModoEquipo() ? `Se pregunta: ${p.pregunta}` : "Con este ritmo, el equipo no interviene solo");
       if (el._p.l2.textContent !== l2) {
         el._p.l2.textContent = l2;
         el._p.l2.classList.toggle("vacio", !ap);
@@ -220,6 +220,45 @@
     });
   }
 
+  // ------------------------------------------------------------ estado vacío de Insights: lo que el Monitor ya ha detectado (local, sin modelo)
+  // Mientras no haya tarjetas, la pestaña enseña lo que ya se sabe (últimas detecciones y objetivos tocados); sin datos, qué va a aparecer aquí.
+  const ETQ_SENAL = { decision: "decisión", pendiente: "pendiente", riesgo: "riesgo", pregunta: "pregunta", idea: "idea", responsable: "responsable", definicion: "definición",
+    regla: "regla", dato: "dato", sistema: "sistema", contraste: "contraste", plazo: "plazo", cifra: "cifra" };
+  const DETECCION = { decision: "Posible decisión", pendiente: "Posible pendiente", riesgo: "Posible riesgo", pregunta: "Pregunta en el aire", idea: "Idea", responsable: "Se nombra a un responsable",
+    definicion: "Posible definición", regla: "Posible regla", dato: "Dato", cifra: "Cifra", plazo: "Plazo", sistema: "Se nombra un sistema", contraste: "Contraste entre dos cosas" };
+  function textoDeteccion(e) {
+    const t = String(e.texto || ""), m = /^señal:\s*([^·]+?)\s*·\s*(.*)$/i.exec(t);
+    if (!m) return t;
+    const k = m[1].normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const cita = m[2].replace(/[\s?¿!¡.,;:]+»/g, "»");   // «portal?» → «portal»: el signo es del habla, no del término
+    return (DETECCION[k] || m[1]) + ": " + cita;
+  }
+  function vacioInsights() {
+    const feed = ((S.monitor && S.monitor.feed) || []).filter((e) => (e.tipo === "senal" || e.tipo === "toca") && /[\p{L}\d]{3,}/u.test(String(e.texto || "").split("·").slice(1).join(" ")));   // sin restos como «?»
+    const toques = ((S.equipo && S.equipo.monitor) || {}).toques || {};
+    const objetivos = (S.objetivos || []).filter((o) => !o.sugerido && toques[o.n] != null);
+    if (!feed.length && !objetivos.length) {
+      return h("div", { class: "vacio-i vacio-util" },
+        h("p", { class: "t-body" }, "Aquí irán apareciendo las decisiones, los pendientes, los riesgos y las preguntas que salgan de la conversación."),
+        h("p", { class: "t-meta" }, "El equipo propone la primera tarjeta cuando se ha dicho algo que lo merece; suele ser en los primeros minutos."));
+    }
+    const filas = [
+      ...objetivos.map((o) => h("li", { class: "vacio-fila" }, h("span", { class: "t-meta vacio-min" }, mmss(toques[o.n])), h("span", { class: "t-body" }, "Se ha tocado el objetivo «" + o.texto + "»"))),
+      ...feed.slice(-5).reverse().map((e) => h("li", { class: "vacio-fila" }, h("span", { class: "t-meta vacio-min" }, e.minuto), h("span", { class: "t-body" }, textoDeteccion(e)))),
+    ];
+    return h("div", { class: "vacio-i vacio-util" },
+      h("p", { class: "t-body" }, "Todavía no hay tarjetas, pero esto es lo que ya se ha detectado en la conversación:"),
+      h("ul", { class: "vacio-lista" }, filas),
+      h("p", { class: "t-meta" }, "Las tarjetas aparecen cuando el equipo analiza un tramo."));
+  }
+  AP.vacioInsights = vacioInsights;
+  let vacioPendiente = false;
+  function refrescarVacio() {
+    if (vacioPendiente || (S.tarjetas || []).length || !AP.hooks.pintarInsights) return;
+    vacioPendiente = true;
+    requestAnimationFrame(() => { vacioPendiente = false; if (!(S.tarjetas || []).length) AP.hooks.pintarInsights(); });
+  }
+
   // ------------------------------------------------------------ pie: presupuesto
   const previoPie = AP.hooks.pie;
   AP.hooks.pie = () => {
@@ -230,7 +269,7 @@
     const cuenta = (k) => Object.entries((c && c.por_modelo) || {}).filter(([m]) => m.toLowerCase().includes(k)).reduce((n, [, u]) => n + u.llamadas, 0);
     el.className = "p-presu " + pr.nivel;
     el.textContent = `Presupuesto ${kfmt(pr.usado)} / ${kfmt(pr.limite)} esta hora · haiku ${cuenta("haiku")} · sonnet ${cuenta("sonnet")} · opus ${cuenta("opus")}`;
-    el.title = `Ventana de 60 minutos de reunión. Al 80 % el equipo ahorra (turnos más espaciados y sin rotación); al 100 % solo responden «Analizar ahora» y Pregúntale. Total de la sesión: ${kfmt(((c && c.total) ? c.total.entrada + c.total.cache_creacion + c.total.cache_lectura + c.total.salida : 0))} tokens`;
+    el.title = `Ventana de 60 minutos de reunión. Al 80 % el equipo ahorra (intervenciones más espaciadas); al 100 % solo responden «Analizar ahora» y Pregúntale. Total de la sesión: ${kfmt(((c && c.total) ? c.total.entrada + c.total.cache_creacion + c.total.cache_lectura + c.total.salida : 0))} tokens`;
   };
 
   // ------------------------------------------------------------ render conjunto
@@ -264,7 +303,7 @@
         S.monitor.feed.push(...(d.entradas || []));
         if (S.monitor.feed.length > 600) S.monitor.feed.splice(0, S.monitor.feed.length - 600);
         if (d.pasada) { S.monitor.pasadas.push(d.pasada); if (S.monitor.pasadas.length > 300) S.monitor.pasadas.shift(); }
-        pulsoPasada(); programar(); break;
+        pulsoPasada(); programar(); refrescarVacio(); break;
       case "definiciones": {
         const antes = (S.monitor.definiciones || []).length;
         S.monitor.definiciones = d.definiciones || [];

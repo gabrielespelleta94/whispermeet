@@ -87,8 +87,8 @@
   const poco = ["#b-efectos", "#b-tema", "#b-ajustes"].map((s) => $(s)).filter(Boolean);
   if (derecha && poco.length === 3 && AP.h) {
     const { h } = AP;
-    const panel = h("div", { class: "top-mas-panel", id: "top-mas-panel", hidden: true, role: "group", "aria-label": "Más ajustes" });
-    const boton = h("button", { type: "button", class: "btn btn-ghost", id: "b-mas", "aria-haspopup": "true", "aria-expanded": "false", "aria-controls": "top-mas-panel", title: "Efectos, modo claro u oscuro y ajustes" }, "Más", AP.icono("abajo", "ic-mas"));
+    const panel = h("div", { class: "top-mas-panel", id: "top-mas-panel", hidden: true, role: "group", "aria-label": "Menú: efectos, modo y ajustes" });
+    const boton = h("button", { type: "button", class: "btn btn-ghost", id: "b-mas", "aria-haspopup": "true", "aria-expanded": "false", "aria-controls": "top-mas-panel", title: "Efectos, modo claro u oscuro y ajustes" }, "Menú", AP.icono("abajo", "ic-mas"));
     const caja = h("div", { class: "top-mas", id: "top-mas", hidden: true }, boton, panel);
     derecha.append(caja);
     const mq = window.matchMedia("(max-width: 1620px)");
@@ -103,5 +103,43 @@
     panel.addEventListener("click", (ev) => { if (ev.target.closest("#b-ajustes, #b-tema")) abrir(false); });
     mq.addEventListener("change", colocar);
     colocar();
+  }
+  // ------------------------------------------------------------ cabecera de la reunión: una sola acción principal («Terminar») y el resto en «Más»
+  // Menú accesible por teclado: el botón abre con clic, Intro, Espacio o flecha abajo; dentro, flechas arriba y abajo, Inicio y Fin; Esc cierra y devuelve el foco
+  // al botón; Tab cierra. Son los MISMOS botones de siempre (mismos ids y manejadores): solo viven dentro del panel, así que Modo reunión, avisos y pruebas no cambian.
+  const masBtn = $("#r-mas"), masPanel = $("#r-mas-panel");
+  if (masBtn && masPanel) {
+    const items = () => $$('[role="menuitem"]', masPanel).filter((b) => !b.disabled && !b.hidden && b.offsetParent !== null);
+    const abierto = () => !masPanel.hidden;
+    const cerrar = (devolverFoco) => { if (!abierto()) return; masPanel.hidden = true; masBtn.setAttribute("aria-expanded", "false"); if (devolverFoco) masBtn.focus(); };
+    const abrir = (foco) => {
+      masPanel.hidden = false; masBtn.setAttribute("aria-expanded", "true");
+      const l = items();
+      if (foco === "ultimo") { if (l.length) l[l.length - 1].focus(); } else if (foco && l.length) l[0].focus();
+    };
+    masBtn.addEventListener("click", (ev) => { ev.stopPropagation(); if (abierto()) cerrar(false); else abrir(ev.detail === 0 ? "primero" : null); });
+    masBtn.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowDown") { ev.preventDefault(); abrir("primero"); }
+      else if (ev.key === "ArrowUp") { ev.preventDefault(); abrir("ultimo"); }
+    });
+    masPanel.addEventListener("keydown", (ev) => {
+      const l = items(), i = l.indexOf(document.activeElement);
+      const ir = l.length ? { ArrowDown: l[(i + 1) % l.length], ArrowUp: l[(i - 1 + l.length) % l.length], Home: l[0], End: l[l.length - 1] }[ev.key] : null;
+      if (ir) { ev.preventDefault(); ir.focus(); }
+      else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); cerrar(true); }
+      else if (ev.key === "Tab") cerrar(false);
+    });
+    // elegir una acción cierra el menú (el foco vuelve al botón, salvo que la acción abra su propio panel)
+    masPanel.addEventListener("click", (ev) => { if (ev.target.closest('[role="menuitem"]')) cerrar(false); });
+    document.addEventListener("click", (ev) => { if (abierto() && !ev.target.closest("#r-mas-caja")) cerrar(false); });
+    // «Hallazgos N»: con el botón dentro del menú, el recuento se ve también en «Más»
+    const hall = $("#r-bandeja-btn"), nMas = $("#r-mas-n");
+    const sincronizarMas = () => {
+      const m = hall && /\d+/.exec(hall.textContent || ""), n = m ? Number(m[0]) : 0;
+      if (nMas) { nMas.hidden = !n; nMas.textContent = n ? String(n) : ""; }
+      masBtn.title = "Analizar ahora, pausa, contexto del proyecto y hallazgos" + (n ? ` (${n} hallazgos)` : "");
+    };
+    if (hall && typeof MutationObserver === "function") new MutationObserver(sincronizarMas).observe(hall, { childList: true, characterData: true, subtree: true });
+    sincronizarMas();
   }
 })();
