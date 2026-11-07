@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pywebview>=5.0
+pyaudiowpatch>=0.2.12
+faster-whisper>=1.0
+numpy
+# solo para pruebas y mediciones (pyttsx3: voz sintética para medir la velocidad)
+pyttsx3
+pytest
+httpx

@@ -1,0 +1,187 @@
+/* Apuntes: el equipo de agentes (DESIGN-equipo.md) con el acabado de DESIGN-visual.md. Monitor local, cuatro perfiles, Definiciones y Minuto a minuto.
+   Vidrio fino encendido SOLO por trabajo real (evento `tarea`); notificaciones y Hallazgos, vidrio flotante. Texto siempre completo: ninguna regla recorta con elipsis. */
+
+/* ---------- columnas de la pantalla de reunión: 464 | 448 | 448, gap 16, y UN scroll por columna ---------- */
+.col-eq, .col-obj, .col-ins, .col-cons, .col-preg, .col-ses { padding: 0; border-left: 0; }
+.col-eq .col-scroll, .col-obj .col-scroll { padding-top: 0; padding-bottom: 16px; padding-right: 8px; }
+.col-scroll > .panel-h { position: static; }
+.col-scroll > .panel-h:not(:first-child), .col-scroll > #r-ins-h { margin-top: 16px; }
+.panel-h-ins .filtro-ideas { margin-left: auto; }
+.nuevos-barra { position: sticky; top: 0; z-index: 4; height: 0; overflow: visible; display: flex; justify-content: flex-end; gap: 8px; pointer-events: none; }
+.nuevos-barra .nuevos { position: relative; top: 8px; pointer-events: auto; }
+.filtro-ideas { height: 24px; padding: 0 8px; font-size: var(--f-12); line-height: 16px; border: 1px solid var(--hair2); border-radius: 4px; color: var(--body); background: transparent; cursor: pointer; }
+.filtro-ideas:hover { background: var(--vidrio); }
+.filtro-ideas[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc-t); border-color: transparent; }
+.notas { overflow: hidden; }
+.notas.desborda { overflow-y: auto; }
+.pregunta-caja { margin: 8px 8px 16px 0; padding: 10px 12px 12px; }
+.pregunta-hist { max-height: none; overflow: visible; }
+.consulta-ant > summary { cursor: pointer; padding: 6px 0; }
+.consulta-ant[open] > summary { color: var(--ink); }
+
+/* tarjetas de insights y trazas: el texto se muestra entero */
+.tarj .tx { max-width: none; }
+.tarj .mas { display: none; }
+.traza-b { height: auto; min-height: 28px; padding-top: 4px; padding-bottom: 4px; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 16px; }
+.traza-f { height: auto; min-height: 28px; }
+.tarj-meta { max-width: none; }
+.tarj-meta .perfil { color: var(--soft); }
+
+/* ---------- línea del Monitor (vidrio fino, 36 px) ---------- */
+.eq-monitor .mono { width: 28px; height: 28px; font-size: var(--f-11); }
+.eq-monitor .t-meta { overflow-wrap: anywhere; min-width: 0; }
+.eq-ind { flex: none; width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--soft); }
+.eq-ind.pasada { background: var(--acc); border-color: var(--acc); }
+.eq-ind.pausa { border-color: var(--hair2); }
+.eq-ind.sin { background: var(--warn); border-color: var(--warn); }
+.eq-monitor { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; margin: 8px 0 0; padding: 4px 8px 4px 4px; text-align: left; cursor: pointer; color: var(--body); }
+
+/* ---------- tarjetas de perfil: div[role=button] (un <button> con chips dentro rompe el árbol HTML) ---------- */
+.eq-tarj { position: relative; display: block; width: 100%; min-height: 76px; margin: 8px 0 0; padding: 12px; color: var(--body); text-align: left; cursor: pointer; }
+.eq-tarj::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 1px; background: var(--acc); opacity: 0; transition: opacity 180ms var(--salida); }
+.eq-tarj[data-estado="trabajando"]::before { opacity: 1; }
+.eq-tarj[data-estado="turno"] { border-color: var(--acc-t); }
+.eq-tarj[data-estado="error"] { border-color: var(--err); }
+.eq-l1 { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.eq-nombre { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.eq-nombre .ind-p { flex: none; width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--soft); }
+.eq-tarj[data-estado="trabajando"] .ind-p, .eq-tarj[data-estado="turno"] .ind-p { background: var(--acc); border-color: var(--acc); }
+.eq-tarj[data-estado="error"] .ind-p { background: var(--err); border-color: var(--err); }
+.eq-tarj[data-estado="sin_presupuesto"] .ind-p { background: var(--warn); border-color: var(--warn); }
+.eq-estado { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.eq-tarj[data-estado="trabajando"] .eq-estado, .eq-tarj[data-estado="turno"] .eq-estado { color: var(--acc-t); }
+.eq-tarj[data-estado="trabajando"] .mono { background: var(--acc); color: #FFFFFF; }
+.eq-tarj[data-estado="error"] .eq-estado { color: var(--err); }
+.eq-tarj[data-estado="sin_presupuesto"] .eq-estado { color: var(--ink); }   /* el ámbar solo en el punto: como texto sobre el panel claro no llega a 4,5:1 */
+.eq-tarj[data-estado="hecho"] .eq-estado { color: var(--ink); }
+.eq-marca { width: 12px; height: 12px; flex: none; display: none; }
+.eq-tarj[data-estado="hecho"] .eq-marca { display: block; }
+.eq-marca path { fill: none; stroke: var(--ok); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 0; }
+.eq-tarj.traza .eq-marca path { animation: trazo 400ms var(--salida) backwards; }
+.eq-l2 { display: block; margin-top: 6px; overflow-wrap: anywhere; text-wrap: pretty; }
+.eq-l2 .eq-cat { color: var(--soft); font-weight: 600; }
+.eq-l2.vacio { color: var(--soft); }
+.eq-l3 { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.eq-tarj.entra .eq-l2 { animation: sube 180ms var(--salida) backwards; }
+
+/* ---------- Definiciones ---------- */
+.eq-def, .eq-feed { margin-top: 16px; }
+.eq-def .grupo-h, .eq-feed .grupo-h { border-bottom: 1px solid var(--hair); }
+.eq-def-fila { display: block; width: 100%; min-height: 44px; padding: 8px 6px; border: 0; border-top: 1px solid var(--hair); background: transparent; text-align: left; cursor: pointer; color: var(--body); border-radius: 6px; transition: background-color 160ms var(--salida); }
+.eq-def-fila:first-of-type { border-top: 0; }
+.eq-def-fila:hover { background: var(--hover); }
+.eq-def-fila .eq-term { display: block; }
+.eq-def-fila .eq-desc { display: block; overflow-wrap: anywhere; text-wrap: pretty; }
+.eq-def-fila .eq-fuente { display: block; }
+.eq-def-fila .eq-fuente.local { color: var(--warn); }
+.eq-def-fila.nueva { animation: sube 180ms var(--salida) backwards; }
+.eq-vacio { color: var(--soft); padding: 8px 6px; }
+
+/* ---------- Minuto a minuto ---------- */
+.eq-fila { display: block; width: 100%; min-height: 24px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; overflow-wrap: anywhere; transition: background-color 160ms var(--salida); }
+.eq-fila:hover { background: var(--hover); }
+.eq-fila.apagada { color: var(--soft); opacity: .9; }
+.eq-fila.ambar { color: var(--warn); }
+.eq-fila.nueva { animation: aparece 180ms var(--salida) backwards; }
+.eq-feed .btn-mini { margin-top: 4px; }
+
+/* ---------- presupuesto en el pie ---------- */
+.p-presu.ahorro { color: var(--warn); }
+.p-presu.agotado { color: var(--warn); font-weight: 600; }
+
+/* ---------- Registro del Monitor (popover) ---------- */
+.reg-f .reg-t.monitor-sen { color: var(--body); }
+
+/* ---------- Modo reunión: un solo scroll en el panel derecho (línea del Monitor, perfiles de 52 px, Definiciones, Objetivos, Insights) ---------- */
+body[data-modo="reunion"] .reunion-grid { padding: 0; }
+body[data-modo="reunion"] .col-eq, body[data-modo="reunion"] .col-obj { padding: 0; border-left: 0; }
+body[data-modo="reunion"] .col-eq > .panel-h { display: none; }
+body[data-modo="reunion"] .eq-feed { display: none; }
+body[data-modo="reunion"] .eq-tarj { min-height: 52px; padding: 8px 12px; margin-top: 6px; }
+body[data-modo="reunion"] .eq-tarj .eq-l1 { min-height: 28px; }
+body[data-modo="reunion"] .eq-tarj .mono { width: 28px; height: 28px; }
+body[data-modo="reunion"] .eq-l3 { display: none; }
+body[data-modo="reunion"] .eq-def { margin-top: 12px; }
+body[data-modo="reunion"] .col-obj .col-scroll { padding-top: 0; }
+body[data-modo="reunion"] .col-obj .panel-h:first-child { padding-top: 8px; }
+/* objetivo sugerido en un panel de 320 px: el texto en su fila y la etiqueta con «Confirmar» / «Descartar» debajo */
+body[data-modo="reunion"] .obj:has(.obj-sug) { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+body[data-modo="reunion"] .obj:has(.obj-sug) .obj-tx { flex: 1 1 calc(100% - 20px); }
+body[data-modo="reunion"] .obj:has(.obj-sug) .etq-sug { margin-left: 18px; }
+
+/* ---------- avisos de lo importante (DESIGN-visual.md §11, revisado 2026-11-06) ----------
+   Un CARRIL propio en el flujo, al pie de la columna derecha: nunca flota sobre «Ahora», las pestañas, los consejos ni otro aviso (las pestañas se encogen para dejarle sitio).
+   Fondo OPACO (sin vidrio ni desenfoque: nada se lee a través de un aviso), como máximo 2 a la vez, apilados en columna; lo que no cabe espera en cola y se agrupa en «+N hallazgos».
+   Solo decisión, contradicción y riesgo merecen aviso emergente; lo demás se ve en Hallazgos y con el contador de su pestaña. */
+#r-notifs { flex: none; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 0 0 4px; }
+#r-notifs:not(:has(> *:not([hidden]))) { display: none; }
+body:not([data-vista="reunion"]) #r-notifs { display: none; }
+body[data-hallazgos="abierto"] #r-notifs { display: none; }   /* con Hallazgos abierto (una lámina lateral que ya lista todo) el carril se aparta: nada se tapa, y lo que caduca sigue en la lista */
+.notif { pointer-events: auto; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; margin: 0; padding: 8px 12px 8px 10px;
+  background: var(--elev-solido); border: 1px solid var(--hair2); border-radius: 10px; box-shadow: var(--sombra); transition: border-color 160ms var(--salida); }
+.notif:hover { border-color: rgba(var(--acc-rgb), .45); }
+.notif-mas { align-self: flex-start; }
+/* notificación: baldosa con el icono del tipo (su color), monograma del agente como chip junto al nombre; lo importante lleva barra de color a la izquierda */
+.n-ico { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in srgb, var(--tc, var(--acc-t)) 16%, transparent); color: var(--tc, var(--acc-t)); }
+.n-ico .ic { width: 16px; height: 16px; }
+.n-mono { display: inline-flex; align-items: center; justify-content: center; flex: none; height: 18px; padding: 0 5px; border-radius: 4px; background: var(--hair); color: var(--body); letter-spacing: .04em; }
+.notif:is([data-k="decision"], [data-k="pendiente"], [data-k="riesgo"], [data-k="contradiccion"], [data-k="posible"]) { border-left: 3px solid var(--tc); }
+.notif:is([data-k="pregunta"], [data-k="idea"], [data-k="regla"], [data-k="definicion"], [data-k="objetivo"]) .n-tx { color: var(--body); }
+.n-cuerpo { min-width: 0; }
+.n-l1 { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.n-nombre { flex: 1; min-width: 0; color: var(--body); overflow-wrap: anywhere; }
+#r-notifs .n-meta { display: none; }   /* en el aviso solo lo esencial (tipo, quién, minuto, texto y acciones); el detalle está en Hallazgos */
+.n-der { display: flex; align-items: center; gap: 4px; flex: none; }
+.n-x { position: relative; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--soft); cursor: pointer; transition: background-color 160ms var(--salida), color 160ms var(--salida); }
+.n-x .ic { width: 14px; height: 14px; }
+.n-x::after { content: ""; position: absolute; inset: -4px; }   /* área de pulsación de 32 px */
+.n-x:hover { background: var(--hover); color: var(--ink); }
+.n-cat { display: inline-flex; flex: none; align-items: center; gap: 6px; margin-top: 0; color: var(--tc, var(--soft)); font-weight: 700; }
+.n-tx { margin-top: 2px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.n-meta { margin-top: 4px; overflow-wrap: anywhere; }
+.n-acc { display: flex; gap: 4px; margin: 4px 0 0 -8px; }
+body[data-modo="reunion"] .notif [data-accion="preguntale"] { display: none; }
+/* Modo reunión: avisos SIEMPRE sobre fondo sólido, sea cual sea el nivel de Efectos (el panel es opaco y no hay nada que difuminar: translúcidos, se pisaban con lo de debajo) */
+body[data-modo="reunion"] .notif { background: var(--elev-solido); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* ---------- iconos por tipo: ver «iconos» en app.css (color semántico por tipo, trazo único) ---------- */
+.bj-g { flex: none; display: block; }
+
+/* ---------- Hallazgos (id r-bandeja): lámina lateral de vidrio flotante de lectura, no modal; UN solo scroll (el del panel) ---------- */
+.mr-f2 .btn { flex: none; }
+#r-bandeja { position: fixed; top: var(--top-h, 48px); bottom: 28px; right: 0; width: 420px; max-width: 100vw; z-index: 28; overflow-y: auto; background: var(--vidrio-fl);
+  -webkit-backdrop-filter: var(--blur-l); backdrop-filter: var(--blur-l); border-left: 1px solid var(--canto); box-shadow: var(--sombra-l); }
+body:not([data-vista="reunion"]) #r-bandeja { display: none; }
+body[data-modo="reunion"] #r-bandeja { top: var(--mr-barra, 84px); bottom: 0; width: var(--mr-der, 25vw); max-width: none; }
+.bj-cab { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; background: var(--grafito-op); }
+.bj-cab .btn { margin-left: auto; }
+.bj-filtros { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 16px 10px; border-bottom: 1px solid var(--hair); background: var(--grafito-op); }
+.bj-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 2px 8px; border: 1px solid var(--hair2); border-radius: 4px; background: transparent; color: var(--body); cursor: pointer;
+  transition: translate 160ms var(--salida), background-color 160ms var(--salida), color 160ms var(--salida), scale 160ms var(--salida); }
+.bj-chip:hover { background: var(--vidrio); translate: 0 -1px; color: var(--ink); }
+.bj-chip:active { scale: .985; }
+.bj-chip[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc-t); border-color: transparent; }
+.bj-chip .bj-n { color: var(--soft); }
+.bj-chip[aria-pressed="true"] .bj-n { color: var(--acc-t); }
+.bj-f { padding: 12px 16px; border-bottom: 1px solid var(--hair); transition: background-color 160ms var(--salida); }
+.bj-f:hover { background: var(--hover); }
+.bj-l1 { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.bj-cat { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+.bj-der { flex: none; }
+.bj-cat { color: var(--tc, var(--soft)); font-weight: 700; }
+.bj-f:is([data-k="decision"], [data-k="pendiente"], [data-k="riesgo"], [data-k="contradiccion"], [data-k="posible"]) { border-left: 3px solid var(--tc); padding-left: 13px; }
+.bj-f:is([data-k="pregunta"], [data-k="idea"], [data-k="regla"], [data-k="definicion"], [data-k="objetivo"]) .bj-tx { color: var(--body); }
+.bj-tx { margin-top: 4px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.bj-meta { margin-top: 4px; overflow-wrap: anywhere; }
+.bj-f .n-acc { margin-top: 4px; }
+.bj-vacio { padding: 16px; color: var(--soft); }
+
+@media (max-width: 1100px) {
+  .reunion-grid { grid-template-columns: 1fr; overflow: auto; padding: 8px 16px; }
+  .col-izq { min-height: 60vh; }
+  .col-der { padding-left: 0; border-left: 0; margin-top: 12px; }
+}
+
+/* ---------- banda de orquestación desplegada: el estado del Monitor y la última llamada se leen enteros ---------- */
+.orq[data-plegado="false"] .orq-estado, .orq[data-plegado="false"] .orq-ult { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.orq[data-plegado="false"] .orq-linea { align-content: start; padding-top: 12px; }

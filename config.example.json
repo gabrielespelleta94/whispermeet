@@ -1,0 +1,14 @@
+{
+  "raiz_proyectos": "C:\Users\<tu usuario>\Proyectos",
+  "knowledge": "",
+  "autor": "Tu Nombre",
+  "idioma": "auto",
+  "whisper_modelo": "small",
+  "proyectos_extra": [
+    {
+      "nombre": "Proyecto compartido de ejemplo",
+      "ruta": "C:\Users\<tu usuario>\OneDrive\Archivos de <otra persona>\<proyecto>",
+      "compartido": true
+    }
+  ]
+}

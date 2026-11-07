@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+datos/
+cache/
+modelos/
+bandeja/
+pruebas/salida/
+planes/
+sesiones/
+pruebas/_real/
+checks/
+backlog/
+demo/
+*.log
+.claude/settings.local.json
+web/marca/logo-stratesys-*

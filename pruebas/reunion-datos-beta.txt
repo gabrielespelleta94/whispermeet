@@ -1,0 +1,25 @@
+# Reunión ficticia (proyecto compartido de pruebas). Cubre los objetivos 1 y 2, toca el 3 y no trata el 4. Incluye un cambio de alcance explícito (informe mensual) para probar la aceptación de un cambio.
+[00:05] Reunión: Buenos días. Empezamos la revisión del almacén de datos del proyecto Beta. Estamos Ana, la directora de operaciones del cliente, Datos del cliente, el consultor de la plataforma y nosotros.
+[00:20] Micro: Gracias. Antes de nada, los avisos de grabación ya se dieron al principio. Empiezo por lo básico: ¿en qué inquilino y en qué espacio de trabajo vamos a trabajar?
+[00:50] Reunión: Usaremos el inquilino corporativo del cliente. Carmen ya ha creado el espacio de trabajo que se llama beta-datos y os dará acceso esta misma semana.
+[01:30] Micro: Perfecto, entonces queda cerrado: inquilino corporativo y espacio de trabajo beta-datos, con acceso para nosotros esta semana.
+[01:50] Reunión: Correcto. Carmen os manda las invitaciones hoy.
+[02:10] Micro: Segundo tema. ¿Qué tablas se replican ya en el almacén de la calculadora?
+[02:35] Reunión: Están replicadas las reservas confirmadas, la previsión de ocupación y la tarifa pública. Las habitaciones fuera de servicio también, desde el lunes pasado, así que las cuatro tablas ya están.
+[03:15] Micro: Las cuatro tablas están replicadas, entonces. Lo anoto como cerrado.
+[03:40] Reunión: Sí. El histórico llega hasta enero de dos mil veinticinco, como acordamos.
+[04:10] Micro: Tercer tema, la disponibilidad de inventario y de precios por tipología de habitación. ¿Los tenemos para todos los hoteles del piloto?
+[04:45] Reunión: El inventario por tipología sí está disponible para los dos hoteles del piloto. Los precios por tipología todavía no los tenemos del todo, hay que confirmarlo con el equipo de tarifas.
+[05:30] Micro: Entonces los precios por tipología quedan pendientes. ¿Quién lo confirma?
+[05:50] Reunión: Marta lo confirma con el equipo de tarifas y os contesta el jueves.
+[06:20] Micro: De acuerdo, Marta lo confirma el jueves.
+[06:45] Reunión: Cambiando de tema, una petición del cliente. Dicen que el informe semanal de ocupación en Power BI les sobra con una versión mensual, que no quieren uno semanal.
+[07:20] Micro: Eso cambia el alcance, que ahora dice informe semanal. Necesito que lo confirme el comité antes de tocar nada.
+[07:55] Reunión: Soy Ana y decido yo por el cliente. Queda decidido ahora mismo, en esta reunión: el informe de ocupación en Power BI pasa a ser mensual y deja de ser semanal. Pido que conste en el alcance como cambio decidido por mí.
+[08:30] Micro: Vale. Otro punto, el acceso al entorno de pruebas del cliente: ¿estará disponible la semana que viene?
+[09:00] Reunión: Sí, el acceso al entorno de pruebas estará disponible desde el lunes que viene sin problema.
+[09:40] Micro: Bien. Anoto también un riesgo, que si faltan los precios por tipología no podremos cotizar habitaciones concretas en el piloto.
+[10:10] Reunión: Totalmente de acuerdo, por eso Marta lo mira esta semana.
+[10:45] Micro: Perfecto. Con esto cerramos las dudas de acceso y tablas, y dejamos pendientes los precios por tipología.
+[11:20] Reunión: Quedamos entonces para la siguiente sesión cuando tengamos los precios confirmados.
+[11:50] Micro: Gracias a todos.

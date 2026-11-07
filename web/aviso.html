@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhisperMeet · Aviso de llamada</title>
+<link rel="stylesheet" href="/static/fuentes.css">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/aviso.css">
+</head>
+<body class="av-body" data-efectos="apagado">
+<main class="av" id="av" aria-label="Aviso de llamada de Teams">
+  <div class="av-cab">
+    <img class="av-logo" src="/static/marca/apuntes.svg" alt="" width="32" height="32">
+    <div class="av-id">
+      <span class="t-label">Llamada de Teams</span>
+      <span class="t-title av-tema" id="av-tema" aria-live="polite"></span>
+    </div>
+    <button class="btn btn-ghost btn-mini av-no" id="av-no" type="button" title="Cierra el aviso; no vuelve a salir en esta llamada">Ahora no</button>
+  </div>
+
+  <label class="check av-check"><input type="checkbox" id="av-avisado"> He avisado a los asistentes</label>
+
+  <div class="av-acciones">
+    <button class="btn btn-primary av-empezar" id="av-empezar" type="button" disabled>Empezar a transcribir</button>
+    <button class="btn av-mas" id="av-mas" type="button" aria-expanded="false" aria-controls="av-detalle" aria-label="Proyecto, idioma y tema" title="Proyecto, idioma y tema">
+        </button>
+  </div>
+  <div class="t-meta av-ayuda" id="av-ayuda">Marca la casilla para poder empezar. La grabación no empieza sola.</div>
+
+  <div class="av-detalle" id="av-detalle" hidden>
+    <label class="av-campo"><span class="t-label">Proyecto</span>
+      <select class="input" id="av-proyecto"></select></label>
+    <label class="av-campo"><span class="t-label">Idioma</span>
+      <select class="input" id="av-idioma">
+        <option value="auto">Automático</option>
+        <option value="es">Español</option>
+        <option value="ca">Català</option>
+        <option value="en">English</option>
+      </select></label>
+    <label class="av-campo"><span class="t-label">Tema de la reunión</span>
+      <input class="input" id="av-tema-input" type="text" maxlength="120" autocomplete="off"></label>
+  </div>
+
+  <div class="av-error" id="av-error" role="alert" hidden></div>
+  <div class="av-tiempo" aria-hidden="true"><i id="av-barra"></i></div>
+</main>
+<script src="/static/iconos.js"></script>
+<script src="/static/aviso.js"></script>
+</body>
+</html>

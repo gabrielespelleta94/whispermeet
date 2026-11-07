@@ -1,0 +1,32 @@
+/* Aviso flotante de llamada de Teams (ventana propia, 420 px CSS de ancho). Usa los tokens y los componentes de app.css (DESIGN-visual.md):
+   superficie sólida del nivel 2 (nunca translúcida: debajo hay lo que haya), DM Sans local, un solo acento, radios 8 y 14, foco en doble anillo.
+   Sin textos cortados: el título y los textos largos se parten; el alto de la ventana lo ajusta aviso.js a lo que mide el contenido. */
+html, body.av-body { height: auto; background: var(--elev-solido); overflow: hidden; }
+.av { width: 100%; padding: 14px 16px 18px; position: relative; background: var(--elev-solido); border: 1px solid var(--canto); box-shadow: var(--brillo); }
+.av-cab { display: flex; align-items: flex-start; gap: 12px; }
+.av-logo { flex: none; width: 32px; height: 32px; border-radius: 8px; display: block; margin-top: 2px; }
+.av-id { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.av-tema { display: block; overflow-wrap: anywhere; text-wrap: pretty; }
+.av-no { flex: none; margin-top: -2px; }
+.av-check { margin-top: 12px; }
+.av-check input { flex: none; }
+.av-acciones { display: flex; gap: 8px; margin-top: 12px; }
+.av-empezar { flex: 1 1 auto; height: 40px; }
+/* desactivado hasta marcar la casilla: no a media opacidad (el texto blanco sobre azul apagado no se leía), sino un relleno neutro con texto --soft (>= 4,5:1) */
+.av-empezar:disabled { opacity: 1; background: var(--hair); color: var(--soft); box-shadow: none; border-color: var(--hair2); }
+.av-mas { flex: none; width: 40px; height: 40px; padding: 0; display: grid; place-items: center; border-color: var(--hair2); }
+.av-mas svg { transition: rotate 200ms var(--salida); }
+.av-mas[aria-expanded="true"] svg { rotate: 180deg; }
+.av-ayuda { margin-top: 8px; overflow-wrap: anywhere; }
+.av-ayuda:empty { display: none; }
+.av-detalle { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--hair); }
+.av-campo { display: block; margin-top: 12px; }
+.av-campo > .t-label { margin-bottom: 6px; }
+.av-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 8px 12px; border-radius: 8px; background: var(--err-bg); color: var(--err); overflow-wrap: anywhere; }
+/* tiempo que queda hasta que se cierra solo: una línea fina al pie que se vacía; el puntero encima (o escribir en el tema) la detiene */
+.av-tiempo { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--hair); overflow: hidden; }
+.av-tiempo i { display: block; height: 100%; width: 100%; background: var(--acc); transform-origin: left center; }
+.av-tiempo.pausa i { background: var(--soft); }
+@media (prefers-reduced-motion: reduce) { .av-mas svg { transition: none; } }
+
+.av-error .av-ic { margin-top: 2px; }

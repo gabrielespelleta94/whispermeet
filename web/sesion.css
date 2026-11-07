@@ -1,0 +1,184 @@
+/* Apuntes: banda «Sesión» (línea de tiempo de la reunión), «Pregúntale», anotaciones propias y carpeta de proyecto.
+   Tokens y escala de DESIGN-visual.md: grafito (la banda), papel (lo que escribe el usuario), un solo acento de luz. */
+
+/* ---------- banda Sesión ---------- */
+.sesion-banda { position: relative; flex: none; margin: 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); background: transparent; }
+.sb-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; min-height: 28px; padding: 2px 0; }
+.sb-plegar { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 0; border: 0; background: transparent; cursor: pointer; }
+.sb-plegar::before { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--soft); transition: transform 180ms var(--salida); }
+.sb-plegar[aria-expanded="false"]::before { transform: rotate(-90deg); }
+.sb-plegar:hover .t-label { color: var(--ink); }
+.sb-rango { font-variant-numeric: tabular-nums; }
+.sb-filtros { margin-left: auto; display: flex; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+#tab-sesion .sb-filtros { flex-basis: 100%; margin-left: 0; justify-content: flex-start; }
+.sb-filtro { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; transition: background-color 160ms var(--salida); }
+/* la leyenda lleva el color real de cada tipo (los mismos que los marcadores); un filtro apagado pasa a --soft y tachado: se distingue y sigue viéndose (≥ 3:1) */
+.sb-filtro svg { display: block; color: var(--ink); }
+.sb-filtro[data-tipo] svg, .sb-m[data-tipo] { color: var(--tc, var(--ink)); }
+.sb-filtro[aria-pressed="true"] { color: var(--ink); }
+.sb-filtro[aria-pressed="false"] { color: var(--soft); text-decoration: line-through; }
+.sb-filtro[aria-pressed="false"] svg { color: var(--soft); }
+.sb-filtro:hover { background: var(--hover); }
+.sb-cuerpo { position: relative; padding-bottom: 6px; }
+.sb-lane { display: grid; grid-template-columns: 72px minmax(0, 1fr); }
+.sb-etq { align-self: center; padding-right: 8px; }
+.sb-plot { position: relative; min-width: 0; margin-right: 24px; }
+.sb-lane-eje { height: 14px; }
+.sb-lane-temas { height: 20px; margin-top: 2px; }
+.sb-lane-obj { height: calc(var(--filas, 1) * var(--pitch, 8px) + 4px); min-height: 14px; }
+.sb-lane-ins { height: 40px; }
+.sb-lane-tu { height: 20px; }
+.sb-lane + .sb-lane { border-top: 1px solid var(--hair); }
+.sb-lane-eje + .sb-lane { border-top: 0; }
+.sb-lane .sb-etq { color: var(--soft); }
+.sb-lane-eje .sb-etq { display: none; }
+
+/* eje: marcas de tiempo y de análisis */
+.sb-tick { position: absolute; top: 0; transform: translateX(-1px); padding-left: 3px; border-left: 1px solid var(--hair2); height: 14px; line-height: 14px; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.sb-analisis { position: absolute; bottom: 0; width: 1px; height: 5px; background: var(--acc); }
+
+/* temas: barras por tramo */
+.sb-tema { position: absolute; top: 2px; height: 16px; border-radius: 4px; background: var(--acc-soft); overflow: hidden; }
+.sb-tema[data-alt="1"] { background: var(--vidrio); box-shadow: inset 0 0 0 1px var(--canto); }
+.sb-tema-t { display: block; padding: 0 6px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--acc-t); }   /* excepción admitida, con tooltip: barra geométrica estrecha */
+.sb-tema[data-alt="1"] .sb-tema-t { color: var(--body); }
+
+/* objetivos: una barra por objetivo, de su primera a su última evidencia, con el color de su estado */
+.sb-obj { position: absolute; padding: 0; border: 0; border-radius: 2px; background: var(--acc); cursor: pointer; min-width: 6px; }
+.sb-obj[data-estado="cubierto"] { background: var(--ok); }
+.sb-obj[data-estado="parcial"] { background: var(--acc); opacity: .75; }
+
+/* marcadores: forma y color por tipo */
+.sb-m { position: absolute; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; color: var(--ink); }
+.sb-m svg { display: block; }
+.sb-m[data-tipo="contradiccion"].posible { --tc: var(--warn); }
+.sb-m:hover { background: var(--hover); }
+.sb-m.grupo { height: 16px; background: var(--vidrio); border: 1px solid var(--hair2); color: var(--ink); }
+.sb-n { font-size: var(--f-11); line-height: 10px; font-weight: 600; letter-spacing: 0; }
+
+/* ahora */
+.sb-sobre { position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; }
+.sb-ahora { position: absolute; top: 14px; bottom: 0; width: 1px; background: var(--acc); }
+.sb-ahora-t { position: absolute; top: -14px; right: 4px; color: var(--acc-t); }
+
+/* movimiento: los elementos se desplazan con el eje (lineal, sin saltos); sin movimiento si el usuario lo pide */
+.sesion-banda .sb-tema, .sesion-banda .sb-obj, .sesion-banda .sb-m, .sesion-banda .sb-tick, .sesion-banda .sb-analisis { transition: left 900ms linear, width 900ms linear; }
+.sesion-banda.sin-mov * { transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .sesion-banda *, .sesion-banda *::before { transition: none !important; } }
+
+.sb-tip { position: absolute; z-index: 30; max-width: 360px; padding: 6px 8px; border: 1px solid var(--canto); border-radius: 14px; background: var(--bg-n); -webkit-backdrop-filter: var(--blur-n); backdrop-filter: var(--blur-n); color: var(--ink); white-space: pre-line; pointer-events: none; box-shadow: var(--sombra-f); animation: pop 120ms var(--salida) backwards; }
+
+/* plegada: solo la cabecera */
+.sesion-banda[data-plegado="true"] .sb-filtros { display: none; }
+
+/* en la revisión: ancho completo del contenido */
+#sesion-revision { margin: 0 0 16px; border-top: 0; }
+
+/* Modo reunión: la banda queda plegada (no se pinta); el Gantt completo está al salir */
+body[data-modo="reunion"] .sesion-banda { display: none; }
+@media (max-width: 1100px) { .sb-f-t { display: none; } }
+
+/* ---------- anotaciones del usuario (comentario, pregunta, idea) ---------- */
+.nota-rapida { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.nota-rapida .input { height: 32px; flex: 1; min-width: 0; }
+.nota-rapida .btn-mini { height: 32px; padding: 0 8px; }
+.tuyas { margin: 8px 0 0; }
+.tuyas:empty { display: none; }
+.tuya { position: relative; padding: 8px 12px; margin: 8px 0; display: grid; gap: 4px; }   /* papel (app.css): lo que escribe el usuario no se enciende */
+.tuya-c { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+.tuya-c .cat { flex: 1; }
+.tuya .yo { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 4px; background: var(--acc-soft); color: var(--acc-t); font-size: var(--f-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.tuya .acciones-t { display: flex; gap: 2px; }
+.tuya textarea { width: 100%; min-height: 56px; border: 1px solid var(--papel-canto); border-radius: 8px; padding: 6px 8px; background: transparent; color: var(--ink); resize: vertical; }
+.tuya.barra::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; background: var(--acc); }
+.tuya.barra-fuera::before { opacity: 0; transition: opacity 400ms var(--salida); }
+
+/* ---------- Pregúntale ---------- */
+.pregunta-caja { flex: none; padding: 10px 12px 12px; }
+.pregunta-caja > summary { display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; list-style: none; }
+.pregunta-caja > summary::-webkit-details-marker { display: none; }
+.pregunta-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; margin: 4px 0 8px; align-items: center; }
+.pregunta-form .input { height: 32px; }
+.pregunta-form select { height: 32px; width: auto; }
+.pregunta-hist { overflow-anchor: none; }
+.consulta { padding: 8px 0; border-top: 1px solid var(--hair); }
+.consulta:first-child { border-top: 0; }
+.consulta-p { color: var(--ink); font-weight: 500; }
+.consulta-r { max-width: 56ch; margin-top: 2px; }
+.consulta-r.sin-base { color: var(--soft); }
+.consulta-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 4px; }
+.consulta .fichero { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 0; border-radius: 4px; background: var(--vidrio); border: 1px solid var(--canto); color: var(--body); font-size: var(--f-12); line-height: 16px; font-weight: 500; cursor: pointer; transition: background-color 160ms var(--salida); }
+.consulta .fichero:hover { background: var(--hover); color: var(--ink); }
+.consulta.error .consulta-r { color: var(--err); }
+.consulta.en-curso .consulta-r { color: var(--soft); }
+body[data-modo="reunion"] .pregunta-caja { display: none; }
+
+/* ---------- objetivos propios y sugeridos ---------- */
+.obj-edit { display: flex; gap: 6px; margin: 6px 0 2px; }
+.obj-edit .input { height: 32px; }
+.obj.sugerido { opacity: .9; }
+.obj.sugerido .obj-ind svg { opacity: .55; }
+.obj-sug { margin-left: 8px; display: inline-flex; gap: 2px; }
+.obj .btn-mini { height: 20px; padding: 0 6px; }
+.etq-sug { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; margin-left: 6px; border: 1px dashed var(--acc); border-radius: 4px; color: var(--acc-t); font-size: var(--f-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.obj-propios { margin: 16px 0 8px; padding: 12px 14px 14px; }
+.obj-propios ul { list-style: none; padding: 0; margin: 4px 0; }
+.obj-propios li { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.obj-propios li span { flex: 1; }
+
+/* ---------- carpeta de proyecto añadida ---------- */
+.add-carpeta { margin: 8px 0; }
+.add-carpeta > summary { cursor: pointer; list-style: none; color: var(--acc-t); font-weight: 500; }
+.add-carpeta > summary::-webkit-details-marker { display: none; }
+.add-carpeta form { display: grid; gap: 6px; margin-top: 8px; }
+.add-carpeta label.check { display: flex; gap: 8px; align-items: center; }
+.add-carpeta .fila-b { display: flex; gap: 8px; align-items: center; }
+.add-carpeta .error { margin-top: 4px; }
+
+.obj:has(.obj-sug) { grid-template-columns: 10px minmax(0, 1fr) auto auto; }
+.obj:has(.etq-sug) { grid-template-columns: 10px minmax(0, 1fr) auto auto auto; }
+.obj .etq-sug { margin-left: 0; }
+
+/* ---------- elegir carpeta, nueva carpeta y contexto de la reunión (inicio y Ajustes) ---------- */
+.ruta-fila { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ruta-fila .input { flex: 1 1 190px; min-width: 0; }
+.ruta-fila .btn { flex: none; }
+.pista-compartida { margin-top: 2px; overflow-wrap: anywhere; }
+.add-carpeta form.nueva-carpeta { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair); }
+.add-carpeta .fila-b { flex-wrap: wrap; }
+.add-carpeta .fila-b .t-meta { overflow-wrap: anywhere; min-width: 0; }
+
+/* Papel: lo que escribe el usuario (DESIGN-visual.md); la propuesta de Claude también es editable, así que usa el mismo papel */
+.ctxr { margin: 16px 0 8px; padding: 12px 14px 14px; background: var(--papel); border: 1px solid var(--papel-canto); border-radius: 10px; transition: border-color 160ms var(--salida); }
+.ctxr:hover { border-color: color-mix(in srgb, var(--papel-canto), var(--ink) 14%); }
+.ctxr > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; }
+.ctxr > summary::-webkit-details-marker { display: none; }
+.ctxr > summary .t-label::after { content: ""; display: inline-block; margin-left: 8px; width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid var(--acc-t); transition: transform 180ms var(--salida); }
+.ctxr[open] > summary .t-label::after { transform: rotate(90deg); }
+.ctxr > p { margin: 8px 0 0; }
+.ctxr-texto { display: block; width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--papel-canto); border-radius: 8px; background: transparent; color: var(--ink); resize: vertical; min-height: 84px; line-height: 20px; transition: border-color 160ms var(--salida); }
+.ctxr-texto:hover { border-color: rgba(var(--acc-rgb), .45); }
+.ctxr-texto::placeholder { color: var(--soft); }
+.ctxr-texto:focus { outline: 2px solid var(--acc); outline-offset: 2px; box-shadow: 0 0 0 4px var(--bg0); }
+.ctxr-texto[readonly] { opacity: .7; }
+.ctxr-barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.ctxr-barra .t-meta { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+.ctxr-generar { margin-left: auto; }
+.ctxr .error { margin-top: 8px; overflow-wrap: anywhere; }
+.ctxr-prop { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--papel-canto); display: grid; gap: 4px; }
+.ctxr-prop ul { list-style: none; padding: 0; margin: 2px 0; display: grid; gap: 6px; }
+.ctxr-prop li { display: flex; align-items: center; gap: 6px; }
+.ctxr-prop li .input { border-color: var(--papel-canto); flex: 1; min-width: 0; }
+.ctxr-prop li textarea.obj-ed { height: auto; min-height: 32px; padding: 5px 12px; line-height: 20px; resize: none; field-sizing: content; overflow: hidden; }
+.ctxr-prop .fila-b { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.ctxr-prop .check { margin-top: 8px; align-items: flex-start; }
+.ctxr-prop .check input { margin-top: 2px; flex: none; }
+.ctxr-prop .check:has(input:disabled) { cursor: not-allowed; color: var(--soft); }
+.ctxr-ok { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--acc-soft); }
+.ctxr-ok .t-body { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+.ctxr #i-ctxr-dictar[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc-t); }
+
+/* color por tipo (una sola fuente: los tokens --t-* de app.css) */
+[data-tipo="decision"] { --tc: var(--t-decision); } [data-tipo="pendiente"] { --tc: var(--t-pendiente); } [data-tipo="pregunta"] { --tc: var(--t-pregunta); }
+[data-tipo="riesgo"] { --tc: var(--t-riesgo); } [data-tipo="contradiccion"] { --tc: var(--t-contradiccion); } [data-tipo="regla"] { --tc: var(--t-regla); }
+[data-tipo="idea"] { --tc: var(--t-idea); } [data-tipo="tu"] { --tc: var(--acc-t); }

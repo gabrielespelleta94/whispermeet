@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba del Gantt de la sesión</title>
+<link rel="stylesheet" href="../web/fuentes.css">
+<link rel="stylesheet" href="../web/app.css">
+<link rel="stylesheet" href="../web/sesion.css">
+<style> body { overflow: auto; } #banda { margin: 0 16px; } </style>
+</head>
+<body>
+<section id="banda"></section>
+<pre id="res">pendiente</pre>
+<script src="../web/sesion.js"></script>
+<script>
+/* Genera muchos marcadores (también a propósito en el mismo minuto), temas y objetivos solapados; pinta SIN animación y
+   mide con getBoundingClientRect que nada se solapa dentro de su carril ni se sale de él. Resultado en #res (JSON). */
+(() => {
+  const q = new URLSearchParams(location.search);
+  const N = Number(q.get("n") || 220), TMAX = Number(q.get("t") || 3600);
+  let semilla = Number(q.get("semilla") || 7);
+  const azar = () => { semilla = (semilla * 1664525 + 1013904223) % 4294967296; return semilla / 4294967296; };
+  const CATS = ["decisión", "pendiente", "pregunta", "riesgo", "contradicción", "idea"];
+  const tarjetas = [], entradas = [];
+  for (let i = 0; i < N; i++) {
+    // un tercio cae en tres «minutos calientes» para forzar el apilado y los grupos
+    const t = i % 3 === 0 ? [600, 1800, 3000][i % 9 / 3 | 0] + Math.floor(azar() * 8) : Math.floor(azar() * TMAX);
+    tarjetas.push({ id: "t" + i, categoria: CATS[Math.floor(azar() * CATS.length)], texto: "Insight " + i, t_seg: t, estado: i % 17 === 0 ? "posible" : "" });
+  }
+  for (let i = 0; i < Math.floor(N / 3); i++) entradas.push({ id: "u" + i, tipo: ["comentario", "pregunta", "idea"][i % 3], texto: "Nota " + i, t_seg: i % 2 ? 1200 + (i % 5) : Math.floor(azar() * TMAX) });
+  const temas = [];
+  for (let i = 0; i < 12; i++) temas.push({ analisis: i + 1, desde_t: i * (TMAX / 12), hasta_t: (i + 1) * (TMAX / 12) - 5, titulo: "Tema " + (i + 1) + " con un título algo largo" });
+  const objetivos = [];
+  for (let i = 1; i <= 8; i++) { const a = Math.floor(azar() * TMAX * 0.5); objetivos.push({ n: i, texto: "Objetivo " + i, estado: i % 2 ? "parcial" : "cubierto", t_primero: a, t_seg: a + Math.floor(azar() * TMAX * 0.5), minuto: "" }); }
+  const raiz = document.getElementById("banda");
+  const ctl = GanttSesion.montar(raiz, { estatica: true });
+  ctl.actualizar({ t: TMAX, vivo: true, temas, objetivos, tarjetas, entradas, marcas: [{ n: 1, t: 300, motivo: "5 min" }] });
+  ctl.pintarYa();
+  if (q.get("romper")) raiz.querySelectorAll(".sb-m").forEach((n) => { n.style.left = "10px"; n.style.top = "1px"; });   // control negativo: el detector debe ver solapes
+
+  const caja = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; };
+  const cruza = (a, b) => a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
+  const res = { ancho: innerWidth, marcadores: 0, grupos: 0, solapes: [], fuera: [] };
+  for (const lane of ["temas", "obj", "ins", "tu"]) {
+    const fila = raiz.querySelector(`.sb-lane[data-lane=${lane}]`), plot = fila.querySelector(".sb-plot");
+    const nodos = [...plot.querySelectorAll(".sb-m, .sb-obj, .sb-tema")];
+    const cajas = nodos.map(caja), lim = caja(fila);
+    if (lane === "ins" || lane === "tu") { res.marcadores += nodos.length; res.grupos += nodos.filter((n) => n.classList.contains("grupo")).length; }
+    for (let i = 0; i < cajas.length; i++) {
+      if (cajas[i].t < lim.t - 0.5 || cajas[i].b > lim.b + 0.5 || cajas[i].l < plot.getBoundingClientRect().left - 0.5) res.fuera.push({ lane, i });
+      for (let j = i + 1; j < cajas.length; j++) if (cruza(cajas[i], cajas[j])) res.solapes.push({ lane, a: nodos[i].getAttribute("aria-label") || nodos[i].className, b: nodos[j].getAttribute("aria-label") || nodos[j].className });
+    }
+    res[lane] = nodos.length;
+  }
+  // todo lo que existe está representado: marcadores sueltos + los que van dentro de grupos = los datos
+  const dentro = [...raiz.querySelectorAll(".sb-m")].reduce((s, n) => s + (n._items ? n._items.length : 0), 0);
+  res.representados = dentro; res.esperados = tarjetas.length + entradas.length;
+  document.getElementById("res").textContent = JSON.stringify(res);
+})();
+</script>
+</body>
+</html>

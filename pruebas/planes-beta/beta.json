@@ -1,0 +1,79 @@
+{
+  "proyecto": "Proyecto Compartido Beta",
+  "ficha": {
+    "que_es": [
+      "Proyecto ficticio de pruebas: un almacén de datos del cliente que alimenta una calculadora de precios.",
+      "Solo sirve para probar Apuntes; ningún dato es real."
+    ],
+    "fuente": {"fichero": "ficticio (pruebas)", "version": "1"}
+  },
+  "gantt": {
+    "semanas": [
+      {"id": "S1", "inicio": "2026-11-02"},
+      {"id": "S2", "inicio": "2026-11-09"},
+      {"id": "S3", "inicio": "2026-11-16"},
+      {"id": "S4", "inicio": "2026-11-23"},
+      {"id": "S5", "inicio": "2026-11-30"},
+      {"id": "S6", "inicio": "2026-12-07"}
+    ],
+    "fases": [
+      {"id": "analisis", "etiqueta": "Análisis", "nombre": "Análisis", "desde": "S1", "hasta": "S2", "nota": "Sesiones S1 y S2."},
+      {"id": "construccion", "etiqueta": "Construcción", "nombre": "Construcción", "desde": "S3", "hasta": "S5", "nota": ""},
+      {"id": "cierre", "etiqueta": "Cierre", "nombre": "Pruebas y cierre", "desde": "S5", "hasta": "S6", "nota": ""}
+    ],
+    "hitos": [
+      {"id": "diseno", "nombre": "Diseño aprobado (S2)", "tipo": "aceptacion", "semana": "S2", "fecha_iso": "2026-11-10",
+       "fecha_estado": "propuesta", "fecha_texto": "propuesta: martes 10-nov"},
+      {"id": "fin", "nombre": "Entrega", "semana": "S6", "fecha_iso": "", "fecha_estado": "por_confirmar", "fecha_texto": "por confirmar"}
+    ],
+    "ventana_sesiones": {"desde": "S1", "hasta": "S2"},
+    "sesiones": [
+      {"id": "S1", "nombre": "Revisión del almacén de datos", "semana": "", "fecha_iso": "", "fecha_estado": "por_definir", "fecha_texto": "por definir"},
+      {"id": "S2", "nombre": "Validación del diseño funcional", "semana": "S2", "fecha_iso": "2026-11-10", "fecha_estado": "propuesta",
+       "fecha_texto": "propuesta: martes 10 de noviembre"}
+    ]
+  },
+  "sesiones": [
+    {
+      "id": "S1",
+      "nombre": "Revisión del almacén de datos",
+      "fecha": "por definir",
+      "participantes": "Datos del cliente, consultor de plataforma",
+      "objetivos": [
+        "Inquilino y espacio de trabajo de la plataforma de datos",
+        "Réplica en el almacén de reservas, previsión, tarifas y habitaciones fuera de servicio",
+        "Disponibilidad de inventario y precios por tipología",
+        "Frecuencia y calidad de la carga"
+      ],
+      "checks": [
+        "Inquilino y espacio de trabajo confirmados",
+        "Las cuatro tablas replicadas en el almacén",
+        "Inventario por tipología disponible",
+        "Precios por tipología confirmados",
+        "Acceso al entorno de pruebas confirmado",
+        "Frecuencia de la carga acordada"
+      ],
+      "fichero_prioritario": "12-guion-sesion-datos.md",
+      "depende_de": []
+    },
+    {
+      "id": "S2",
+      "nombre": "Validación del diseño funcional",
+      "fecha": "propuesta: martes 10 de noviembre",
+      "fecha_iso": "2026-11-10",
+      "participantes": "Usuarios clave, jefaturas de proyecto, Datos",
+      "objetivos": ["Presentación del diseño funcional", "Aprobación en acta"],
+      "fichero_prioritario": "",
+      "depende_de": ["S1"]
+    },
+    {
+      "id": "otra",
+      "nombre": "Otra reunión (sin objetivos)",
+      "fecha": "",
+      "participantes": "",
+      "objetivos": [],
+      "fichero_prioritario": "",
+      "depende_de": []
+    }
+  ]
+}

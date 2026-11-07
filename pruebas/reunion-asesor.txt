@@ -1,0 +1,14 @@
+# Reunión ficticia con preguntas del cliente para ver el asesor en directo (--simular). Formato: [MM:SS] Micro|Reunión: texto
+[00:05] Reunión: Buenos días. Empezamos el seguimiento del portal de reservas Alfa con el piloto y el alcance de la primera fase.
+[00:30] Micro: Perfecto, os escucho. Tenemos el alcance cerrado y el piloto para el veinte de enero.
+[00:55] Reunión: Antes de nada, ¿cuántos usuarios puede tener cada hotel dentro del portal?
+[01:20] Micro: Hasta tres usuarios por hotel, como quedó en el alcance de la primera fase.
+[01:50] Reunión: Vale. Otra cosa: ¿cuánto cuesta ampliar el alcance para meter la integración con SAP de facturación?
+[02:25] Micro: Eso hay que estimarlo, no quiero darte una cifra ahora sin mirarlo con el equipo.
+[03:00] Reunión: Entendido. Nos preocupa el plazo, necesitamos cerrar la oferta pronto y que el piloto no se retrase más allá de enero.
+[03:35] Reunión: ¿Qué servicio de correo envía el aviso cuando se crea una reserva de grupo?
+[04:10] Micro: De momento no lo hemos decidido, lo vemos con vuestro equipo de sistemas esta semana.
+[04:50] Reunión: ¿Os comprometéis a tener el catálogo de hoteles cargado antes del piloto, aunque lo entregue el cliente tarde?
+[05:25] Micro: Depende de la fecha en que llegue el catálogo, eso lo tenemos como riesgo en el plan.
+[06:00] Reunión: Nos gustaría también una segunda fase con el informe de ocupación por hotel, ¿lo veis posible?
+[06:40] Micro: Sí, es una buena candidata para la fase dos. Lo apunto como siguiente paso y preparamos una propuesta.

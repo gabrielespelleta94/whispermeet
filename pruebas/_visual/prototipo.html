@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="es" data-theme="dark" data-efectos="alto">
+<head>
+<meta charset="utf-8">
+<title>WhisperMeet · prototipo visual</title>
+<meta name="viewport" content="width=1440">
+<style>
+/* ===== Prototipo de DESIGN-visual.md: tres materiales (grafito, vidrio, papel). Autónomo, datos ficticios, sin red.
+   La secuencia «Reproducir turno» simula los eventos `tarea inicio` / `tarea fin` que en la app emite el backend: nada de esto es decorativo en la app real. ===== */
+@font-face { font-family: "DM Sans"; font-weight: 300; src: url("../../web/fuentes/dm-sans-300.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "DM Sans"; font-weight: 400; src: url("../../web/fuentes/dm-sans-400.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "DM Sans"; font-weight: 500; src: url("../../web/fuentes/dm-sans-500.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "DM Sans"; font-weight: 600; src: url("../../web/fuentes/dm-sans-600.ttf") format("truetype"); font-display: block; }
+@font-face { font-family: "DM Sans"; font-weight: 700; src: url("../../web/fuentes/dm-sans-700.ttf") format("truetype"); font-display: block; }
+
+@property --ang { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
+/* ---------- tokens ---------- */
+:root {
+  --f-28: 28px; --f-22: 22px; --f-15: 15px; --f-14: 14px; --f-13: 13px; --f-12: 12px; --f-11: 11px;
+  --sans: "DM Sans", "Segoe UI", system-ui, sans-serif;
+  --salida: cubic-bezier(.16, 1, .3, 1); --entrada: cubic-bezier(.4, 0, 1, 1); --vaiven: cubic-bezier(.4, 0, .2, 1); --muelle: cubic-bezier(.34, 1.3, .64, 1);
+  --acc: #2E7CF6; --acc-rgb: 46, 124, 246;
+}
+:root[data-theme="dark"] {
+  --bg0: #121317;
+  --luz-1: radial-gradient(640px 480px at 18% 0%, rgba(46,124,246,.20), transparent 70%);
+  --luz-2: radial-gradient(900px 600px at 100% 100%, rgba(80,120,200,.10), transparent 70%);
+  --vineta: radial-gradient(120% 100% at 50% 50%, transparent 60%, rgba(0,0,0,.35));
+  --grafito: rgba(24,25,31,.78); --grafito-op: #18191F;
+  --vidrio: rgba(255,255,255,.045); --canto: rgba(255,255,255,.08); --brillo: inset 0 1px 0 rgba(255,255,255,.07);
+  --vidrio-f: rgba(28,29,36,.62); --vidrio-fl: rgba(24,25,31,.86); --vidrio-blur: blur(16px) saturate(140%);
+  --sombra-f: 0 16px 48px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); --sombra: 0 1px 2px rgba(0,0,0,.3);
+  --papel: #26231F; --papel-canto: rgba(255,228,190,.10); --elev-solido: #1E1F26;
+  --hover: rgba(255,255,255,.05); --sel: rgba(46,124,246,.14); --hair: rgba(255,255,255,.07); --hair2: rgba(255,255,255,.14);
+  --ink: #F4F4F6; --body: #BDBDC7; --soft: #9A9AA6;
+  --acc-t: #7EB4FF; --acc-soft: rgba(46,124,246,.16); --luz: rgba(46,124,246,.55);
+  --halo: 0 0 0 1px rgba(46,124,246,.35), 0 0 28px rgba(46,124,246,.22);
+  --ok: #5ED38B; --err: #F28B82; --warn: #F0A94E; --ok-bg: rgba(94,211,139,.12); --err-bg: rgba(242,139,130,.12); --warn-bg: rgba(240,169,78,.12);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg0: #EEF0F4;
+  --luz-1: radial-gradient(640px 480px at 18% 0%, rgba(46,124,246,.16), transparent 70%);
+  --luz-2: radial-gradient(900px 600px at 100% 100%, rgba(46,124,246,.08), transparent 70%);
+  --vineta: radial-gradient(120% 100% at 50% 50%, transparent 60%, rgba(27,27,32,.08));
+  --grafito: rgba(255,255,255,.72); --grafito-op: #FFFFFF;
+  --vidrio: rgba(255,255,255,.60); --canto: rgba(27,27,32,.08); --brillo: inset 0 1px 0 rgba(255,255,255,.9);
+  --vidrio-f: rgba(255,255,255,.66); --vidrio-fl: rgba(255,255,255,.88); --vidrio-blur: blur(16px) saturate(120%);
+  --sombra-f: 0 16px 48px rgba(27,27,32,.14), inset 0 1px 0 #FFFFFF; --sombra: 0 1px 2px rgba(27,27,32,.06);
+  --papel: #F7F2EA; --papel-canto: rgba(120,90,40,.14); --elev-solido: #FFFFFF;
+  --hover: rgba(27,27,32,.045); --sel: rgba(46,124,246,.10); --hair: rgba(27,27,32,.08); --hair2: rgba(27,27,32,.16);
+  --ink: #17181C; --body: #363842; --soft: #5F6170;
+  --acc-t: #1D5FC4; --acc-soft: rgba(46,124,246,.10); --luz: rgba(46,124,246,.45);
+  --halo: 0 0 0 1px rgba(46,124,246,.35), 0 0 28px rgba(46,124,246,.18);
+  --ok: #1E8A4C; --err: #B3261E; --warn: #B25E09; --ok-bg: #E8F5EE; --err-bg: #F9E9E8; --warn-bg: #FBF0E2;
+  color-scheme: light;
+}
+
+/* ---------- base ---------- */
+* { box-sizing: border-box; margin: 0; font-family: var(--sans); font-variant-numeric: tabular-nums; }
+html, body { height: 100%; }
+body { font-size: var(--f-14); line-height: 20px; color: var(--body); background: var(--bg0); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; box-shadow: 0 0 0 4px var(--bg0); }
+* { scrollbar-width: thin; scrollbar-color: var(--hair2) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--hair2); border: 3px solid transparent; background-clip: padding-box; border-radius: 6px; }
+.soft { color: var(--soft); }
+b { font-weight: 600; }
+.t-display { font-size: var(--f-22); line-height: 28px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
+.t-title { font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
+.t-body { font-size: var(--f-14); line-height: 20px; font-weight: 400; }
+.t-body-m { font-size: var(--f-14); line-height: 20px; font-weight: 500; color: var(--ink); }
+.t-meta { font-size: var(--f-12); line-height: 16px; font-weight: 500; letter-spacing: .01em; color: var(--soft); }
+.t-label { font-size: var(--f-11); line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); display: block; }
+.t-cron { font-size: var(--f-28); line-height: 32px; font-weight: 300; letter-spacing: -.02em; color: var(--ink); }
+.t-mono { font-size: var(--f-13); line-height: 18px; font-weight: 600; letter-spacing: .04em; }
+
+/* ---------- capa ambiente (fija, nunca se anima) ---------- */
+.ambiente { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: var(--luz-1), var(--luz-2), var(--vineta); }
+[data-efectos="apagado"] .ambiente, [data-efectos="medio"] .ambiente { display: none; }
+
+/* ---------- materiales ---------- */
+.vid { background: var(--vidrio); border: 1px solid var(--canto); box-shadow: var(--brillo); border-radius: 10px; }
+.vid-f { background: var(--vidrio-f); border: 1px solid var(--canto); box-shadow: var(--sombra-f); border-radius: 14px; -webkit-backdrop-filter: var(--vidrio-blur); backdrop-filter: var(--vidrio-blur); }
+[data-efectos="apagado"] .vid-f { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--elev-solido); }
+.papel { background: var(--papel); border: 1px solid var(--papel-canto); border-radius: 10px; }
+.grafito { background: var(--grafito); }
+[data-efectos="apagado"] .grafito { background: var(--grafito-op); }
+
+/* interactivo de vidrio: eleva, aclara el canto, comprime al pulsar */
+.vid-i { cursor: pointer; transition: translate 160ms var(--salida), border-color 160ms var(--salida), background-color 160ms var(--salida), box-shadow 160ms var(--salida), scale 160ms var(--salida); }
+.vid-i:hover { translate: 0 -1px; border-color: rgba(var(--acc-rgb), .45); box-shadow: var(--brillo), var(--sombra); }
+.vid-i:active { scale: .985; transition-duration: 80ms; }
+
+/* ---------- botones, chips, campos ---------- */
+.btn { height: 32px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--body); font-weight: 500; cursor: pointer; white-space: nowrap;
+  transition: translate 160ms var(--salida), border-color 160ms var(--salida), background-color 160ms var(--salida), color 160ms var(--salida), scale 160ms var(--salida), box-shadow 160ms var(--salida); }
+.btn:hover:not(:disabled) { background: var(--vidrio); border-color: var(--canto); color: var(--ink); translate: 0 -1px; }
+.btn:active:not(:disabled) { scale: .985; transition-duration: 80ms; }
+.btn[aria-pressed="true"], .btn[aria-expanded="true"] { background: var(--acc-soft); color: var(--acc-t); }
+.btn-primary { background: var(--acc); color: #FFF; font-weight: 600; box-shadow: 0 1px 2px rgba(var(--acc-rgb), .4); }
+.btn-primary:hover:not(:disabled) { background: var(--acc); color: #FFF; filter: brightness(1.06); border-color: transparent; }
+.btn-mini { height: 24px; padding: 0 8px; font-size: var(--f-12); line-height: 16px; border-color: var(--hair2); }
+.btn-mini.btn-ghost { border-color: transparent; }
+.btn-terminar { color: var(--err); }
+.btn-bandeja { position: relative; }
+.btn-bandeja.recibe { animation: recibe 240ms var(--muelle); }
+@keyframes recibe { 50% { scale: 1.08; } }
+.min { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 0; border-radius: 4px; background: var(--acc-soft); color: var(--acc-t); font-size: var(--f-12); line-height: 16px; font-weight: 500; cursor: pointer;
+  transition: background-color 120ms var(--salida), scale 120ms var(--salida); }
+.min:hover { background: rgba(var(--acc-rgb), .26); }
+.min:active { scale: .96; }
+.chip-f { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 2px 8px; border: 1px solid var(--hair2); border-radius: 4px; background: transparent; color: var(--body); cursor: pointer; font-size: var(--f-12); line-height: 16px; font-weight: 500;
+  transition: translate 160ms var(--salida), background-color 160ms var(--salida), border-color 160ms var(--salida), color 160ms var(--salida), scale 160ms var(--salida); }
+.chip-f:hover { background: var(--vidrio); translate: 0 -1px; color: var(--ink); }
+.chip-f:active { scale: .985; }
+.chip-f[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc-t); border-color: transparent; }
+.chip-f .n { color: var(--soft); }
+.chip-f[aria-pressed="true"] .n { color: var(--acc-t); }
+.input { width: 100%; height: 32px; padding: 0 12px; border: 1px solid var(--hair2); border-radius: 8px; background: transparent; color: var(--ink); transition: border-color 160ms var(--salida); }
+.input::placeholder { color: var(--soft); }
+.input:hover { border-color: rgba(var(--acc-rgb), .45); }
+.papel .input { background: transparent; border-color: var(--papel-canto); }
+
+/* ---------- estructura ---------- */
+.app { position: relative; z-index: 1; display: flex; flex-direction: column; width: 1440px; height: 100vh; min-height: 820px; margin: 0 auto; }
+.top { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 16px; border-bottom: 1px solid var(--hair); flex: none; }
+.brand { display: flex; align-items: center; gap: 10px; flex: none; }
+.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; font-size: var(--f-12); font-weight: 500; background: var(--warn-bg); color: var(--ink); }
+.top-reunion { flex: 1; min-width: 0; display: flex; align-items: center; gap: 16px; }
+.rec { width: 8px; height: 8px; border-radius: 50%; background: var(--err); flex: none; animation: rec 1.2s var(--vaiven) infinite alternate; }
+@keyframes rec { from { opacity: 1; } to { opacity: .35; } }
+.reunion-id { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
+.medidores { display: flex; gap: 16px; flex: none; }
+.medidor { display: flex; align-items: center; gap: 8px; }
+.vu { display: flex; gap: 2px; align-items: center; height: 12px; }
+.vu i { display: block; width: 3px; height: 12px; background: var(--hair2); border-radius: 1px; }
+.vu i.on { background: var(--acc); }
+.reloj { min-width: 112px; text-align: right; flex: none; }
+.barra-b { display: flex; gap: 4px; flex: none; }
+.top-r { display: flex; gap: 4px; flex: none; }
+.top .btn { padding: 0 8px; }
+.reunion-id .t-body-m { white-space: nowrap; }
+
+/* ---------- banda Orquestación ---------- */
+.orq { flex: none; border-bottom: 1px solid var(--hair); display: grid; grid-template-rows: 1fr; transition: grid-template-rows 260ms var(--salida); }
+.orq[data-plegado="true"] { grid-template-rows: 0fr; }
+.orq > .orq-in { min-height: 0; overflow: hidden; display: grid; grid-template-columns: 408px minmax(0, 1fr); }
+.orq-linea { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; column-gap: 8px; padding: 12px 16px; align-content: start; row-gap: 2px; }
+.ind { width: 6px; height: 6px; border-radius: 50%; margin-top: 7px; border: 1px solid var(--soft); grid-row: 1; }
+.ind.on { background: var(--acc); border-color: var(--acc); }
+.orq-estado { grid-column: 2 / -1; }
+.orq-fila-barra { grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; min-height: 16px; }
+.barra-pal { display: block; width: 56px; height: 3px; background: var(--hair2); border-radius: 2px; }
+.barra-pal i { display: block; height: 3px; width: 44px; background: var(--acc); border-radius: 2px; transition: width 180ms var(--salida); }
+.orq-ult { grid-column: 2; }
+.orq-acc { grid-column: 3; grid-row: 3; display: flex; }
+.orq-cuerpo { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 48px 48px; column-gap: 12px; row-gap: 6px; padding: 10px 16px 10px 0; }
+.orq-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.enlace { stroke: var(--hair2); stroke-width: 1; fill: none; }
+.haz-g { stroke: var(--acc); stroke-width: 6; fill: none; opacity: 0; stroke-linecap: round; }
+.haz { stroke: var(--acc); stroke-width: 2; fill: none; stroke-dasharray: 10 14; opacity: 0; stroke-linecap: round; }
+.haz.on { opacity: 1; animation: haz 600ms linear infinite; }
+.haz-g.on { opacity: .22; }
+@keyframes haz { to { stroke-dashoffset: -24; } }
+.pulso-s { stroke: var(--acc); stroke-width: 2; fill: none; stroke-dasharray: 14 200; stroke-dashoffset: 14; opacity: 0; }
+.pulso-s.va { animation: pulso-s 400ms var(--salida) both; }
+@keyframes pulso-s { from { opacity: 1; stroke-dashoffset: 14; } to { opacity: 0; stroke-dashoffset: -200; } }
+.nodo { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0 6px 0 5px; text-align: left; border-radius: 8px; color: var(--body); }
+.nodo .mono { width: 24px; height: 24px; border-radius: 6px; font-size: 10px; }
+.nodo-t { min-width: 0; display: flex; flex-direction: column; }
+.nodo-nombre { font-size: var(--f-12); line-height: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.nodo-l2 { font-size: var(--f-11); line-height: 13px; font-weight: 500; color: var(--soft); overflow-wrap: anywhere; }
+.nodo[data-estado="omitido"] { border-style: dashed; }
+.nodo[data-estado="omitido"] .nodo-nombre { color: var(--soft); }
+.nodo[data-estado="hecho"] .nodo-l2 { color: var(--body); }
+.nodo[data-estado="trabajando"] .nodo-l2 { color: var(--acc-t); }
+
+/* monograma */
+.mono { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: none; border-radius: 8px; background: var(--acc-soft); color: var(--acc-t); font-size: var(--f-12); font-weight: 600; letter-spacing: .04em; }
+.mono.local { background: transparent; border: 1px dashed var(--hair2); color: var(--soft); }
+
+/* ---------- luz de trabajo (solo con tarea abierta) ---------- */
+.trab { box-shadow: var(--brillo), var(--halo); border-color: rgba(var(--acc-rgb), .35); }
+.trab::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--ang), transparent 0deg, transparent 230deg, var(--acc) 330deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: gira 1600ms linear infinite, aparece 180ms var(--salida) both; }
+@keyframes gira { to { --ang: 360deg; } }
+@keyframes aparece { from { opacity: 0; } to { opacity: 1; } }
+[data-efectos="apagado"] .trab::after { display: none; }
+.turno { border-color: var(--acc-t) !important; }
+.pulsa-h { animation: pulsa-h 400ms var(--muelle); }
+@keyframes pulsa-h { 30% { box-shadow: var(--halo); } 100% { box-shadow: none; } }
+
+/* ---------- banda Sesión ---------- */
+.sesion-banda { flex: none; margin: 0 24px; border-bottom: 1px solid var(--hair); }
+.sb-cab { display: flex; align-items: center; gap: 12px; height: 28px; }
+.sb-plegar { display: inline-flex; align-items: center; gap: 6px; height: 24px; border: 0; background: transparent; cursor: pointer; padding: 0; }
+.sb-plegar::before { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--soft); }
+.sb-filtros { margin-left: auto; display: flex; gap: 2px; }
+.sb-filtro { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; cursor: pointer; color: var(--ink); font-size: var(--f-12); font-weight: 500; transition: background-color 160ms var(--salida); }
+.sb-filtro:hover { background: var(--hover); }
+.sb-lane { display: grid; grid-template-columns: 72px minmax(0, 1fr); }
+.sb-lane + .sb-lane { border-top: 1px solid var(--hair); }
+.sb-etq { align-self: center; }
+.sb-plot { position: relative; margin-right: 24px; }
+.sb-lane-eje .sb-plot { height: 14px; }
+.sb-lane-temas .sb-plot { height: 20px; }
+.sb-lane-obj .sb-plot { height: 22px; }
+.sb-lane-ins .sb-plot { height: 28px; }
+.sb-lane-tu .sb-plot { height: 14px; }
+.sb-tick { position: absolute; top: 0; padding-left: 3px; border-left: 1px solid var(--hair2); height: 14px; line-height: 14px; font-size: var(--f-11); color: var(--soft); white-space: nowrap; }
+.sb-analisis { position: absolute; bottom: 0; width: 1px; height: 5px; background: var(--acc); }
+.sb-tema { position: absolute; top: 2px; height: 16px; border-radius: 4px; background: var(--acc-soft); padding: 0 6px; line-height: 16px; font-size: var(--f-12); color: var(--acc-t); white-space: nowrap; overflow: hidden; }
+.sb-tema[data-alt="1"] { background: var(--vidrio); color: var(--body); border: 1px solid var(--canto); line-height: 14px; }
+.sb-obj { position: absolute; top: 4px; height: 6px; border-radius: 3px; background: var(--acc); opacity: .75; }
+.sb-obj.cubierto { background: var(--ok); opacity: 1; }
+.sb-m { position: absolute; display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; padding: 0; border: 0; border-radius: 4px; background: transparent; cursor: pointer; transition: background-color 160ms var(--salida), scale 160ms var(--salida); }
+.sb-m:hover { background: var(--hover); scale: 1.25; }
+.sb-ahora { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--acc); pointer-events: none; }
+.sb-ahora-t { position: absolute; top: 0; right: 4px; font-size: var(--f-11); color: var(--acc-t); font-weight: 600; }
+
+/* glifos por tipo */
+.g { flex: none; display: block; }
+.g .lleno { fill: currentColor; stroke: none; }
+.g .hueco { fill: none; stroke: currentColor; stroke-width: 1.6; }
+.g .disc { stroke-dasharray: 2.4 1.8; }
+.c-decision { color: var(--ink); } .c-pendiente { color: var(--acc); } .c-pregunta { color: var(--body); } .c-riesgo { color: var(--err); }
+.c-contradiccion { color: var(--err); } .c-posible { color: var(--warn); } .c-idea { color: var(--soft); } .c-regla { color: var(--body); }
+.c-definicion { color: var(--acc-t); } .c-objetivo { color: var(--warn); } .c-tu { color: var(--acc-t); }
+
+/* ---------- cuerpo ---------- */
+.reunion-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 464px 448px 448px; gap: 16px; padding: 0 24px; }
+.col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.col-eq, .col-obj { padding-left: 16px; border-left: 1px solid var(--hair); }
+.panel-h { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 12px 0 8px; flex: none; border-bottom: 1px solid var(--hair); transition: box-shadow 400ms var(--salida); border-radius: 4px; }
+.panel-h > :first-child { flex: 1; }
+.col-scroll { flex: 1; min-height: 0; overflow: auto; padding: 0 8px 16px 0; overflow-anchor: auto; }
+.grupo-h { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-top: 16px; border-bottom: 1px solid var(--hair); }
+
+/* transcripción (grafito: sin caja, solo hover de fondo) */
+.trans { flex: 1; min-height: 0; overflow: auto; padding: 8px 8px 8px 0; }
+.lin { padding: 6px 8px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; transition: background-color 160ms var(--salida), border-color 160ms var(--salida); }
+.lin:hover { background: var(--hover); }
+.lin.cambia { margin-top: 8px; }
+.lin-m { display: flex; gap: 8px; align-items: baseline; }
+.lin .q { color: var(--acc-t); font-weight: 600; }
+.lin.reunion .q { color: var(--soft); }
+.lin.destino { background: var(--sel); border-left-color: var(--acc); }
+.sep-analizado { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.sep-analizado::before, .sep-analizado::after { content: ""; flex: 1; height: 1px; background: var(--hair2); }
+.notas-p { flex: none; margin: 8px 8px 16px 0; padding: 10px 12px 12px; }
+.nota-rapida { display: flex; gap: 6px; align-items: center; margin: 6px 0 8px; }
+.nota-rapida .input { flex: 1; }
+.notas { display: block; width: 100%; height: 64px; border: 1px solid var(--papel-canto); border-radius: 8px; resize: none; padding: 6px 8px; background: transparent; color: var(--ink); }
+.notas::placeholder { color: var(--soft); }
+
+/* equipo */
+.eq-monitor { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; margin-top: 8px; padding: 4px 8px 4px 4px; text-align: left; color: var(--body); }
+.eq-ind { flex: none; width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--soft); }
+.eq-tarj { position: relative; display: block; width: 100%; min-height: 76px; margin-top: 8px; padding: 12px; text-align: left; color: var(--body); }
+.eq-tarj::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 1px; background: var(--acc); opacity: 0; transition: opacity 180ms var(--salida); }
+.eq-tarj[data-estado="trabajando"]::before { opacity: 1; }
+.eq-l1 { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.eq-nombre { flex: 1; min-width: 0; }
+.eq-estado { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.eq-tarj[data-estado="trabajando"] .eq-estado, .eq-tarj[data-estado="turno"] .eq-estado { color: var(--acc-t); }
+.eq-tarj[data-estado="hecho"] .eq-estado { color: var(--ink); }
+.eq-tarj[data-estado="trabajando"] .mono { background: var(--acc); color: #FFF; }
+.eq-marca { width: 12px; height: 12px; display: none; }
+.eq-tarj[data-estado="hecho"] .eq-marca { display: block; }
+.eq-marca path { fill: none; stroke: var(--ok); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 0; }
+.eq-tarj.traza .eq-marca path { animation: trazo 400ms var(--salida) both; }
+@keyframes trazo { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+.eq-l2 { display: block; margin-top: 6px; overflow-wrap: anywhere; text-wrap: pretty; }
+.eq-l2 .cat { color: var(--soft); font-weight: 600; }
+.eq-l3 { display: block; margin-top: 4px; }
+.eq-l2.entra { animation: sube 180ms var(--salida) both; }
+@keyframes sube { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+.eq-def-fila { display: block; width: 100%; min-height: 44px; padding: 8px 6px; border: 0; border-top: 1px solid var(--hair); background: transparent; text-align: left; cursor: pointer; color: var(--body); border-radius: 6px; transition: background-color 160ms var(--salida); }
+.eq-def-fila:first-of-type { border-top: 0; }
+.eq-def-fila:hover { background: var(--hover); }
+.eq-def-fila.nueva { animation: sube 180ms var(--salida) both; }
+.eq-fuente.local { color: var(--warn); }
+.eq-fila { display: block; width: 100%; min-height: 24px; padding: 4px 6px; border: 0; background: transparent; text-align: left; cursor: pointer; overflow-wrap: anywhere; border-radius: 6px; transition: background-color 160ms var(--salida); }
+.eq-fila:hover { background: var(--hover); }
+.eq-fila.apagada { color: var(--soft); }
+.eq-fila.ambar { color: var(--warn); }
+.eq-vacio { color: var(--soft); padding: 8px 6px; }
+
+/* objetivos, checks, insights */
+.obj { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; column-gap: 8px; min-height: 32px; padding: 4px 6px; border-radius: 6px; transition: background-color 160ms var(--salida); }
+.obj:hover { background: var(--hover); }
+.obj-ind svg { display: block; width: 10px; height: 10px; overflow: visible; }
+.obj-ind .aro { fill: none; stroke: var(--hair2); stroke-width: 1.2; }
+.obj-ind .mitad, .obj-ind .tic { display: none; }
+.obj-ind .tic { fill: none; stroke: #FFF; stroke-width: 1.2; stroke-linecap: round; }
+.obj.parcial .aro { stroke: var(--acc); } .obj.parcial .mitad { display: block; fill: var(--acc); }
+.obj.cubierto .aro { fill: var(--ok); stroke: var(--ok); } .obj.cubierto .tic { display: block; }
+.obj .visto { color: var(--soft); margin-left: 6px; }
+.checks-r summary { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-top: 16px; cursor: pointer; list-style: none; border-bottom: 1px solid var(--hair); }
+.checks-r summary::-webkit-details-marker { display: none; }
+.nuevos-barra { position: sticky; top: 0; z-index: 4; height: 0; display: flex; justify-content: flex-end; }
+.nuevos { position: relative; top: 8px; height: 22px; padding: 0 8px; border: 1px solid var(--canto); border-radius: 4px; background: var(--acc-soft); color: var(--acc-t); font-size: var(--f-12); font-weight: 500; cursor: pointer; animation: sube 180ms var(--salida) both; }
+.traza-f { display: flex; align-items: center; gap: 8px; min-height: 28px; margin-top: 12px; padding: 4px 8px; border-radius: 6px; color: var(--body); font-size: var(--f-12); line-height: 16px; font-weight: 500; }
+.tarj { position: relative; padding: 12px; margin: 8px 0; min-height: 44px; }
+.tarj::before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 2px; border-radius: 1px; background: var(--acc); opacity: 0; transition: opacity 400ms var(--salida); }
+.tarj.barra::before { opacity: 1; }
+.tarj.nueva { animation: sube 180ms var(--salida) both; }
+.tarj-c { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; min-height: 20px; }
+.tarj-c .cat { display: inline-flex; align-items: center; gap: 6px; flex: 1; }
+.tarj.pendiente .cat, .tarj.regla .cat { color: var(--acc-t); }
+.tarj.riesgo .cat, .tarj.contradiccion .cat { color: var(--err); }
+.tarj.posible .cat { color: var(--warn); }
+.tarj .tx { color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.tarj-meta { margin-top: 4px; }
+.pregunta-p { flex: none; margin: 8px 8px 16px 0; padding: 10px 12px 12px; }
+.pregunta-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; margin-top: 6px; align-items: center; }
+.pregunta-form select.input { width: auto; padding-right: 8px; }
+
+.pie { display: flex; align-items: center; gap: 16px; height: 28px; padding: 0 16px; border-top: 1px solid var(--hair); flex: none; white-space: nowrap; }
+.pie .grow { flex: 1; }
+
+/* ---------- notificaciones ---------- */
+#r-notifs { position: fixed; top: 52px; right: -8px; width: 408px; max-height: calc(100vh - 52px); padding: 4px 24px 24px; overflow-x: hidden; overflow-y: auto; z-index: 30; pointer-events: none; }
+.notif { pointer-events: auto; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; align-items: start; margin-bottom: 8px; padding: 12px 14px; will-change: transform, opacity;
+  animation: notif-in 320ms var(--salida) both; transition: box-shadow 160ms var(--salida); }
+.notif:hover { box-shadow: var(--sombra-f), 0 20px 56px rgba(0,0,0,.2); }
+.notif:nth-child(n+5) { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--elev-solido); }
+@keyframes notif-in { from { opacity: 0; translate: 0 -12px; scale: .97; filter: blur(6px); } to { opacity: 1; translate: 0 0; scale: 1; filter: blur(0); } }
+[data-efectos="medio"] .notif, [data-efectos="apagado"] .notif { animation-name: notif-in-plano; }
+@keyframes notif-in-plano { from { opacity: 0; translate: 0 -12px; scale: .97; } to { opacity: 1; translate: 0 0; scale: 1; } }
+.notif.sale { animation: none; }
+.n-l1 { display: flex; align-items: center; gap: 8px; min-height: 24px; }
+.n-nombre { flex: 1; min-width: 0; color: var(--ink); }
+.n-x { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--soft); font-size: 16px; line-height: 24px; cursor: pointer; transition: background-color 160ms var(--salida), color 160ms var(--salida); position: relative; }
+.n-x::after { content: ""; position: absolute; inset: -4px; }
+.n-x:hover { background: var(--hover); color: var(--ink); }
+.n-cat { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.notif[data-k="pendiente"] .n-cat, .notif[data-k="regla"] .n-cat, .notif[data-k="definicion"] .n-cat { color: var(--acc-t); }
+.notif[data-k="riesgo"] .n-cat, .notif[data-k="contradiccion"] .n-cat { color: var(--err); }
+.notif[data-k="posible"] .n-cat, .notif[data-k="objetivo"] .n-cat { color: var(--warn); }
+.notif[data-k="decision"] .mono { background: var(--ink); color: var(--bg0); }
+.notif[data-k="pendiente"] .mono { background: var(--acc); color: #FFF; }
+.notif[data-k="riesgo"] .mono, .notif[data-k="contradiccion"] .mono { background: var(--err-bg); color: var(--err); }
+.notif[data-k="posible"] .mono { background: var(--warn-bg); color: var(--warn); }
+.n-tx { margin-top: 4px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.n-meta { margin-top: 4px; }
+.n-acc { display: flex; gap: 4px; margin: 8px 0 0 -8px; }
+.vuelo { animation: none !important; }
+
+/* ---------- Bandeja ---------- */
+#r-bandeja { position: fixed; top: 48px; bottom: 28px; right: 0; width: 420px; z-index: 28; overflow-y: auto; border-radius: 0; border-width: 0 0 0 1px; box-shadow: -16px 0 48px rgba(0,0,0,.25); background: var(--vidrio-fl);   /* vidrio de lectura: más cuerpo que una notificación */
+  animation: bandeja-in 200ms var(--salida) both; }
+:root[data-theme="light"] #r-bandeja { box-shadow: -16px 0 48px rgba(27,27,32,.10); }
+@keyframes bandeja-in { from { opacity: 0; translate: 16px 0; } to { opacity: 1; translate: 0 0; } }
+#r-bandeja.cierra { animation: bandeja-out 160ms var(--entrada) both; }
+@keyframes bandeja-out { to { opacity: 0; translate: 16px 0; } }
+.bj-cab { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; background: var(--grafito); }
+[data-efectos="apagado"] .bj-cab { background: var(--elev-solido); }
+.bj-cab .btn { margin-left: auto; }
+.bj-filtros { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 16px 10px; border-bottom: 1px solid var(--hair); }
+.bj-filtros .chip-f { animation: sube 180ms var(--salida) both; animation-delay: calc(var(--i) * 20ms); }
+.bj-f { padding: 12px 16px; border-bottom: 1px solid var(--hair); transition: background-color 160ms var(--salida); }
+.bj-f:hover { background: var(--hover); }
+.bj-f.nueva { animation: aparece 180ms var(--salida) both; }
+.bj-l1 { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.bj-cat { flex: 1; display: inline-flex; align-items: center; gap: 6px; }
+.bj-f[data-k="pendiente"] .bj-cat, .bj-f[data-k="regla"] .bj-cat, .bj-f[data-k="definicion"] .bj-cat { color: var(--acc-t); }
+.bj-f[data-k="riesgo"] .bj-cat, .bj-f[data-k="contradiccion"] .bj-cat { color: var(--err); }
+.bj-f[data-k="posible"] .bj-cat, .bj-f[data-k="objetivo"] .bj-cat { color: var(--warn); }
+.bj-tx { margin-top: 4px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.bj-meta { margin-top: 4px; }
+.bj-f .n-acc { margin-top: 4px; }
+.bj-vacio { padding: 16px; color: var(--soft); }
+
+/* ---------- mandos del prototipo ---------- */
+.demo { display: flex; align-items: center; gap: 6px; margin: 0 16px; }
+.demo .t-label { margin-right: 4px; }
+.demo .btn-mini { height: 22px; }
+
+/* ---------- movimiento reducido ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
+  .rec { opacity: 1; animation: none !important; }
+  .trab::after { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="ambiente" aria-hidden="true"></div>
+<div class="app">
+
+<header class="top grafito">
+  <div class="brand"><span class="t-body-m">WhisperMeet</span><span class="badge">Prototipo</span></div>
+  <div class="top-reunion" id="r-cab">
+    <span class="rec" id="r-rec" role="img" aria-label="Grabando"></span>
+    <div class="reunion-id"><span class="t-body-m">Integración de tarifas y cupos</span><span class="t-meta">· Hoteles Mar de Alborán</span></div>
+    <div class="medidores" aria-hidden="true">
+      <div class="medidor"><span class="t-label">Micro</span><div class="vu"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div></div>
+      <div class="medidor"><span class="t-label">Reunión</span><div class="vu"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div></div>
+    </div>
+    <div class="reloj t-cron" id="r-reloj" aria-label="Tiempo de reunión">00:10:10</div>
+    <div class="barra-b">
+      <button class="btn btn-bandeja" id="r-bandeja-btn" type="button" aria-expanded="false" aria-controls="r-bandeja">Bandeja <span id="r-bandeja-total">6</span></button>
+      <button class="btn" type="button">Contexto</button>
+      <button class="btn" type="button">Modo reunión</button>
+      <button class="btn" type="button">Pausa</button>
+      <button class="btn btn-primary" id="r-analizar" type="button">Analizar ahora</button>
+      <button class="btn btn-terminar" type="button">Terminar</button>
+    </div>
+  </div>
+  <div class="top-r">
+    <button class="btn" id="b-tema" type="button" title="Cambiar entre oscuro y claro">Modo</button>
+    <button class="btn" type="button">Ajustes</button>
+  </div>
+</header>
+
+<!-- Orquestación -->
+<div class="orq grafito" id="orq" data-plegado="false" aria-label="Orquestación de agentes">
+  <div class="orq-in">
+    <div class="orq-linea">
+      <i class="ind" id="orq-ind" aria-hidden="true"></i>
+      <div class="orq-estado t-body-m" id="orq-estado">Monitor · 10:10 · 528 palabras · Coordinador habla en 0:48 (decisión + fecha)</div>
+      <div class="orq-fila-barra t-meta"><span>118/150 palabras</span><span class="barra-pal"><i id="orq-barra"></i></span><span>próximo en 0:48</span></div>
+      <div class="orq-ult t-meta" id="orq-ult">último turno 03:57–05:40 · Constructor · haiku · 11,2 s · 2,9k</div>
+      <div class="orq-acc"><button class="btn btn-mini btn-ghost" type="button">Registro</button><button class="btn btn-mini btn-ghost" id="orq-plegar" type="button">Plegar</button></div>
+    </div>
+    <div class="orq-cuerpo" id="orq-cuerpo">
+      <svg class="orq-svg" id="orq-svg" aria-hidden="true"></svg>
+      <button class="nodo vid vid-i" type="button" data-estado="omitido" id="n-micro" style="grid-column:1;grid-row:1"><span class="mono local">M</span><span class="nodo-t"><span class="nodo-nombre">Escucha Micro</span><span class="nodo-l2">omitido · simulación</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="omitido" id="n-reu" style="grid-column:1;grid-row:2"><span class="mono local">R</span><span class="nodo-t"><span class="nodo-nombre">Escucha Reunión</span><span class="nodo-l2">omitido · simulación</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="espera" id="n-trans" style="grid-column:2;grid-row:1"><span class="mono local">TR</span><span class="nodo-t"><span class="nodo-nombre">Transcriptor</span><span class="nodo-l2">local · tramo 10:00–10:10</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="hecho" id="n-ctx" style="grid-column:2;grid-row:2"><span class="mono">CX</span><span class="nodo-t"><span class="nodo-nombre">Contexto</span><span class="nodo-l2">haiku · caché · 6 ficheros</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="espera" id="n-mon" style="grid-column:3;grid-row:1"><span class="mono local">MO</span><span class="nodo-t"><span class="nodo-nombre">Monitor</span><span class="nodo-l2">local · pasada hace 4 s</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="espera" id="n-eq" style="grid-column:4;grid-row:1"><span class="mono" id="n-eq-mono">EQ</span><span class="nodo-t"><span class="nodo-nombre">Equipo</span><span class="nodo-l2" id="n-eq-l2">haiku · 2 turnos · 7,6k</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="espera" id="n-ver" style="grid-column:5;grid-row:1"><span class="mono">VE</span><span class="nodo-t"><span class="nodo-nombre">Verificador</span><span class="nodo-l2">sonnet · al terminar</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="espera" id="n-con" style="grid-column:5;grid-row:2"><span class="mono">PR</span><span class="nodo-t"><span class="nodo-nombre">Consultas</span><span class="nodo-l2">haiku · solo si preguntas</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="espera" id="n-red" style="grid-column:6;grid-row:1"><span class="mono">RE</span><span class="nodo-t"><span class="nodo-nombre">Redactor</span><span class="nodo-l2">sonnet · al terminar</span></span></button>
+      <button class="nodo vid vid-i" type="button" data-estado="espera" id="n-pul" style="grid-column:7;grid-row:1"><span class="mono">PU</span><span class="nodo-t"><span class="nodo-nombre">Pulidor</span><span class="nodo-l2">opus · solo si lo pulsas</span></span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Sesión -->
+<div class="sesion-banda" aria-label="Línea de tiempo de la reunión">
+  <div class="sb-cab">
+    <button class="sb-plegar" type="button" aria-expanded="true"><span class="t-label">Sesión</span></button>
+    <span class="t-meta">00:00 – 10:10</span>
+    <div class="sb-filtros" id="sb-filtros"></div>
+  </div>
+  <div class="sb-lane sb-lane-eje"><span></span><div class="sb-plot" id="sb-eje"></div></div>
+  <div class="sb-lane sb-lane-temas"><span class="sb-etq t-label">Temas</span><div class="sb-plot">
+    <span class="sb-tema" style="left:0;width:33%">Alcance SAP</span><span class="sb-tema" data-alt="1" style="left:33.5%;width:30%">Fichero de tarifas</span><span class="sb-tema" style="left:64%;width:36%">Reglas del cupo</span>
+  </div></div>
+  <div class="sb-lane sb-lane-obj"><span class="sb-etq t-label">Objetivos</span><div class="sb-plot">
+    <span class="sb-obj cubierto" style="left:6%;width:28%" title="Objetivo 1 · cubierto"></span><span class="sb-obj" style="left:40%;width:22%;top:12px" title="Objetivo 2 · parcial"></span>
+  </div></div>
+  <div class="sb-lane sb-lane-ins"><span class="sb-etq t-label">Insights</span><div class="sb-plot" id="sb-ins"></div></div>
+  <div class="sb-lane sb-lane-tu"><span class="sb-etq t-label">Tú</span><div class="sb-plot" id="sb-tu"></div></div>
+</div>
+
+<main class="reunion-grid">
+  <section class="col" aria-label="Transcripción y notas">
+    <div class="panel-h"><span class="t-title">Transcripción</span><span class="t-meta">36 líneas</span></div>
+    <div class="trans" id="r-trans" tabindex="0"></div>
+    <div class="notas-p papel">
+      <div style="display:flex;align-items:center;gap:8px"><span class="t-label" style="flex:1">Notas</span><span class="t-meta">se envían con el siguiente turno</span></div>
+      <div class="nota-rapida"><input class="input" type="text" placeholder="Anota algo con el minuto actual…" aria-label="Anotación rápida"><button class="btn btn-mini" type="button">Comentario</button><button class="btn btn-mini" type="button">Pregunta</button><button class="btn btn-mini" type="button">Idea</button></div>
+      <textarea class="notas t-body" aria-label="Notas" placeholder="Escribe aquí lo que quieras que se tenga en cuenta."></textarea>
+    </div>
+  </section>
+
+  <section class="col col-eq" aria-label="Equipo">
+    <div class="panel-h" id="eq-h"><span class="t-title">Equipo</span><span class="t-meta" id="eq-cuenta">2 turnos · 7,6k</span></div>
+    <div class="col-scroll">
+      <button class="eq-monitor vid vid-i" type="button" title="Detección local, sin modelo"><span class="mono local" style="width:28px;height:28px;font-size:11px">MO</span><i class="eq-ind" id="eq-ind" aria-hidden="true"></i><span class="t-meta" id="eq-monitor-t">Monitor · local · última pasada hace 4 s · 3 señales</span></button>
+      <div id="eq-perfiles">
+        <div class="eq-tarj vid vid-i" role="button" tabindex="0" data-estado="turno" data-perfil="CO" aria-label="Coordinador, su turno">
+          <span class="eq-l1"><span class="mono">CO</span><span class="eq-nombre t-body-m">Coordinador</span><span class="eq-estado t-label"><svg class="eq-marca" viewBox="0 0 12 12"><path d="M2.5 6.5 5 9l4.5-6"/></svg><span class="eq-est-t">Su turno</span></span></span>
+          <span class="eq-l2 t-body"><span class="cat">Pendiente</span> · <button class="min" data-min="05:40">05:40</button> · Ana manda el fichero de tarifas el viernes</span>
+          <span class="eq-l3 t-meta">motivo: decisión + fecha · tramo 05:40–10:10</span>
+        </div>
+        <div class="eq-tarj vid vid-i" role="button" tabindex="0" data-estado="espera" data-perfil="AF" aria-label="Analista funcional, en espera">
+          <span class="eq-l1"><span class="mono">AF</span><span class="eq-nombre t-body-m">Analista funcional</span><span class="eq-estado t-label"><svg class="eq-marca" viewBox="0 0 12 12"><path d="M2.5 6.5 5 9l4.5-6"/></svg><span class="eq-est-t">En espera</span></span></span>
+          <span class="eq-l2 t-body"><span class="cat">Pregunta</span> · <button class="min" data-min="05:10">05:10</button> · ¿Quién mantiene el fichero de cupos cuando cambie la temporada?</span>
+          <span class="eq-l3 t-meta">siguiente: en 4:00 · motivo: alcance + pregunta</span>
+        </div>
+        <div class="eq-tarj vid vid-i" role="button" tabindex="0" data-estado="hecho" data-perfil="CT" aria-label="Constructor, hecho">
+          <span class="eq-l1"><span class="mono">CT</span><span class="eq-nombre t-body-m">Constructor</span><span class="eq-estado t-label"><svg class="eq-marca" viewBox="0 0 12 12"><path d="M2.5 6.5 5 9l4.5-6"/></svg><span class="eq-est-t">Hecho</span></span></span>
+          <span class="eq-l2 t-body"><span class="cat">Riesgo</span> · <button class="min" data-min="07:02">07:02</button> · La carga de tarifas depende de una exportación manual de SAP.</span>
+          <span class="eq-l3 t-meta">último turno 03:57–05:40 · haiku · 11,2 s · 2,9k</span>
+        </div>
+        <div class="eq-tarj vid vid-i" role="button" tabindex="0" data-estado="espera" data-perfil="RV" aria-label="Revisor, en espera">
+          <span class="eq-l1"><span class="mono">RV</span><span class="eq-nombre t-body-m">Revisor</span><span class="eq-estado t-label"><svg class="eq-marca" viewBox="0 0 12 12"><path d="M2.5 6.5 5 9l4.5-6"/></svg><span class="eq-est-t">En espera</span></span></span>
+          <span class="eq-l2 t-body"><span class="cat">Posible contradicción</span> · <button class="min" data-min="06:20">06:20</button> · Dicen que el alcance incluye grupos, pero el contexto lo deja fuera.</span>
+          <span class="eq-l3 t-meta">siguiente: por rotación en 3:40</span>
+        </div>
+      </div>
+      <section aria-label="Definiciones">
+        <div class="grupo-h" id="def-h"><span class="t-label">Definiciones</span><span class="t-meta" id="def-n">1</span></div>
+        <div id="eq-def-lista">
+          <button class="eq-def-fila" type="button"><span class="t-body-m">Cupo</span><span class="t-body" style="display:block">Número máximo de habitaciones que se reservan sin pasar por Revenue.</span><span class="t-meta eq-fuente local" style="display:block">08:40 · detección local</span></button>
+        </div>
+      </section>
+      <section aria-label="Minuto a minuto" title="Detección local, sin modelo">
+        <div class="grupo-h"><span class="t-label">Minuto a minuto</span><span class="t-meta">14</span></div>
+        <div id="eq-feed-lista">
+          <button class="eq-fila t-meta" type="button">10:05 · señal: decisión · «vale, lo cerramos así»</button>
+          <button class="eq-fila t-meta" type="button">10:02 · señal: fecha · «para el viernes»</button>
+          <button class="eq-fila t-meta apagada" type="button">09:50 · toca objetivo 2</button>
+          <button class="eq-fila t-meta" type="button">08:40 · definición (local) · Cupo</button>
+          <button class="eq-fila t-meta ambar" type="button">08:00 · objetivo 3 sin tratar desde hace 8 min</button>
+          <button class="eq-fila t-meta" type="button">07:02 · señal: sistema · «exportación de SAP»</button>
+          <button class="eq-fila t-meta" type="button">06:20 · señal: contraste · «eso no era así en el documento»</button>
+          <button class="eq-fila t-meta" type="button">05:40 · señal: responsable · «se encarga Ana»</button>
+          <button class="eq-fila t-meta" type="button">05:10 · señal: pregunta · «¿quién lo mantiene?»</button>
+          <button class="eq-fila t-meta apagada" type="button">04:30 · toca objetivo 1</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="col col-obj" aria-label="Objetivos, checks e insights">
+    <div class="col-scroll" id="r-plan-scroll">
+      <div class="nuevos-barra"><button class="nuevos" id="r-ins-nuevos" type="button" hidden>2 nuevos ↑</button></div>
+      <div class="panel-h" id="obj-h"><span class="t-title">Objetivos y checks</span><span class="t-meta">1/3 cubiertos</span></div>
+      <div id="r-obj-lista">
+        <div class="obj cubierto"><span class="obj-ind"><svg viewBox="0 0 10 10"><circle class="aro" cx="5" cy="5" r="4.4"/><path class="mitad" d="M5 .6A4.4 4.4 0 0 1 5 9.4z"/><path class="tic" d="M3 5.2 4.5 6.6 7.2 3.6"/></svg></span><span class="t-body-m">Cerrar el alcance de la integración con SAP</span><button class="min" data-min="04:05">04:05</button></div>
+        <div class="obj parcial"><span class="obj-ind"><svg viewBox="0 0 10 10"><circle class="aro" cx="5" cy="5" r="4.4"/><path class="mitad" d="M5 .6A4.4 4.4 0 0 1 5 9.4z"/><path class="tic" d="M3 5.2 4.5 6.6 7.2 3.6"/></svg></span><span class="t-body-m">Acordar quién mantiene el fichero de tarifas <span class="visto t-meta">visto 09:50</span></span><button class="min" data-min="05:40">05:40</button></div>
+        <div class="obj"><span class="obj-ind"><svg viewBox="0 0 10 10"><circle class="aro" cx="5" cy="5" r="4.4"/><path class="mitad" d="M5 .6A4.4 4.4 0 0 1 5 9.4z"/><path class="tic" d="M3 5.2 4.5 6.6 7.2 3.6"/></svg></span><span class="t-body-m">Definir la regla del cupo por temporada</span><span></span></div>
+      </div>
+      <details class="checks-r"><summary><span class="t-label">Checks</span><span class="t-meta">2/5</span></summary><div class="eq-vacio t-meta">Los checks de la sesión, como hoy: casilla, texto, chip y «Deshacer».</div></details>
+      <div class="panel-h" id="ins-h"><span class="t-title">Insights e ideas</span><span class="t-meta" id="ins-n">5</span><button class="chip-f" type="button" aria-pressed="true">Ideas</button></div>
+      <div id="r-insights">
+        <div class="traza-f vid">Turno 2 · Constructor · 03:57–05:40 · dato + sistema · haiku · 11,2 s · 2,9k · 2 tarjetas</div>
+        <div class="tarj vid vid-i riesgo"><div class="tarj-c"><span class="cat t-label"><svg class="g" width="12" height="12" viewBox="0 0 12 12"><path class="lleno" d="M6 1.5 11 10.5H1z"/></svg>Riesgo</span><button class="min" data-min="07:02">07:02</button></div><p class="tx t-body">La carga de tarifas depende de una exportación manual de SAP.</p><div class="tarj-meta t-meta">Sistema: SAP · Constructor</div></div>
+        <div class="tarj vid vid-i pendiente"><div class="tarj-c"><span class="cat t-label"><svg class="g" width="12" height="12" viewBox="0 0 12 12"><circle class="lleno" cx="6" cy="6" r="5"/></svg>Pendiente</span><button class="min" data-min="05:40">05:40</button></div><p class="tx t-body">Ana manda el fichero de tarifas el viernes.</p><div class="tarj-meta t-meta">Responsable: Ana · Fecha: viernes · Coordinador</div></div>
+        <div class="traza-f vid">Turno 1 · Analista funcional · 00:05–03:40 · definición + regla · haiku · 9,8 s · 2,7k · 3 tarjetas</div>
+        <div class="tarj vid vid-i decision"><div class="tarj-c"><span class="cat t-label"><svg class="g" width="12" height="12" viewBox="0 0 12 12"><rect class="lleno" x="1" y="1" width="10" height="10" rx="1"/></svg>Decisión</span><button class="min" data-min="04:05">04:05</button></div><p class="tx t-body">Se estima SAP en la primera fase y Revenue valida las tarifas antes del viernes.</p><div class="tarj-meta t-meta">Responsable: Ana · Coordinador</div></div>
+        <div class="tarj vid vid-i pregunta"><div class="tarj-c"><span class="cat t-label"><svg class="g" width="12" height="12" viewBox="0 0 12 12"><circle class="hueco" cx="6" cy="6" r="4.4"/></svg>Pregunta</span><button class="min" data-min="05:10">05:10</button></div><p class="tx t-body">¿Quién mantiene el fichero de cupos cuando cambie la temporada?</p><div class="tarj-meta t-meta">Analista funcional</div></div>
+        <div class="tarj vid vid-i posible"><div class="tarj-c"><span class="cat t-label"><svg class="g" width="12" height="12" viewBox="0 0 12 12"><path class="lleno" d="M6 .8 11.2 6 6 11.2.8 6z"/></svg>Posible contradicción</span><button class="min" data-min="06:20">06:20</button></div><p class="tx t-body">Dicen que el alcance incluye grupos, pero el contexto lo deja fuera.</p><div class="tarj-meta t-meta">contra: 03-alcance.md · Revisor</div></div>
+      </div>
+    </div>
+    <div class="pregunta-p papel">
+      <div style="display:flex;align-items:center;gap:8px"><span class="t-label" style="flex:1">Pregúntale</span><span class="t-meta">una llamada por pregunta, solo si la lanzas</span></div>
+      <form class="pregunta-form" onsubmit="return false"><input class="input" type="text" placeholder="Pregunta sobre lo que se está diciendo…" aria-label="Pregunta"><select class="input" aria-label="Modelo"><option>haiku</option><option>sonnet</option></select><button class="btn btn-primary" type="submit">Preguntar</button></form>
+    </div>
+  </section>
+</main>
+
+<footer class="pie grafito t-meta"><span>Contexto · 6 ficheros · 01-ficha.md, 02-plan.md, 03-alcance.md +3</span><span class="grow"></span>
+  <div class="demo" role="group" aria-label="Mandos del prototipo">
+    <span class="t-label">Prototipo</span>
+    <button class="btn btn-mini btn-primary" id="d-play" type="button">Reproducir turno</button>
+    <button class="btn btn-mini" id="d-tema" type="button">Tema: oscuro</button>
+    <button class="btn btn-mini" id="d-efectos" type="button">Efectos: alto</button>
+    <button class="btn btn-mini" id="d-bandeja" type="button">Bandeja</button>
+  </div>
+  <span class="grow"></span><span>Presupuesto 7,6k / 60k esta hora · haiku 2 · sonnet 0 · opus 0</span></footer>
+</div>
+
+<div id="r-notifs" aria-live="polite"></div>
+
+<aside id="r-bandeja" class="vid-f" hidden aria-label="Bandeja">
+  <div class="bj-cab"><span class="t-title">Bandeja <span id="bj-total">6</span></span><button class="btn btn-mini" id="r-bandeja-x" type="button">Cerrar</button></div>
+  <div class="bj-filtros" id="bj-filtros"></div>
+  <div id="r-bandeja-lista"></div>
+</aside>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const reducido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- glifos por tipo (forma + color + etiqueta) ---------- */
+  const GLIFO = {
+    decision: '<rect class="lleno" x="1" y="1" width="10" height="10" rx="1"/>',
+    pendiente: '<circle class="lleno" cx="6" cy="6" r="5"/>',
+    pregunta: '<circle class="hueco" cx="6" cy="6" r="4.4"/>',
+    riesgo: '<path class="lleno" d="M6 1.5 11 10.5H1z"/>',
+    contradiccion: '<path class="lleno" d="M6 .8 11.2 6 6 11.2.8 6z"/>',
+    posible: '<path class="lleno" d="M6 .8 11.2 6 6 11.2.8 6z"/>',
+    idea: '<path class="hueco" d="M6 1.4 10.6 6 6 10.6 1.4 6z"/>',
+    regla: '<rect class="hueco" x="1.8" y="1.8" width="8.4" height="8.4" rx="1"/>',
+    definicion: '<rect class="lleno" x="4.5" y="1" width="3" height="10" rx="1"/>',
+    objetivo: '<circle class="hueco disc" cx="6" cy="6" r="4.4"/>',
+    tu: '<rect class="hueco" x="1.8" y="1.8" width="8.4" height="8.4" rx="1"/>'
+  };
+  const ETQ = { decision: 'Decisión', pendiente: 'Pendiente', pregunta: 'Pregunta', riesgo: 'Riesgo', contradiccion: 'Contradicción', posible: 'Posible contradicción', idea: 'Idea', regla: 'Regla', definicion: 'Definición', objetivo: 'Objetivo sin tratar', tu: 'Tú' };
+  const glifo = (k, s) => `<svg class="g c-${k}" width="${s || 12}" height="${s || 12}" viewBox="0 0 12 12" aria-hidden="true">${GLIFO[k]}</svg>`;
+
+  /* ---------- transcripción ficticia ---------- */
+  const LINEAS = [
+    ['00:05', 'Reunión', 'Buenos días. Empezamos con el alcance de la integración con SAP: qué entra en la primera fase y qué queda como evolutivo.'],
+    ['00:40', 'Micro', 'Lo que había en el documento de alcance era solo tarifas base. Los grupos quedaban fuera.'],
+    ['01:30', 'Reunión', 'Ana insiste en que, si entra SAP, el presupuesto de ochenta y cuatro mil euros se queda corto. Necesitamos una estimación antes de aceptar nada.'],
+    ['03:05', 'Reunión', 'Ya, pero Ana insiste: o entra en la primera fase, o el go-live se retrasa hasta abril porque no tendrían a nadie que valide las facturas.'],
+    ['04:05', 'Reunión', 'De acuerdo. Luis se encarga de estimar la integración con SAP y la envía el viernes. Revenue valida las tarifas antes.'],
+    ['04:30', 'Micro', 'Y yo preparo un borrador de cambio de alcance para el comité del martes.'],
+    ['05:10', 'Reunión', 'Una duda: ¿quién mantiene el fichero de cupos cuando cambie la temporada? Ahora lo lleva Marta a mano.'],
+    ['05:40', 'Reunión', 'Lo del fichero de tarifas se encarga Ana, lo manda el viernes con la estimación.'],
+    ['06:20', 'Micro', 'Eso no era así en el documento: el alcance dejaba los grupos fuera y ahora estáis contando con ellos.'],
+    ['07:02', 'Reunión', 'La carga de tarifas depende de una exportación manual de SAP. Jorge la lanza cada lunes y a veces se olvida.'],
+    ['08:00', 'Reunión', 'Tercer punto, los usuarios. Piden que cada hotel tenga hasta diez usuarios en lugar de tres, porque en cada hotel hay varios comerciales de grupos.'],
+    ['08:40', 'Micro', 'Definimos cupo como el número máximo de habitaciones que se reservan sin pasar por Revenue.'],
+    ['09:50', 'Reunión', 'Sobre el fichero de tarifas: Marta lo seguirá manteniendo hasta que SAP lo exporte solo.'],
+    ['10:02', 'Reunión', 'Entonces lo cerramos para el viernes.'],
+    ['10:05', 'Micro', 'Vale, lo cerramos así.']
+  ];
+  const trans = $('#r-trans');
+  let prev = null;
+  LINEAS.forEach(([m, q, x], i) => {
+    if (i === 10) { const s = document.createElement('div'); s.className = 'sep-analizado'; s.innerHTML = '<span class="t-label">Analizado hasta 05:40</span>'; trans.appendChild(s); }
+    const d = document.createElement('div');
+    d.className = 'lin' + (q === 'Reunión' ? ' reunion' : '') + (prev && prev !== q ? ' cambia' : '');
+    d.dataset.min = m;
+    d.innerHTML = `<div class="lin-m t-meta"><span>${m}</span><span class="q">${q}</span></div><div class="x t-body">${x}</div>`;
+    trans.appendChild(d); prev = q;
+  });
+  trans.scrollTop = trans.scrollHeight;
+
+  /* chip de minuto: hover enciende la línea destino, clic la lleva al 30 % */
+  const lineaDe = m => $$('.lin').reduce((a, l) => (l.dataset.min <= m ? l : a), null);
+  document.addEventListener('mouseover', e => { const c = e.target.closest('.min'); if (!c) return; const l = lineaDe(c.dataset.min); if (l) l.classList.add('destino'); });
+  document.addEventListener('mouseout', e => { const c = e.target.closest('.min'); if (!c) return; const l = lineaDe(c.dataset.min); if (l && !l.dataset.fijo) l.classList.remove('destino'); });
+  document.addEventListener('click', e => {
+    const c = e.target.closest('.min'); if (!c) return; e.stopPropagation();
+    const l = lineaDe(c.dataset.min); if (!l) return;
+    trans.scrollTo({ top: l.offsetTop - trans.clientHeight * .3, behavior: reducido ? 'auto' : 'smooth' });
+    l.dataset.fijo = '1'; l.classList.add('destino');
+    setTimeout(() => { delete l.dataset.fijo; l.classList.remove('destino'); }, 1600);
+  });
+
+  /* ---------- banda Sesión ---------- */
+  const TOTAL = 610; const pct = s => (s / TOTAL * 100) + '%'; const seg = m => { const [a, b] = m.split(':').map(Number); return a * 60 + b; };
+  const eje = $('#sb-eje');
+  for (let t = 0; t <= TOTAL; t += 60) { const k = document.createElement('span'); k.className = 'sb-tick'; k.style.left = pct(t); k.textContent = `${String(Math.floor(t / 60)).padStart(2, '0')}:00`; eje.appendChild(k); }
+  [220, 340].forEach(t => { const a = document.createElement('span'); a.className = 'sb-analisis'; a.style.left = pct(t); a.title = 'Turno'; eje.appendChild(a); });
+  const INS = [['04:05', 'decision'], ['05:10', 'pregunta'], ['05:40', 'pendiente'], ['06:20', 'posible'], ['07:02', 'riesgo']];
+  INS.forEach(([m, k], i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sb-m min-m'; b.dataset.min = m; b.style.left = `calc(${pct(seg(m))} - 6px)`; b.style.top = (i % 2 ? 14 : 2) + 'px'; b.setAttribute('aria-label', `${ETQ[k]} ${m}`); b.innerHTML = glifo(k); b.classList.add('min'); b.style.background = 'transparent'; b.style.padding = 0; $('#sb-ins').appendChild(b); });
+  [['04:30', 'tu']].forEach(([m, k]) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sb-m'; b.style.left = `calc(${pct(seg(m))} - 6px)`; b.style.top = '1px'; b.innerHTML = glifo(k); $('#sb-tu').appendChild(b); });
+  ['decision', 'pendiente', 'pregunta', 'riesgo', 'contradiccion', 'idea', 'tu'].forEach(k => { const b = document.createElement('button'); b.type = 'button'; b.className = 'sb-filtro'; b.setAttribute('aria-pressed', 'true'); b.innerHTML = glifo(k) + `<span>${ETQ[k]}</span>`; b.onclick = () => b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); $('#sb-filtros').appendChild(b); });
+  const ahora = document.createElement('span'); ahora.className = 'sb-ahora'; ahora.style.left = pct(TOTAL); ahora.innerHTML = '<span class="sb-ahora-t">10:10</span>'; $('.sb-lane-eje .sb-plot').appendChild(ahora);
+  $$('.sb-lane .sb-plot').forEach((p, i) => { if (i === 0) return; const a = document.createElement('span'); a.className = 'sb-ahora'; a.style.left = pct(TOTAL); p.appendChild(a); });
+
+  /* ---------- conectores de la banda de orquestación ---------- */
+  const PARES = [['n-micro', 'n-trans'], ['n-reu', 'n-trans'], ['n-trans', 'n-mon'], ['n-mon', 'n-eq'], ['n-ctx', 'n-eq'], ['n-eq', 'n-ver'], ['n-ver', 'n-red'], ['n-red', 'n-pul'], ['n-eq', 'n-con']];
+  const svg = $('#orq-svg'); const cuerpo = $('#orq-cuerpo'); const haces = {};
+  function conectores() {
+    svg.innerHTML = ''; const R = cuerpo.getBoundingClientRect();
+    PARES.forEach(([a, b]) => {
+      const A = $('#' + a).getBoundingClientRect(), B = $('#' + b).getBoundingClientRect();
+      const x1 = A.right - R.left, y1 = A.top + A.height / 2 - R.top, x2 = B.left - R.left, y2 = B.top + B.height / 2 - R.top, dx = (x2 - x1) / 2;
+      const d = `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+      ['enlace', 'haz-g', 'haz', 'pulso-s'].forEach(c => { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); p.setAttribute('class', c); svg.appendChild(p); (haces[a + '>' + b] = haces[a + '>' + b] || {})[c] = p; });
+    });
+  }
+  conectores(); addEventListener('resize', conectores);
+  const haz = (k, on) => { const h = haces[k]; if (!h) return; h.haz.classList.toggle('on', on); h['haz-g'].classList.toggle('on', on); };
+  const pulsoConector = k => { const p = haces[k] && haces[k]['pulso-s']; if (!p) return; p.classList.remove('va'); void p.getBoundingClientRect(); p.classList.add('va'); };
+
+  /* plegar la banda con altura interpolada */
+  const orq = $('#orq');
+  $('#orq-plegar').onclick = e => { const p = orq.dataset.plegado === 'true'; orq.dataset.plegado = String(!p); e.target.textContent = p ? 'Plegar' : 'Orquestación'; if (p) setTimeout(conectores, 270); };
+
+  /* ---------- reloj (dato real en la app: aquí avanza desde 10:10) ---------- */
+  let t = 610; const reloj = $('#r-reloj');
+  const fmt = s => `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  setInterval(() => { t++; reloj.textContent = fmt(t); }, 1000);
+
+  /* ---------- Bandeja ---------- */
+  const bandeja = $('#r-bandeja'), btnB = $('#r-bandeja-btn'), lista = $('#r-bandeja-lista'), filtros = $('#bj-filtros');
+  const ITEMS = [
+    { k: 'riesgo', m: '07:02', x: 'La carga de tarifas depende de una exportación manual de SAP.', meta: 'Constructor · Sistema: SAP' },
+    { k: 'posible', m: '06:20', x: 'Dicen que el alcance incluye grupos, pero el contexto lo deja fuera.', meta: 'Revisor · contra: 03-alcance.md' },
+    { k: 'pendiente', m: '05:40', x: 'Ana manda el fichero de tarifas el viernes.', meta: 'Coordinador · Responsable: Ana · Fecha: viernes' },
+    { k: 'pregunta', m: '05:10', x: '¿Quién mantiene el fichero de cupos cuando cambie la temporada?', meta: 'Analista funcional' },
+    { k: 'decision', m: '04:05', x: 'Se estima SAP en la primera fase y Revenue valida las tarifas antes del viernes.', meta: 'Coordinador · Responsable: Ana · Fecha: viernes' },
+    { k: 'definicion', m: '08:40', x: 'Cupo: número máximo de habitaciones que se reservan sin pasar por Revenue.', meta: 'detección local' }
+  ];
+  let filtro = 'todo';
+  function pintarBandeja(nuevos) {
+    const cuenta = {}; ITEMS.forEach(i => { cuenta[i.k] = (cuenta[i.k] || 0) + 1; });
+    filtros.innerHTML = ''; let i = 0;
+    [['todo', 'Todo', ITEMS.length], ...Object.keys(ETQ).filter(k => cuenta[k]).map(k => [k, ETQ[k] + 's', cuenta[k]])].forEach(([k, e, n]) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'chip-f'; b.style.setProperty('--i', i++); b.setAttribute('aria-pressed', String(filtro === k));
+      b.innerHTML = (k === 'todo' ? '' : glifo(k)) + `<span>${e.replace('Posible contradiccións', 'Posibles').replace('Contradiccións', 'Contradicciones').replace('Definicións', 'Definiciones').replace('Decisións', 'Decisiones')}</span><span class="n">${n}</span>`;
+      b.onclick = () => { filtro = k; pintarBandeja(); }; filtros.appendChild(b);
+    });
+    lista.innerHTML = '';
+    ITEMS.filter(x => filtro === 'todo' || x.k === filtro).sort((a, b) => seg(b.m) - seg(a.m)).forEach(x => {
+      const f = document.createElement('div'); f.className = 'bj-f' + (nuevos && nuevos.includes(x) ? ' nueva' : ''); f.dataset.k = x.k;
+      f.innerHTML = `<div class="bj-l1"><span class="bj-cat t-label">${glifo(x.k)}${ETQ[x.k]}</span><button class="min" data-min="${x.m}">${x.m}</button></div><div class="bj-tx t-body">${x.x}</div><div class="bj-meta t-meta">${x.meta}</div><div class="n-acc"><button class="btn btn-mini btn-ghost" type="button">Ver</button></div>`;
+      lista.appendChild(f);
+    });
+    $('#bj-total').textContent = $('#r-bandeja-total').textContent = ITEMS.length;
+  }
+  function abrirBandeja(abrir) {
+    if (abrir) { bandeja.hidden = false; bandeja.classList.remove('cierra'); btnB.setAttribute('aria-expanded', 'true'); pintarBandeja(); $('#r-bandeja-x').focus(); }
+    else { bandeja.classList.add('cierra'); btnB.setAttribute('aria-expanded', 'false'); setTimeout(() => { bandeja.hidden = true; bandeja.classList.remove('cierra'); }, reducido ? 0 : 170); btnB.focus(); }
+  }
+  btnB.onclick = () => abrirBandeja(bandeja.hidden);
+  $('#d-bandeja').onclick = btnB.onclick;
+  $('#r-bandeja-x').onclick = () => abrirBandeja(false);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !bandeja.hidden) abrirBandeja(false); });
+
+  /* ---------- notificaciones: cola FIFO a 900 ms, vuelo a la Bandeja ---------- */
+  const pila = $('#r-notifs'); const cola = []; let colaT = null; const VIDA = 8000;   /* en la app: 12 s (20 s decisión, contradicción y riesgo) */
+  function notificar(n) { cola.push(n); if (!colaT) sacar(); }
+  function sacar() { const n = cola.shift(); if (!n) { colaT = null; return; } pintarNotif(n); colaT = setTimeout(sacar, 900); }
+  function pintarNotif(n) {
+    const el = document.createElement('div'); el.className = 'notif vid-f'; el.dataset.k = n.k;
+    el.innerHTML = `<span class="mono">${n.mono}</span><div class="n-cuerpo"><div class="n-l1"><span class="n-nombre t-mono">${n.perfil}</span><button class="min" data-min="${n.m}">${n.m}</button><button class="n-x" type="button" aria-label="Descartar">×</button></div>
+      <div class="n-cat t-label">${glifo(n.k)}${ETQ[n.k]}</div><div class="n-tx t-body">${n.x}</div>${n.meta ? `<div class="n-meta t-meta">${n.meta}</div>` : ''}
+      <div class="n-acc"><button class="btn btn-mini btn-ghost" type="button" data-accion="ver">Ver</button>${['pregunta', 'riesgo', 'posible', 'contradiccion'].includes(n.k) ? '<button class="btn btn-mini btn-ghost" type="button">Pregúntale</button>' : ''}</div></div>`;
+    pila.appendChild(el);
+    let resto = VIDA, desde = Date.now(), tm = setTimeout(() => volar(el, n), resto);
+    el.addEventListener('mouseenter', () => { clearTimeout(tm); resto -= Date.now() - desde; });
+    el.addEventListener('mouseleave', () => { desde = Date.now(); tm = setTimeout(() => volar(el, n), Math.max(resto, 400)); });
+    el.querySelector('.n-x').onclick = () => { clearTimeout(tm); volar(el, n); };
+    el.querySelector('[data-accion="ver"]').onclick = () => { clearTimeout(tm); el.querySelector('.min').click(); volar(el, n); };
+  }
+  function volar(el, n) {
+    if (!el.isConnected) return;
+    const r = el.getBoundingClientRect(), b = (bandeja.hidden ? btnB : bandeja).getBoundingClientRect();
+    ITEMS.unshift({ k: n.k, m: n.m, x: n.x, meta: n.meta || n.perfil }); if (!bandeja.hidden) pintarBandeja([ITEMS[0]]);
+    const fin = () => { el.remove(); $('#r-bandeja-total').textContent = ITEMS.length; btnB.classList.remove('recibe'); void btnB.offsetWidth; btnB.classList.add('recibe'); };
+    if (reducido) { fin(); return; }
+    const c = el.cloneNode(true); c.classList.add('vuelo'); c.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;margin:0;z-index:40;pointer-events:none;will-change:transform,opacity`;
+    document.body.appendChild(c);
+    el.classList.add('sale'); el.style.height = r.height + 'px'; el.style.overflow = 'hidden';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      c.style.transition = 'transform 320ms var(--entrada), opacity 320ms var(--entrada)';
+      c.style.transform = `translate(${b.left + b.width / 2 - (r.left + r.width / 2)}px, ${b.top + b.height / 2 - (r.top + r.height / 2)}px) scale(.6)`; c.style.opacity = '0';
+      el.style.transition = 'height 240ms var(--entrada), margin 240ms var(--entrada), opacity 180ms var(--entrada), padding 240ms var(--entrada)'; el.style.height = '0'; el.style.marginBottom = '0'; el.style.paddingTop = el.style.paddingBottom = '0'; el.style.opacity = '0';
+    }));
+    setTimeout(() => { c.remove(); fin(); }, 340);
+  }
+
+  /* ---------- secuencia de un turno (simula `tarea inicio` / `tarea fin` del backend) ---------- */
+  const co = $('[data-perfil="CO"]'), nEq = $('#n-eq'); let enCurso = false;
+  function estadoPerfil(el, estado, texto) { el.dataset.estado = estado; el.querySelector('.eq-est-t').textContent = texto; el.classList.toggle('trab', estado === 'trabajando'); el.classList.toggle('turno', estado === 'turno'); }
+  function pulsar(id) { const h = $('#' + id); h.classList.remove('pulsa-h'); void h.offsetWidth; h.classList.add('pulsa-h'); }
+  function insight(k, m, x, meta, i) {
+    const d = document.createElement('div'); d.className = `tarj vid vid-i ${k} nueva barra`; d.style.animationDelay = (35 * i) + 'ms';
+    d.innerHTML = `<div class="tarj-c"><span class="cat t-label">${glifo(k)}${ETQ[k]}</span><button class="min" data-min="${m}">${m}</button></div><p class="tx t-body">${x}</p><div class="tarj-meta t-meta">${meta}</div>`;
+    return d;
+  }
+  $('#d-play').onclick = $('#r-analizar').onclick = function reproducir() {
+    if (enCurso) return; enCurso = true;
+    const t0 = Date.now();
+    estadoPerfil(co, 'turno', 'Su turno'); co.querySelector('.eq-l3').textContent = 'motivo: decisión + fecha · tramo 05:40–10:10';
+    $('#orq-estado').textContent = 'Coordinador trabajando 05:40–10:10 con haiku…'; $('#orq-ind').classList.add('on');
+    setTimeout(() => {   /* tarea inicio */
+      estadoPerfil(co, 'trabajando', 'Trabajando 0:00');
+      nEq.dataset.estado = 'trabajando'; nEq.classList.add('trab'); $('#n-eq-mono').textContent = 'CO'; $('#n-eq-l2').textContent = 'Coordinador · haiku · 0:00';
+      haz('n-mon>n-eq', true); haz('n-ctx>n-eq', true);
+      const cron = setInterval(() => { const s = Math.floor((Date.now() - t0 - 600) / 1000); const v = `0:${String(s).padStart(2, '0')}`; co.querySelector('.eq-est-t').textContent = 'Trabajando ' + v; $('#n-eq-l2').textContent = 'Coordinador · haiku · ' + v; }, 1000);
+      setTimeout(() => {   /* tarea fin */
+        clearInterval(cron); haz('n-mon>n-eq', false); haz('n-ctx>n-eq', false);
+        estadoPerfil(co, 'hecho', 'Hecho'); co.classList.add('traza');
+        nEq.dataset.estado = 'hecho'; nEq.classList.remove('trab'); $('#n-eq-mono').textContent = 'EQ'; $('#n-eq-l2').textContent = 'haiku · 3 turnos · 10,5k'; $('#eq-cuenta').textContent = '3 turnos · 10,5k';
+        pulsoConector('n-eq>n-ver'); pulsoConector('n-eq>n-con');
+        const l2 = co.querySelector('.eq-l2'); l2.innerHTML = '<span class="cat">Decisión</span> · <button class="min" data-min="10:05">10:05</button> · Cerrado para el viernes: Ana manda tarifas y Luis la estimación de SAP.'; l2.classList.remove('entra'); void l2.offsetWidth; l2.classList.add('entra');
+        co.querySelector('.eq-l3').textContent = 'último turno 05:40–10:10 · haiku · 6,4 s · 2,9k';
+        $('#orq-estado').textContent = 'Monitor · 10:16 · 540 palabras · Analista funcional habla en 4:00 (alcance + pregunta)'; $('#orq-ind').classList.remove('on'); $('#orq-ult').textContent = 'último turno 05:40–10:10 · Coordinador · haiku · 6,4 s · 2,9k';
+        /* resultados: traza, tarjetas, pulso en la cabecera de Insights, notificaciones escalonadas */
+        const ins = $('#r-insights'); const tr = document.createElement('div'); tr.className = 'traza-f vid nueva'; tr.textContent = 'Turno 3 · Coordinador · 05:40–10:10 · decisión + fecha · haiku · 6,4 s · 2,9k · 3 tarjetas';
+        const nuevas = [
+          { k: 'decision', m: '10:05', x: 'Cerrado para el viernes: Ana manda el fichero de tarifas y Luis la estimación de SAP.', meta: 'Responsable: Ana, Luis · Fecha: viernes', perfil: 'Coordinador', mono: 'CO' },
+          { k: 'pendiente', m: '08:00', x: 'Ampliar a diez usuarios por hotel: hay que validar el coste de licencias.', meta: 'Responsable: sin asignar', perfil: 'Coordinador', mono: 'CO' },
+          { k: 'pregunta', m: '09:50', x: '¿Hasta qué fecha mantiene Marta el fichero de tarifas a mano?', meta: '', perfil: 'Coordinador', mono: 'CO' }
+        ];
+        ins.insertBefore(tr, ins.firstChild);
+        nuevas.slice().reverse().forEach((n, i) => ins.insertBefore(insight(n.k, n.m, n.x, (n.meta ? n.meta + ' · ' : '') + 'Coordinador', i), ins.children[1]));
+        $('#ins-n').textContent = '8'; pulsar('ins-h'); pulsar('obj-h');
+        $$('#r-obj-lista .obj')[1].className = 'obj cubierto'; $$('#obj-h .t-meta')[0].textContent = '2/3 cubiertos';
+        nuevas.forEach(notificar);
+        notificar({ k: 'objetivo', m: '10:16', x: 'objetivo 3 sin tratar desde hace 15 min', perfil: 'Monitor · local', mono: 'MO', meta: 'detección local' });
+        setTimeout(() => { ins.querySelectorAll('.tarj.barra').forEach(x => x.classList.remove('barra')); }, 8000);
+        /* vuelta a «En espera» con cuenta atrás real del enfriamiento */
+        let resto = 240;
+        setTimeout(() => { co.classList.remove('traza'); estadoPerfil(co, 'espera', 'En espera'); const iv = setInterval(() => { resto--; co.querySelector('.eq-l3').textContent = `siguiente: en ${Math.floor(resto / 60)}:${String(resto % 60).padStart(2, '0')} · último turno 05:40–10:10 · haiku · 6,4 s · 2,9k`; if (resto <= 0) clearInterval(iv); }, 1000); enCurso = false; }, 2500);
+      }, 6400);
+    }, 600);
+  };
+
+  /* ---------- tema y efectos ---------- */
+  const root = document.documentElement;
+  const ponTema = tm => { root.dataset.theme = tm; $('#d-tema').textContent = 'Tema: ' + (tm === 'dark' ? 'oscuro' : 'claro'); };
+  $('#d-tema').onclick = $('#b-tema').onclick = () => ponTema(root.dataset.theme === 'dark' ? 'light' : 'dark');
+  const EF = ['alto', 'medio', 'apagado'];
+  $('#d-efectos').onclick = () => { const i = (EF.indexOf(root.dataset.efectos) + 1) % 3; root.dataset.efectos = EF[i]; $('#d-efectos').textContent = 'Efectos: ' + EF[i]; };
+
+  /* parámetros para capturas: ?tema=light&efectos=medio&play=1&bandeja=1 */
+  const q = new URLSearchParams(location.search);
+  if (q.get('tema')) ponTema(q.get('tema'));
+  if (q.get('efectos')) { root.dataset.efectos = q.get('efectos'); $('#d-efectos').textContent = 'Efectos: ' + q.get('efectos'); }
+  if (q.get('play')) setTimeout(() => $('#d-play').click(), 200);
+  if (q.get('bandeja')) setTimeout(() => abrirBandeja(true), 300);
+
+  /* arranque: dos notificaciones ya en pantalla para ver la pila sin pulsar nada */
+  setTimeout(() => {
+    notificar({ k: 'riesgo', m: '07:02', x: 'La carga de tarifas depende de una exportación manual de SAP.', meta: 'Sistema: SAP', perfil: 'Constructor', mono: 'CT' });
+    notificar({ k: 'posible', m: '06:20', x: 'Dicen que el alcance incluye grupos, pero el contexto lo deja fuera.', meta: 'contra: 03-alcance.md', perfil: 'Revisor', mono: 'RV' });
+  }, 400);
+})();
+</script>
+</body>
+</html>
