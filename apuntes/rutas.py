@@ -29,6 +29,7 @@ CARPETA_CONTEXTO = "00. CONTEXTO (IA)"
 
 DIRS_EXCLUIDOS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".ssh", ".aws", ".azure",
                   ".gnupg", ".idea", ".vscode"}
+DIRS_EXCLUIDOS_MD = DIRS_EXCLUIDOS | {"dist", "build", "out", "target", ".next"}   # además: carpetas generadas (lectura de .md del proyecto)
 EXT_SECRETAS = {".pem", ".key", ".pfx", ".p12", ".pkcs12", ".kdbx", ".jks", ".keystore", ".ppk",
                 ".tfvars", ".tfstate", ".gpg", ".asc"}
 NOMBRES_PROTEGIDOS = {"claude.md", "agents.md"}
@@ -313,6 +314,95 @@ class Guardian:
         if _norm(p) != esperado:
             raise RutaProhibida("el proyecto no es una subcarpeta directa de la raíz")
         return p
+
+    # ---------- .md del proyecto (SOLO LECTURA: contexto ampliado, vista previa y «abrir») ----------
+    def md_del_proyecto(self, proyecto: str, profundidad: int = 4, tope_bytes: int = 200_000,
+                        plazo_s: float = 6.0, max_visitas: int = 6000) -> dict:
+        """Todos los .md bajo la carpeta del proyecto (recursivo, acotado), sin leerlos. Excluye `02. Sesiones (transcripciones)`
+        (las sesiones entran por el backlog), carpetas ocultas o generadas (.git, node_modules, .venv, dist, build…), enlaces
+        simbólicos y nombres con pinta de secreto. Devuelve `{ficheros, truncado}`; cada fichero: `ruta` (Path), `rel` (posix, desde
+        la carpeta del proyecto), `tam`, `mtime`, `prof` (0 = raíz) y `dejado` ("" o el motivo por el que NO se leerá: «tamaño» si
+        supera `tope_bytes`, «nube» si es un marcador de OneDrive sin descargar). La profundidad máxima y `plazo_s` y `max_visitas` acotan el recorrido (una carpeta lenta no bloquea: `truncado`)."""
+        import time as _t
+        pdir = self.proyecto_dir(proyecto)
+        base = os.fspath(pdir)
+        fin = _t.monotonic() + plazo_s
+        encontrados: list[dict] = []
+        truncado = False
+        visitas = 0
+        nivel = [(base, 0)]
+        while nivel and not truncado:
+            siguiente: list[tuple[str, int]] = []
+            for carpeta, prof in nivel:
+                try:
+                    with os.scandir(carpeta) as it:
+                        entradas = sorted(it, key=lambda e: e.name.lower())
+                except OSError:
+                    continue
+                for e in entradas:
+                    visitas += 1
+                    if visitas > max_visitas or _t.monotonic() > fin:
+                        truncado = True
+                        break
+                    nl = e.name.lower()
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            if (prof >= profundidad or e.name.startswith(".") or nl in DIRS_EXCLUIDOS_MD or es_secreto(e.name)
+                                    or (prof == 0 and nl == CARPETA_SESIONES.lower())):
+                                continue
+                            siguiente.append((e.path, prof + 1))
+                        elif e.is_file(follow_symlinks=False) and nl.endswith(".md") and not es_secreto(e.name):
+                            st = e.stat()
+                            dejado = "tamaño" if st.st_size > tope_bytes else ""
+                            if not dejado and getattr(st, "st_file_attributes", 0) & (0x400000 | 0x40000 | 0x1000):
+                                dejado = "nube"
+                            rel = os.path.relpath(e.path, base).replace(os.sep, "/")
+                            encontrados.append({"ruta": Path(e.path), "rel": rel, "tam": st.st_size, "mtime": st.st_mtime,
+                                                "prof": prof, "dejado": dejado})
+                    except OSError:
+                        continue
+                if truncado:
+                    break
+            nivel = siguiente
+        return {"ficheros": encontrados, "truncado": truncado}
+
+    def leer_md_proyecto(self, proyecto: str, ruta: os.PathLike | str, tope_bytes: int = 200_000) -> str:
+        """Lee un .md del proyecto (dentro de su carpeta, no de `02. Sesiones`, sin secretos, con tope y sin líneas con pinta de secreto)."""
+        pdir = self.proyecto_dir(proyecto)
+        self._comprobar_md_proyecto(ruta, pdir)
+        return self.leer(ruta, pdir, tope_bytes)
+
+    def _comprobar_md_proyecto(self, ruta, pdir: Path) -> Path:
+        p = Path(ruta)
+        if p.suffix.lower() != ".md":
+            raise RutaProhibida("solo se abren .md")
+        if not esta_dentro(pdir, p):
+            raise RutaProhibida("fuera de la carpeta del proyecto")
+        rel = Path(_norm(p)).relative_to(Path(_norm(pdir)))
+        if rel.parts and (es_secreto(rel) or any(x.startswith(".") or x.lower() in DIRS_EXCLUIDOS_MD for x in rel.parts[:-1])):
+            raise RutaProhibida("fichero no permitido")
+        if len(rel.parts) > 1 and rel.parts[0].lower() == CARPETA_SESIONES.lower():
+            raise RutaProhibida("las sesiones se abren desde el backlog")
+        if not p.is_file():
+            raise RutaProhibida("no es un fichero")
+        return p
+
+    def abrir_md_proyecto(self, proyecto: str, ruta, abridor=None) -> None:
+        """Abre un .md del proyecto con la aplicación del sistema (no escribe nada). `abridor` sustituye a `os.startfile` (pruebas)."""
+        p = self._comprobar_md_proyecto(ruta, self.proyecto_dir(proyecto))
+        self._abrir(p, abridor)
+
+    def abrir_carpeta_proyecto(self, proyecto: str, abridor=None) -> None:
+        """Abre la carpeta del proyecto en el explorador del sistema (no escribe nada)."""
+        self._abrir(self.proyecto_dir(proyecto), abridor)
+
+    @staticmethod
+    def _abrir(p: Path, abridor=None) -> None:
+        if abridor is None:
+            abridor = getattr(os, "startfile", None)
+            if abridor is None:
+                raise RutaProhibida("abrir con el sistema solo está disponible en Windows")
+        abridor(str(p))
 
     # ---------- comprobación común de escritura ----------
     def _comprobar_escritura(self, destino: Path, base: Path) -> None:

@@ -340,22 +340,28 @@
       UI.proy = typeof UI.sel === "string" ? (r.proyectos.find((p) => p.nombre === UI.sel) || null) : null;
       $("#i-raiz").textContent = "Raíz de proyectos: " + r.raiz + (r.proyectos.length ? "" : " (sin coincidencias)");
       pintarLista(); pintarSesiones(); validarInicio();
-    } catch (e) { $("#i-raiz").textContent = "No se pudieron cargar los proyectos: " + e.message; }
+    } catch (e) {
+      $("#i-raiz").textContent = "No se pudieron cargar los proyectos: " + e.message;
+      if (AP.hooks.errorLista) AP.hooks.errorLista(e);
+    }
+  }
+  // Elegir un proyecto (o la Bandeja, con clave null): la lista nueva (proyectos.js) y la de respaldo comparten esta función
+  function elegirProyecto(clave, proy = null) {
+    if (UI.sel !== clave) { UI.sesionPlan = undefined; if (UI.temaAuto && $("#i-tema").value === UI.temaAuto) $("#i-tema").value = ""; UI.temaAuto = ""; }
+    UI.sel = clave; UI.proy = proy;
+    safe(() => localStorage.setItem("apuntes_proy", clave === null ? "__bandeja__" : clave));
+    if (AP.hooks.alElegirProyecto) AP.hooks.alElegirProyecto(clave, proy);
+    pintarLista(); pintarSesiones(); validarInicio();
   }
   function pintarLista() {
+    if (AP.hooks.pintarLista) return AP.hooks.pintarLista();   // proyectos.js: secciones, favoritos, recientes, buscador y vista previa
     const l = $("#i-lista");
     l.replaceChildren();
     const fila = (clave, nombre, etiqueta, extra = "", proy = null) => h("button", { type: "button", role: "option", class: "item " + extra,
-      "aria-selected": String(UI.sel === clave), "data-clave": clave,
-      onclick: () => {
-        if (UI.sel !== clave) { UI.sesionPlan = undefined; if (UI.temaAuto && $("#i-tema").value === UI.temaAuto) $("#i-tema").value = ""; UI.temaAuto = ""; }
-        UI.sel = clave; UI.proy = proy;
-        safe(() => localStorage.setItem("apuntes_proy", clave === null ? "__bandeja__" : clave));
-        pintarLista(); pintarSesiones(); validarInicio();
-      } },
+      "aria-selected": String(UI.sel === clave), "data-clave": clave, onclick: () => elegirProyecto(clave, proy) },
       h("span", { class: "n" }, nombre), proy && proy.compartido ? h("span", { class: "tag comp", title: proy.ruta }, "compartida") : null,
       h("span", { class: "tag" }, etiqueta));
-    l.append(fila(null, "Bandeja (reunión sin proyecto)", "se guarda en apuntes\\bandeja", "bandeja"));
+    l.append(fila(null, "Bandeja (reunión sin proyecto)", "se guarda en apuntes\bandeja", "bandeja"));
     UI.proyectos.forEach((p) => l.append(fila(p.nombre, p.nombre,
       (p.compartido ? "se publica al terminar" : p.tiene_contexto ? "con contexto" : "sin contexto") + (p.plan ? " · con plan" : ""), "", p)));
   }
@@ -873,7 +879,7 @@
     }
   }
 
-  Object.assign(AP, { S, UI, h, $, $$, api, safe, mmss, kfmt, md, GRUPOS, crearChecks, tarjetaCambio, seccionPublicacion, alerta, reiniciarReunion,
+  Object.assign(AP, { S, UI, h, $, $$, api, safe, elegirProyecto, cargarProyectos, mmss, kfmt, md, GRUPOS, crearChecks, tarjetaCambio, seccionPublicacion, alerta, reiniciarReunion,
     repintar: () => repintar(), pintarEstadoReunion: () => pintarEstadoReunion(), hms: (s) => { s = Math.max(0, Math.floor(s || 0)); return `${String(Math.floor(s / 3600)).padStart(2, "0")}:${mmss(s % 3600)}`; } });
 
   // ------------------------------------------------------------ arranque

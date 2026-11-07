@@ -1,6 +1,7 @@
 """Escucha activa: disparo adaptativo, anotaciones del usuario, Pregúntale, proyectos genéricos y carpeta añadida.
 Modelo falso; sin red ni audio. El reloj de la reunión se fija a mano (`Reloj.fijar`) para controlar el tiempo."""
 import asyncio
+import os
 import json
 import shutil
 from pathlib import Path
@@ -324,6 +325,7 @@ def test_proyecto_sin_contexto_usa_claude_readme_y_docs_de_solo_lectura(montaje)
     (p / "docs" / "credenciales.md").write_text("usuario admin", encoding="utf-8")             # nombre de secreto: no se lee
     (p / "docs" / "notas.md").write_text("Nota breve\npassword: hunter2hunter2\n", encoding="utf-8")   # la línea con pinta de secreto se omite
     (p / "docs" / "notas.pdf").write_text("no", encoding="utf-8")
+    os.utime(p / "docs" / "notas.md", (1_700_000_000, 1_700_000_000))          # los «otros .md» van por cercanía a la raíz y novedad
     alt = CX.ficheros_alternativos(gestor.g, "Proyecto Libre")
     assert list(alt) == ["CLAUDE.md", "README.md", "docs/arquitectura.md", "docs/notas.md"]
     assert "hunter2" not in alt["docs/notas.md"] and "Nota breve" in alt["docs/notas.md"]

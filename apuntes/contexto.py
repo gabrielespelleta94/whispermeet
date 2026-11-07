@@ -5,6 +5,9 @@ import hashlib
 import math
 import os
 import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -38,7 +41,7 @@ def listar_proyectos(g: Guardian, q: str = "", excluir: tuple[Path, ...] = (), p
             "nombre": nombre, "compartido": compartido,
             "tiene_contexto": os.path.isdir(os.path.join(ruta, CARPETA_CONTEXTO)),
             "tiene_sesiones": (not compartido) and os.path.isdir(os.path.join(ruta, CARPETA_SESIONES)),
-            "ruta": str(ruta), "plan": planes.get(nombre.lower())})
+            "ruta": str(ruta), "plan": planes.get(nombre.lower()), "extra": True})
     try:
         entradas = sorted(os.scandir(g.raiz), key=lambda e: e.name.lower())
     except OSError:
@@ -56,8 +59,88 @@ def listar_proyectos(g: Guardian, q: str = "", excluir: tuple[Path, ...] = (), p
             "nombre": e.name, "compartido": False,
             "tiene_contexto": os.path.isdir(os.path.join(e.path, CARPETA_CONTEXTO)),
             "tiene_sesiones": os.path.isdir(os.path.join(e.path, CARPETA_SESIONES)),
-            "ruta": e.path, "plan": planes.get(e.name.lower())})
+            "ruta": e.path, "plan": planes.get(e.name.lower()), "extra": False})
     return out
+
+
+# ---------------------------------------------------------------- metadatos baratos de cada proyecto (n_sesiones, ultima_sesion, n_md)
+_RE_FECHA_SESION = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+_META_CACHE: dict[str, tuple] = {}          # ruta normalizada -> (clave de validez, valor)
+_META_LOCK = threading.Lock()
+_META_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="meta-proyecto")
+META_TTL_S = 120.0                           # el recuento de .md no cambia la fecha de la carpeta raíz: se refresca cada tanto
+
+
+def _carpetas_sesiones(g: Guardian, nombre: str, ruta: str | os.PathLike, compartido: bool) -> list[str]:
+    cs = [os.path.join(ruta, CARPETA_SESIONES)]
+    if compartido:   # las sesiones de un compartido viven también en copia local
+        try:
+            cs.append(os.fspath(g.carpeta_sesiones_local(nombre)))
+        except RutaProhibida:
+            pass
+    return cs
+
+
+def _calcular_meta(g: Guardian, nombre: str, ruta: str, compartido: bool, limites: dict) -> dict:
+    fechas: set[str] = set()
+    n_ses = 0
+    vistos: set[str] = set()
+    for c in _carpetas_sesiones(g, nombre, ruta, compartido):
+        try:
+            with os.scandir(c) as it:
+                for e in it:
+                    m = _RE_FECHA_SESION.match(e.name)
+                    if m and e.name.lower().endswith(".md") and e.name.lower() not in vistos and not es_secreto(e.name):
+                        vistos.add(e.name.lower())
+                        n_ses += 1
+                        fechas.add(m.group(1))
+        except OSError:
+            continue
+    n_md = None
+    try:
+        r = g.md_del_proyecto(nombre, profundidad=limites.get("profundidad", 4), plazo_s=1.0, max_visitas=2500)
+        n_md = len(r["ficheros"])
+    except (RutaProhibida, OSError):
+        pass
+    return {"n_sesiones": n_ses, "ultima_sesion": max(fechas) if fechas else None, "n_md": n_md}
+
+
+def _meta_de(g: Guardian, nombre: str, ruta: str, compartido: bool, limites: dict) -> dict:
+    """Calcula (o recupera de la caché por fecha de modificación) los metadatos; el que lo pide decide cuánto espera."""
+    clave_ruta = _norm(ruta)
+    try:
+        mt = (os.stat(ruta).st_mtime_ns, tuple(os.stat(c).st_mtime_ns if os.path.isdir(c) else 0
+                                               for c in _carpetas_sesiones(g, nombre, ruta, compartido)))
+    except OSError:
+        mt = None
+    with _META_LOCK:
+        previo = _META_CACHE.get(clave_ruta)
+    if previo and previo[0] == mt and time.monotonic() - previo[2] < META_TTL_S:
+        return previo[1]
+    valor = _calcular_meta(g, nombre, ruta, compartido, limites)
+    with _META_LOCK:
+        _META_CACHE[clave_ruta] = (mt, valor, time.monotonic())
+    return valor
+
+
+def enriquecer_proyectos(g: Guardian, lista: list[dict], limites: dict | None = None, plazo_s: float = 1.5) -> list[dict]:
+    """Añade `n_sesiones`, `ultima_sesion` (AAAA-MM-DD) y `n_md` a cada proyecto SIN bloquear: cada uno se calcula en un hilo propio y,
+    pasado `plazo_s` en total, los que no han terminado (carpeta lenta de OneDrive…) salen sin esos campos; el hilo sigue y la
+    caché los deja listos para la siguiente petición."""
+    limites = limites or {}
+    pendientes = {}
+    for p in lista:
+        try:
+            pendientes[id(p)] = (p, _META_POOL.submit(_meta_de, g, p["nombre"], p["ruta"], bool(p.get("compartido")), limites))
+        except RuntimeError:
+            break
+    fin = time.monotonic() + plazo_s
+    for p, fut in pendientes.values():
+        try:
+            p.update(fut.result(timeout=max(0.0, fin - time.monotonic())))
+        except Exception:  # noqa: BLE001 — tiempo agotado o carpeta ilegible: se omite
+            pass
+    return lista
 
 
 # ---------------------------------------------------------------- plantillas
@@ -154,52 +237,144 @@ def ficheros_contexto(g: Guardian, proyecto: str, tope_bytes: int = 200_000) -> 
     return out
 
 
-MAX_DOCS_ALTERNATIVOS = 8
-FICHEROS_ALTERNATIVOS = ("CLAUDE.md", "README.md")
+# Contexto ampliado de CUALQUIER proyecto: «00. CONTEXTO (IA)» (prioridad máxima, como siempre) + CLAUDE.md / AGENTS.md / README.md de la
+# raíz + todos los demás .md del proyecto (recursivo, acotado). SOLO LECTURA (por el Guardian): lo único que la app escribe sigue siendo
+# «00. CONTEXTO (IA)» tras aceptar el usuario.
+FICHEROS_RAIZ = ("claude.md", "agents.md", "readme.md")
+MAX_FICHEROS_MD = 80          # contexto_md_max_ficheros
+PROFUNDIDAD_MD = 4            # contexto_md_profundidad
+TOPE_TOTAL_MD = 14_000        # contexto_md_tope_total_chars (el digest nunca ha pasado de 14.000 caracteres de contexto)
+TOPE_FICHERO_DIGEST = 6000    # por fichero de 00. CONTEXTO y de la raíz
+TOPE_OTRO_DIGEST = 3000       # por cualquier otro .md: así caben más ficheros en el mismo presupuesto
+RESERVA_RAIZ = 0.25           # parte del tope total que 00. CONTEXTO no consume si hay CLAUDE.md/README/otros .md
 
 
-def ficheros_alternativos(g: Guardian, proyecto: str, tope_bytes: int = 60_000) -> dict[str, str]:
-    """Contexto de SOLO LECTURA para un proyecto sin «00. CONTEXTO (IA)»: CLAUDE.md, README.md y los .md de docs/ (un nivel
-    de subcarpetas) si existen. Mismas reglas de lectura que el resto (sin secretos, con tope, sin «Contactos»); Apuntes no
-    escribe nunca aquí. Las claves son rutas relativas (`docs/arquitectura.md`)."""
-    pdir = g.proyecto_dir(proyecto)
-    out: dict[str, str] = {}
-    candidatos: list[tuple[str, Path]] = []
-    for nombre in FICHEROS_ALTERNATIVOS:
-        for e in (pdir.iterdir() if pdir.is_dir() else []):
-            if e.is_file() and e.name.lower() == nombre.lower():
-                candidatos.append((e.name, e))
-    docs = next((e for e in pdir.iterdir() if e.is_dir() and e.name.lower() == "docs"), None) if pdir.is_dir() else None
-    if docs is not None:
-        planos = sorted([e for e in docs.iterdir() if e.is_file()], key=lambda e: e.name.lower())
-        hijos = sorted([e for e in docs.iterdir() if e.is_dir() and not e.name.startswith(".") and e.name.lower() not in DIRS_EXCLUIDOS],
-                       key=lambda e: e.name.lower())
-        for e in planos:
-            candidatos.append((f"docs/{e.name}", e))
-        for d in hijos:
-            for e in sorted([x for x in d.iterdir() if x.is_file()], key=lambda x: x.name.lower()):
-                candidatos.append((f"docs/{d.name}/{e.name}", e))
-    for rel, ruta in candidatos:
-        if len(out) >= MAX_DOCS_ALTERNATIVOS:
-            break
-        if not ruta.name.lower().endswith(".md") or es_secreto(ruta.name):
-            continue
+def limites_md(cfg) -> dict:
+    """Los topes del contexto ampliado (y el de tamaño por fichero) leídos de la configuración, con los valores de siempre por defecto."""
+    def v(k, d):
         try:
-            texto = g.leer(ruta, pdir, tope_bytes)
+            return int(cfg[k])
+        except (KeyError, TypeError, ValueError):
+            return d
+    return {"max_ficheros": max(1, v("contexto_md_max_ficheros", MAX_FICHEROS_MD)),
+            "profundidad": max(0, v("contexto_md_profundidad", PROFUNDIDAD_MD)),
+            "tope_total": max(1000, v("contexto_md_tope_total_chars", TOPE_TOTAL_MD)),
+            "tope_bytes": max(1000, v("tope_fichero_bytes", 200_000))}
+
+
+def _grupo_y_etiqueta(rel: str) -> tuple[str, str]:
+    """(grupo, etiqueta) de un .md por su ruta relativa: 'ctx' (dentro de 00. CONTEXTO; los de su raíz con el nombre pelado, como siempre),
+    'raiz' (CLAUDE.md, AGENTS.md, README.md de la raíz) u 'otros'."""
+    partes = rel.split("/")
+    if partes[0].lower() == CARPETA_CONTEXTO.lower() and len(partes) > 1:
+        return "ctx", partes[-1] if len(partes) == 2 else "/".join(partes[1:])
+    if len(partes) == 1 and partes[0].lower() in FICHEROS_RAIZ:
+        return "raiz", rel
+    return "otros", rel
+
+
+def _rango(e: dict) -> tuple:
+    """Orden de prioridad: 00. CONTEXTO (como `_orden`), luego CLAUDE.md > AGENTS.md > README.md, luego el resto por cercanía a la raíz,
+    novedad y nombre."""
+    if e["grupo"] == "ctx":
+        return (0, 0 if e["prof"] == 1 else 1, _orden(e["etiqueta"]), e["rel"])
+    if e["grupo"] == "raiz":
+        return (1, FICHEROS_RAIZ.index(e["rel"].lower()), (0, ""), e["rel"])
+    return (2, e["prof"], (0, ""), -e["mtime"], e["rel"])
+
+
+def listar_md(g: Guardian, proyecto: str, max_ficheros: int = MAX_FICHEROS_MD, profundidad: int = PROFUNDIDAD_MD,
+              tope_bytes: int = 200_000, plazo_s: float = 6.0) -> dict:
+    """Los .md que forman el contexto de un proyecto, YA ordenados por prioridad y sin leer. Cada entrada: `ruta`, `rel`, `etiqueta`
+    (la clave que usa el digest), `grupo` (ctx | raiz | otros), `tam`, `mtime`, `prof` y `dejado` ('' si entra; si no el motivo:
+    'tamaño', 'nube', 'límite' = pasa de `max_ficheros`). `truncado`: el recorrido se cortó por tiempo o por número de entradas."""
+    r = g.md_del_proyecto(proyecto, profundidad=profundidad, tope_bytes=tope_bytes, plazo_s=plazo_s)
+    entradas = []
+    for f in r["ficheros"]:
+        grupo, etiqueta = _grupo_y_etiqueta(f["rel"])
+        entradas.append({**f, "grupo": grupo, "etiqueta": etiqueta})
+    entradas.sort(key=_rango)
+    usados = 0
+    for e in entradas:
+        if e["dejado"]:
+            continue
+        if usados >= max_ficheros:
+            e["dejado"] = "límite"
+        else:
+            usados += 1
+    return {"ficheros": entradas, "truncado": r["truncado"]}
+
+
+def estimar_uso(entradas: list[dict], tope_total: int = TOPE_TOTAL_MD, prioritario: str = "") -> None:
+    """Marca en cada entrada `en_digest` según el presupuesto del digest (estimación por tamaño: caracteres ≈ bytes) con la MISMA regla que
+    `fuentes_digest`. Las que no caben quedan con `dejado = 'texto'`."""
+    hay_otros = any(e["grupo"] != "ctx" and not e["dejado"] for e in entradas)
+    tope_ctx = int(tope_total * (1 - RESERVA_RAIZ)) if hay_otros else tope_total
+    total = 0
+    for e in entradas:
+        if e["dejado"]:
+            e["en_digest"] = False
+            continue
+        if e["etiqueta"] in NO_ANALIZAR and e["grupo"] == "ctx":
+            e["en_digest"] = False
+            e["dejado"] = "no se analiza"
+            continue
+        tope = TOPE_PRIORITARIO if e["etiqueta"] == prioritario else (TOPE_OTRO_DIGEST if e["grupo"] == "otros" else TOPE_FICHERO_DIGEST)
+        limite = tope_ctx if e["grupo"] == "ctx" else tope_total
+        cabe = min(tope, e["tam"], max(0, limite - total))
+        if cabe <= 0:
+            e["en_digest"] = False
+            e["dejado"] = "texto"
+            continue
+        e["en_digest"] = True
+        total += cabe
+
+
+def contexto_ampliado(g: Guardian, proyecto: str, limites: dict | None = None) -> tuple[dict[str, str], dict[str, str], bool]:
+    """(ficheros, grupos, solo_lectura). `ficheros`: etiqueta -> texto, en orden de prioridad; `grupos`: etiqueta -> ctx | raiz | otros.
+    `solo_lectura`: el proyecto NO tiene «00. CONTEXTO (IA)» (todo el contexto sale de ficheros que Apuntes no escribe nunca)."""
+    lim = {**limites_md({}), **(limites or {})}
+    pdir = g.proyecto_dir(proyecto)
+    reales = ficheros_contexto(g, proyecto, lim["tope_bytes"])
+    out: dict[str, str] = dict(reales)
+    grupos: dict[str, str] = {k: "ctx" for k in reales}
+    try:
+        lista = listar_md(g, proyecto, lim["max_ficheros"], lim["profundidad"], lim["tope_bytes"])["ficheros"]
+    except (RutaProhibida, OSError):
+        lista = []
+    for e in lista:
+        if e["dejado"]:
+            continue
+        if e["grupo"] == "ctx" and e["prof"] == 1:
+            continue   # los de la raíz de 00. CONTEXTO ya están (ficheros_contexto)
+        try:
+            texto = g.leer(e["ruta"], pdir, lim["tope_bytes"])
         except (RutaProhibida, OSError):
             continue
         texto = quitar_secciones(texto, SECCIONES_PERSONALES)
-        if texto.strip():
-            out[rel] = texto
-    return out
+        if not texto.strip():
+            continue
+        clave = e["etiqueta"]
+        if clave in out:
+            clave = e["rel"] if e["grupo"] == "ctx" else "raíz/" + e["rel"]
+        out[clave] = texto
+        grupos[clave] = e["grupo"]
+    return out, grupos, not reales
 
 
-def contexto_legible(g: Guardian, proyecto: str) -> tuple[dict[str, str], bool]:
-    """(ficheros, solo_lectura): los de «00. CONTEXTO (IA)» si hay; si no, los alternativos de solo lectura."""
-    reales = ficheros_contexto(g, proyecto)
-    if reales:
-        return reales, False
-    return ficheros_alternativos(g, proyecto), True
+def ficheros_alternativos(g: Guardian, proyecto: str, tope_bytes: int = 200_000) -> dict[str, str]:
+    """Los .md que NO son de «00. CONTEXTO (IA)»: CLAUDE.md, AGENTS.md, README.md y todos los demás del proyecto (recursivo y acotado;
+    sin `02. Sesiones`, ocultas, generadas ni secretos). Solo lectura; sin «Contactos». Las claves son rutas relativas (`docs/a.md`)."""
+    ficheros, grupos, _ = contexto_ampliado(g, proyecto, {"tope_bytes": tope_bytes})
+    return {k: v for k, v in ficheros.items() if grupos[k] != "ctx"}
+
+
+def contexto_legible(g: Guardian, proyecto: str, limites: dict | None = None) -> tuple[dict[str, str], bool]:
+    """(ficheros, solo_lectura): «00. CONTEXTO (IA)» primero y, detrás, CLAUDE.md/AGENTS.md/README.md y el resto de .md del proyecto."""
+    ficheros, _grupos, ro = contexto_ampliado(g, proyecto, limites)
+    return ficheros, ro
+
+
 
 
 def _plano(texto: str) -> str:
@@ -258,7 +433,6 @@ def digest_de_contexto(texto: str) -> str:
     """El contexto aceptado como único contexto (Bandeja, o un proyecto sin nada que compactar): sin llamada al modelo."""
     return "[Contexto de la reunión, aportado por el usuario]\n" + (texto or "").strip()
 
-
 def siguiente_numero_contexto(g: Guardian, proyecto: str) -> int:
     """Primer NN libre para un fichero nuevo de `00. CONTEXTO (IA)`: 11-19 y después 21-89 (00, 01-07, 10 y 20 son del kit)."""
     usados: set[int] = set()
@@ -279,7 +453,7 @@ def siguiente_numero_contexto(g: Guardian, proyecto: str) -> int:
 class Fuentes:
     textos: list[tuple[str, str]] = field(default_factory=list)  # (etiqueta, texto)
     clave: str = ""
-    solo_lectura: bool = False   # el contexto sale de CLAUDE.md, README.md o docs/ (el proyecto no tiene «00. CONTEXTO (IA)»)
+    solo_lectura: bool = False   # el contexto sale solo de CLAUDE.md, README.md y otros .md (el proyecto no tiene «00. CONTEXTO (IA)»)
 
     @property
     def vacio(self) -> bool:
@@ -326,25 +500,33 @@ TOPE_PRIORITARIO = 9000  # el fichero prioritario de la sesión admite más text
 
 
 def fuentes_digest(g: Guardian, proyecto: str, tema: str, knowledge: str | None,
-                   tope_total: int = 20_000, prioritario: str = "", sesion_clave: str = "") -> Fuentes:
+                   tope_total: int = 20_000, prioritario: str = "", sesion_clave: str = "", limites: dict | None = None) -> Fuentes:
     """Selección LOCAL (sin LLM) de lo que alimenta el digest, y su clave de caché.
 
     `prioritario`: fichero de 00. CONTEXTO de la sesión del plan; entra el primero y con más tope.
-    `sesion_clave`: identifica la sesión (y su foco) y forma parte de la clave de caché."""
+    `sesion_clave`: identifica la sesión (y su foco) y forma parte de la clave de caché.
+    Orden y presupuesto: 00. CONTEXTO primero (como mucho el 75 % del tope si hay más ficheros), luego CLAUDE.md/AGENTS.md/README.md y
+    después el resto de .md por cercanía a la raíz y novedad. La clave incluye los nombres de TODOS los ficheros candidatos: si cambia el
+    conjunto (aunque el nuevo se quede fuera del tope) cambia la clave."""
     textos: list[tuple[str, str]] = []
     total = 0
-    ficheros, solo_lectura = contexto_legible(g, proyecto)   # sin «00. CONTEXTO (IA)»: CLAUDE.md, README.md y docs/ (solo lectura)
-    orden = list(ficheros)
-    if prioritario in ficheros:
-        orden.remove(prioritario)
-        orden.insert(0, prioritario)
-    for nombre in orden:
+    ficheros, grupos, solo_lectura = contexto_ampliado(g, proyecto, limites)
+    ctx = [n for n in ficheros if grupos[n] == "ctx"]
+    resto = [n for n in ficheros if grupos[n] != "ctx"]
+    if prioritario in ctx:
+        ctx.remove(prioritario)
+        ctx.insert(0, prioritario)
+    tope_ctx = int(tope_total * (1 - RESERVA_RAIZ)) if resto else tope_total
+    for nombre in (*ctx, *resto):
         texto = ficheros[nombre]
-        if nombre in NO_ANALIZAR or (not solo_lectura and es_plantilla_vacia(texto)):
+        es_ctx = grupos[nombre] == "ctx"
+        if nombre in NO_ANALIZAR or (es_ctx and not solo_lectura and es_plantilla_vacia(texto)):
             continue
-        tope = TOPE_PRIORITARIO if nombre == prioritario else 6000
-        texto = texto[: max(0, min(tope, tope_total - total))]
+        tope = TOPE_PRIORITARIO if nombre == prioritario else (TOPE_OTRO_DIGEST if grupos[nombre] == "otros" else TOPE_FICHERO_DIGEST)
+        texto = texto[: max(0, min(tope, (tope_ctx if es_ctx else tope_total) - total))]
         if not texto.strip():
+            if es_ctx:
+                continue   # 00 sin hueco: aún pueden entrar los de la raíz
             break
         textos.append((nombre, texto))
         total += len(texto)
@@ -355,8 +537,9 @@ def fuentes_digest(g: Guardian, proyecto: str, tema: str, knowledge: str | None,
     for etiqueta, texto in textos:
         h.update(etiqueta.encode("utf-8"))
         h.update(hashlib.sha256(texto.encode("utf-8")).digest())
+    if resto:   # el conjunto de ficheros candidatos (también los que se quedan fuera del tope) forma parte de la clave
+        h.update(b"conjunto:" + "|".join(sorted(ficheros)).encode("utf-8"))
     return Fuentes(textos=textos, clave=h.hexdigest()[:20], solo_lectura=solo_lectura and bool(textos))
-
 
 
 

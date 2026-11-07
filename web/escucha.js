@@ -52,37 +52,24 @@
   AP.pintarObjInicio = pintarObjInicio;   // «Contexto de la reunión» (contexto-reunion.js) suma aquí los objetivos que el usuario acepta
 
   // ------------------------------------------------------------ añadir carpeta de proyecto (inicio y Ajustes)
-  async function anadirCarpeta(campos, estado, error, alOk) {
-    error.hidden = true; estado.textContent = "Comprobando…";
-    try {
-      const r = await api("POST", "/api/proyectos/extra", campos());
-      estado.textContent = `Añadida: ${r.proyecto.nombre}`;
-      if (UI.info && UI.info.config) UI.info.config.proyectos_extra = r.proyectos_extra;
-      alOk(r);
-    } catch (e) { estado.textContent = ""; error.textContent = e.message; error.hidden = false; }
-  }
   const fa = $("#f-add-carpeta");
   fa.addEventListener("submit", (ev) => {
     ev.preventDefault();
-    anadirCarpeta(() => ({ nombre: fa.nombre.value.trim(), ruta: fa.ruta.value.trim(), compartido: fa.compartido.checked }),
-      $("[data-estado]", fa), $("[data-error]", fa), (r) => {
-        fa.reset();
-        UI.sel = r.proyecto.nombre; try { localStorage.setItem("apuntes_proy", r.proyecto.nombre); } catch { /* sin almacenamiento */ }
-        $("#i-buscar").dispatchEvent(new Event("input"));
-      });
+    AP.carpetas.anadir(() => ({ nombre: fa.nombre.value.trim(), ruta: fa.ruta.value.trim(), compartido: fa.compartido.checked }),
+      $("[data-estado]", fa), $("[data-error]", fa), (r) => { fa.reset(); AP.carpetas.seleccionar(r.proyecto.nombre); });
   });
   const sa = $("#s-add-carpeta");
   function extrasAjustes(lista) {
     const c = $("#s-extras", sa);
     c.replaceChildren(...(lista || []).map((e) => h("div", { class: "fila-b" }, h("span", { title: e.ruta }, `${e.nombre}${e.compartido ? " (compartida)" : ""} · ${e.ruta}`),
       h("button", { type: "button", class: "btn btn-ghost btn-mini", onclick: async () => {
-        try { const r = await api("DELETE", "/api/proyectos/extra/" + encodeURIComponent(e.nombre)); extrasAjustes(r.proyectos_extra); } catch (x) { $("[data-error]", sa).textContent = x.message; $("[data-error]", sa).hidden = false; }
+        try { const r = await AP.carpetas.quitar(e.nombre); extrasAjustes(r.proyectos_extra); AP.cargarProyectos(); } catch (x) { $("[data-error]", sa).textContent = x.message; $("[data-error]", sa).hidden = false; }
       } }, "Quitar"))));
   }
   $("[data-accion=add]", sa).addEventListener("click", () => {
     const f = (n) => $(`[data-f=${n}]`, sa);
-    anadirCarpeta(() => ({ nombre: f("nombre").value.trim(), ruta: f("ruta").value.trim(), compartido: f("compartido").checked }),
-      $("[data-estado]", sa), $("[data-error]", sa), (r) => { f("nombre").value = f("ruta").value = ""; f("compartido").checked = false; extrasAjustes(r.proyectos_extra); });
+    AP.carpetas.anadir(() => ({ nombre: f("nombre").value.trim(), ruta: f("ruta").value.trim(), compartido: f("compartido").checked }),
+      $("[data-estado]", sa), $("[data-error]", sa), (r) => { f("nombre").value = f("ruta").value = ""; f("compartido").checked = false; extrasAjustes(r.proyectos_extra); AP.cargarProyectos(); });
   });
   // Ajustes: se rellenan al abrir (después del manejador de app.js) y se guardan en la misma petición de «Guardar»
   const CAMPOS_ADAPT = ["adaptativo_comprobar_s", "equipo_puntuacion_min", "equipo_enfriamiento_global_s", "equipo_enfriamiento_perfil_s", "equipo_rotacion_s",

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import hashlib
 import json
 import re
 import secrets
@@ -278,8 +279,74 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         planes = await asyncio.to_thread(PL.cargar_planes, guardian)
         ahora = datetime.now()
         planes = {k: PL.enriquecer(v, ahora) for k, v in planes.items()}  # estados del Gantt: sin llamar a ningún modelo
-        return {"raiz": str(guardian.raiz),
-                "proyectos": CX.listar_proyectos(guardian, q, excluir, planes)}
+        lista = CX.listar_proyectos(guardian, q, excluir, planes)
+        # n_sesiones, ultima_sesion y n_md: acotado y en caché; un proyecto lento (OneDrive) sale sin ellos en vez de bloquear la lista
+        lista = await asyncio.to_thread(CX.enriquecer_proyectos, guardian, lista, CX.limites_md(cfg))
+        return {"raiz": str(guardian.raiz), "proyectos": lista}
+
+    # ------------------------------------------------------------ vista previa del contexto de un proyecto (ids opacos, nunca rutas)
+    ids_md: dict[str, tuple[str, Path]] = {}   # id opaco -> (proyecto en minúsculas, ruta): lo rellena el listado, solo vale lo que dio el servidor
+
+    def _id_md(proyecto: str, rel: str) -> str:
+        return hashlib.sha1(f"{token}|{proyecto.lower()}|{rel}".encode("utf-8")).hexdigest()[:16]
+
+    @app.get("/api/proyectos/{nombre}/contexto")
+    @envolver
+    async def proyecto_contexto(nombre: str):
+        """Los .md que se usarán como contexto del proyecto, agrupados, con tamaño y la marca de los que quedan fuera por los topes."""
+        lim = CX.limites_md(cfg)
+        try:
+            lista = await asyncio.to_thread(CX.listar_md, guardian, nombre, lim["max_ficheros"], lim["profundidad"], lim["tope_bytes"])
+        except RutaProhibida:
+            raise HTTPException(404, "No existe ese proyecto.")
+        entradas = lista["ficheros"]
+        CX.estimar_uso(entradas, lim["tope_total"])
+        for k in [k for k, (p, _r) in ids_md.items() if p == nombre.lower()]:
+            del ids_md[k]
+        grupos = {"ctx": [], "raiz": [], "otros": []}
+        for e in entradas:
+            ident = _id_md(nombre, e["rel"])
+            ids_md[ident] = (nombre.lower(), e["ruta"])
+            grupos[e["grupo"]].append({"id": ident, "nombre": e["etiqueta"] if e["grupo"] != "otros" else e["rel"], "rel": e["rel"],
+                                       "tam": e["tam"], "dejado": e["dejado"], "en_digest": bool(e.get("en_digest"))})
+        titulos = {"ctx": "00. CONTEXTO (IA)", "raiz": "CLAUDE.md y raíz", "otros": "Otros .md"}
+        return {"proyecto": nombre, "solo_lectura": not grupos["ctx"], "truncado": lista["truncado"], "limites": lim,
+                "grupos": [{"clave": k, "titulo": titulos[k], "ficheros": v} for k, v in grupos.items()],
+                "total": len(entradas), "fuera": sum(1 for e in entradas if e["dejado"])}
+
+    @app.get("/api/proyectos/{nombre}/sesiones-recientes")
+    @envolver
+    async def proyecto_sesiones_recientes(nombre: str):
+        """Las 3 últimas sesiones del proyecto (de la caché del backlog: no relee nada si ya está cargada), con el id que usa la vista «Sesiones»."""
+        r = await asyncio.to_thread(bl.sesiones, False)
+        propias = [x for x in r["sesiones"] if (x.get("proyecto") or "").lower() == nombre.lower()][:3]
+        return {"sesiones": [{"id": x["id"], "fecha": x.get("fecha"), "tema": x.get("tema") or x.get("archivo") or "", "inicio": x.get("inicio")} for x in propias],
+                "avisos": r.get("avisos", [])}
+
+    @app.post("/api/proyectos/{nombre}/contexto/{ident}/abrir")
+    @envolver
+    async def proyecto_abrir_md(nombre: str, ident: str):
+        """Abre un .md con la aplicación del sistema. Solo un id que dio el listado de ESTE proyecto: nunca una ruta."""
+        ref = ids_md.get(ident) if re_id.fullmatch(ident or "") else None
+        if ref is None or ref[0] != nombre.lower():
+            raise HTTPException(404, "No existe ese fichero.")
+        try:
+            await asyncio.to_thread(guardian.abrir_md_proyecto, nombre, ref[1], bl.abridor)
+        except OSError as e:
+            raise ValueError(f"No se pudo abrir el fichero: {e}")
+        return {"ok": True}
+
+    @app.post("/api/proyectos/{nombre}/abrir-carpeta")
+    @envolver
+    async def proyecto_abrir_carpeta(nombre: str):
+        """Abre la carpeta de un proyecto conocido (raíz o extra) en el explorador; no acepta rutas."""
+        try:
+            await asyncio.to_thread(guardian.abrir_carpeta_proyecto, nombre, bl.abridor)
+        except RutaProhibida:
+            raise HTTPException(404, "No existe ese proyecto.")
+        except OSError as e:
+            raise ValueError(f"No se pudo abrir la carpeta: {e}")
+        return {"ok": True}
 
     @app.get("/api/dispositivos")
     async def dispositivos():

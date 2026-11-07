@@ -531,7 +531,8 @@ class ServicioFuentes:
                     return
                 nombre = _nombre_cache("proyecto", proyecto)
                 previo = cargar_cache(self.g, nombre)
-                docs = docs_de_proyecto(self.g, proyecto, CX.contexto_legible)
+                lim_md = CX.limites_md(self.cfg)
+                docs = docs_de_proyecto(self.g, proyecto, lambda g, p: CX.contexto_legible(g, p, lim_md))
                 ses_previas = {k: v for k, v in previo.items() if v.get("tipo") == "sesion"}
                 ses = docs_de_sesiones(self.g, self.backlog, proyecto, excluir_archivo, ses_previas)
                 todo = {**{"p:" + k: v for k, v in docs.items()}, **{"s:" + k: v for k, v in ses.items()}}

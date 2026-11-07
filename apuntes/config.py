@@ -126,6 +126,10 @@ DEFAULTS: dict = {
     "max_tarjetas_analisis": 3,            # tarjetas nuevas como máximo por análisis (por prioridad)
     "max_candidatas_confirmar": 8,         # candidatas a contradicción como máximo por reunión (van a UNA llamada de sonnet al terminar)
     "tope_fichero_bytes": 200_000,
+    # Contexto ampliado de cada proyecto (apuntes/contexto.py): 00. CONTEXTO + CLAUDE.md/AGENTS.md/README.md + el resto de .md (solo lectura)
+    "contexto_md_max_ficheros": 80,        # .md del proyecto que se leen como máximo (por prioridad: 00. CONTEXTO, CLAUDE.md…, cercanía a la raíz y novedad)
+    "contexto_md_profundidad": 4,          # niveles de subcarpetas que se recorren
+    "contexto_md_tope_total_chars": 14000, # caracteres de contexto que entran en el digest (como siempre; subirlo gasta más tokens por reunión)
 }
 
 _CLAVES_LISTA = {"sin_razonamiento"}
@@ -143,7 +147,8 @@ _CLAVES_INT = {"whisper_beam", "whisper_hilos", "timeout_s", "cadencia_min", "mi
                "consulta_lineas", "consulta_chars_transcripcion", "consulta_chars_extractos",
                "consulta_max_ficheros", "max_objetivos_sugeridos", "presupuesto_asesor_tokens_hora", "asesor_respuesta_cada_s",
                "asesor_chars_extractos", "asesor_chars_extractos_profundizar", "asesor_chars_transcripcion", "asesor_max_consejos",
-               "asesor_consejo_cada_s", "fuentes_max_ficheros", "fuentes_tiempo_s"}
+               "asesor_consejo_cada_s", "fuentes_max_ficheros", "fuentes_tiempo_s",
+               "contexto_md_max_ficheros", "contexto_md_profundidad", "contexto_md_tope_total_chars"}
 _ESFUERZOS = {"low", "medium", "high", "xhigh", "max", ""}
 
 

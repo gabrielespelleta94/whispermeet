@@ -584,8 +584,9 @@ class Gestor:
                 clave = f"libre|{s.tema}|chk:{huella}|obj:" + hashlib.sha1("|".join(propios).encode("utf-8")).hexdigest()[:8]
             if ctx:   # el contexto aceptado forma parte de la clave de caché (sin él, la clave es la de siempre)
                 clave += "|ctx:" + hashlib.sha1(ctx.encode("utf-8")).hexdigest()[:12]
+            lim_md = CX.limites_md(self.cfg)
             fuentes = await asyncio.to_thread(CX.fuentes_digest, self.g, s.proyecto, s.tema, self.cfg["knowledge"],
-                                              14_000, prio, clave)
+                                              lim_md["tope_total"], prio, clave, lim_md)
             self.digest_ficheros = [e for e, _ in fuentes.textos]
             self._vocabulario_contexto = CX.vocabulario_distintivo([t for _, t in fuentes.textos])
             self._actualizar_vocabulario()

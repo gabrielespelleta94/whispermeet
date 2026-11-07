@@ -76,6 +76,7 @@
             <label class="t-label" for="i-buscar">Proyecto</label>
             <input class="input" id="i-buscar" type="search" placeholder="Buscar proyecto…" autocomplete="off">
             <div class="lista" id="i-lista" role="listbox" aria-label="Proyectos"></div>
+            <div class="t-meta pista-teclas" id="i-teclas">↑ ↓ para moverte · Intro para elegir · Ctrl+K o / para buscar</div>
             <div class="nota-pie t-meta" id="i-raiz"></div>
             <details class="add-carpeta" id="i-add-carpeta">
               <summary class="t-meta">Añadir carpeta de proyecto</summary>
@@ -183,6 +184,7 @@
           <div class="error" id="i-error" hidden></div>
         </div>
         <div class="ini-der">
+          <section class="vista-previa" id="i-preview" hidden aria-label="Contexto que se usará del proyecto" aria-live="polite"></section>
           <section class="contexto" id="i-contexto" hidden aria-label="Contexto del proyecto y de la reunión"></section>
         </div>
       </div>
@@ -403,6 +405,7 @@
 <script src="/static/asesor.js"></script>
 <script src="/static/llamada.js"></script>
 <script src="/static/carpetas.js"></script>
+<script src="/static/proyectos.js"></script>
 <script src="/static/contexto-reunion.js"></script>
 <script src="/static/backlog.js"></script>
 <script src="/static/disposicion.js"></script>

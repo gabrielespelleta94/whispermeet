@@ -3,11 +3,44 @@
    - El botón solo aparece con ventana nativa (/api/ventana → nativa); sin ella se escribe la ruta a mano, como siempre.
    - Elegir NO registra nada: rellena la ruta (y el nombre, si está vacío) y el alta sigue yendo por «Añadir» (POST /api/proyectos/extra).
    - Solo carpetas visibles en disco (OneDrive o Google Drive sincronizados): no hay integración con ninguna nube.
+   - ÚNICO sitio de la lógica de carpetas añadidas (inicio, Ajustes y la vista previa de proyectos.js): AP.carpetas.anadir / quitar / seleccionar.
    Todo el texto dinámico entra con textContent. */
 (() => {
   const AP = window.AP;
   if (!AP) return;
   const { UI, $, $$, api } = AP;
+
+  // ------------------------------------------------------------ lógica compartida (inicio y Ajustes)
+  const sincronizarConfig = (lista) => { if (UI.info && UI.info.config && lista) UI.info.config.proyectos_extra = lista; };
+  /** Añade una carpeta (POST /api/proyectos/extra → Guardian.validar_extra). `campos()` da {nombre, ruta, compartido}; `alOk(r)` recibe la respuesta. */
+  async function anadir(campos, estado, error, alOk) {
+    error.hidden = true; estado.textContent = "Comprobando…";
+    try {
+      const r = await api("POST", "/api/proyectos/extra", campos());
+      estado.textContent = `Añadida: ${r.proyecto.nombre}`;
+      sincronizarConfig(r.proyectos_extra);
+      alOk(r);
+    } catch (e) { estado.textContent = ""; error.textContent = e.message; error.hidden = false; }
+  }
+  /** Quita una carpeta de la lista (DELETE /api/proyectos/extra/{nombre}): no borra nada del disco. Devuelve la respuesta o lanza el error. */
+  async function quitar(nombre) {
+    const r = await api("DELETE", "/api/proyectos/extra/" + encodeURIComponent(nombre));
+    sincronizarConfig(r.proyectos_extra);
+    return r;
+  }
+  /** Deja `nombre` elegido en la lista de inicio (y visible aunque hubiera un filtro escrito). */
+  function seleccionar(nombre) {
+    UI.sel = nombre; UI.sesionPlan = undefined;
+    try { localStorage.setItem("apuntes_proy", nombre); } catch { /* sin almacenamiento */ }
+    $("#i-buscar").value = "";
+    $("#i-buscar").dispatchEvent(new Event("input"));
+    const ver = setInterval(() => {
+      const fila = $("#i-lista [aria-selected=true]");
+      if (fila && fila.dataset.clave === nombre) { clearInterval(ver); fila.scrollIntoView({ block: "nearest" }); }
+    }, 150);
+    setTimeout(() => clearInterval(ver), 3000);
+  }
+  AP.carpetas = { anadir, quitar, seleccionar };
 
   // ------------------------------------------------------------ el botón solo existe con ventana nativa
   const botones = () => $$("[data-elegir-carpeta]");
@@ -72,19 +105,10 @@
       const ubic = nc.ubicacion.value.trim();
       const r = await api("POST", "/api/proyectos/carpeta", { nombre: nc.nombre.value.trim(), ubicacion: ubic || null, compartido: nc.compartido.checked });
       estado.textContent = r.registrada_como_extra ? `Creada y añadida como proyecto: ${r.proyecto.nombre}` : `Creada en la raíz de proyectos: ${r.proyecto.nombre}`;
-      if (UI.info && UI.info.config) UI.info.config.proyectos_extra = r.proyectos_extra;
+      sincronizarConfig(r.proyectos_extra);
       nc.nombre.value = ""; nc.ubicacion.value = ""; nc.compartido.checked = false;
       $$("[data-pista-compartida]", nc).forEach((p) => { p.hidden = true; });
-      // el proyecto queda seleccionado en la lista (y visible aunque hubiera un filtro escrito)
-      UI.sel = r.proyecto.nombre; UI.sesionPlan = undefined;
-      try { localStorage.setItem("apuntes_proy", r.proyecto.nombre); } catch { /* sin almacenamiento */ }
-      $("#i-buscar").value = "";
-      $("#i-buscar").dispatchEvent(new Event("input"));
-      const ver = setInterval(() => {
-        const fila = $("#i-lista [aria-selected=true]");
-        if (fila && fila.dataset.clave === r.proyecto.nombre) { clearInterval(ver); fila.scrollIntoView({ block: "nearest" }); }
-      }, 150);
-      setTimeout(() => clearInterval(ver), 3000);
+      seleccionar(r.proyecto.nombre);   // el proyecto queda seleccionado en la lista
     } catch (e) {
       estado.textContent = ""; error.textContent = e.message; error.hidden = false;
     } finally {
