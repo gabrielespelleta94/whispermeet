@@ -300,6 +300,7 @@ REV = {"estado": "lista", "resumen": "Se acordó mantener el piloto el 20 de ene
 
 def _revision(edge, pagina, rev=REV, **cambios):
     _abrir(edge, pagina, **cambios)
+    edge.js("AP.UI.info = { config: { autonomia: { cambio_contexto: 'hacer' } } }; 1")   # con autonomía «hacer» (ola 3) lo preaceptado sale marcado; con «proponer», solo resaltado
     edge.js("window.__emitir(Object.assign({tipo: 'snapshot'}, %s)); 1" % json.dumps(foto(estado="revision", revision=rev)))
     time.sleep(0.8)
 
@@ -500,7 +501,8 @@ def test_ajustes_en_tres_secciones_con_pestanas_y_selector_de_modelos(edge, pagi
     assert r["solo"] is True and r["registro"] is True, r                                                          # sin datos del servidor, los huecos de Privacidad quedan ocultos
     assert r["audio"] == [2, "small"], r
     # con datos, aparecen
-    edge.js("""const f3 = window.fetch; window.fetch = async (u, o) => { const r = await f3(u, o); if (/api\\/info/.test(u)) { const d = await r.json(); d.config.modo_solo_local = false; d.registro_envios = [{ hora: '10:00', destino: 'Claude', que: 'Análisis de un tramo' }]; return { ok: true, json: async () => d }; } return r; }; 1""")
+    edge.js("""const f3 = window.fetch; window.fetch = async (u, o) => { if (/api\\/modo-local/.test(u)) return { ok: true, json: async () => ({ activo: false, sesion: null, config: false }) };
+      if (/api\\/envios/.test(u)) return { ok: true, json: async () => ({ envios: [{ ts: '2026-11-07T10:00:00', agente: 'Analista', modelo: 'haiku', entrada: 100, salida: 20, ok: true, bloqueado: false }], resumen: { llamadas: 1, entrada: 100, salida: 20, bloqueadas: 0 } }) }; return f3(u, o); }; 1""")
     edge.js("document.querySelector('#s-cancelar').click(); document.querySelector('#b-ajustes').click(); 1")
     time.sleep(0.8)
     edge.js("document.querySelector('#aj-tab-privacidad').click(); 1")

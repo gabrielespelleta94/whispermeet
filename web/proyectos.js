@@ -317,6 +317,8 @@
     if (act && l.contains(act)) foco = act.dataset.fav ? { fav: act.dataset.fav } : act.dataset.empezar ? { empezar: act.dataset.empezar } : { clave: act.dataset.clave, id: act.id };
     const scroll = $("#v-inicio").scrollTop;
     l.replaceChildren();
+    $("#i-filtros").hidden = P.modo === "cartera";   // la cartera es otra mirada: salud de cada proyecto, ordenada por lo que necesita atención
+    if (P.modo === "cartera" && AP.cartera) { $$("#i-modo [data-modo]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.modo === P.modo))); l.append(AP.cartera.pintar()); return; }
     pintarChips();
     const todos = lista();
     const filtrando = !!q || P.filtro !== "todos";
@@ -428,7 +430,7 @@
 
   // ------------------------------------------------------------ barra: orden, vista y buscador
   $("#i-orden").addEventListener("change", (ev) => { P.orden = ev.target.value; guardarTxt(K_ORDEN, P.orden); pintarLista(); });
-  $$("#i-modo [data-modo]").forEach((b) => { const ic = $(".gal-ic", b); if (ic) ic.replaceWith(AP.icono(b.dataset.modo === "lista" ? "lista" : "rejilla"));
+  $$("#i-modo [data-modo]").forEach((b) => { const ic = $(".gal-ic", b); if (ic) ic.replaceWith(AP.icono({ lista: "lista", cartera: "cartera" }[b.dataset.modo] || "rejilla"));
     b.addEventListener("click", () => { P.modo = b.dataset.modo; guardarTxt(K_MODO, P.modo); pintarLista(); }); });
 
   // ------------------------------------------------------------ teclado
@@ -614,7 +616,8 @@
       h("div", { class: "pp-cifra" }, h("span", { class: "caps" }, "Pendientes"), chipPendientes(p) || h("span", { class: "t-meta soft" }, "—")),
       h("div", { class: "pp-cifra" }, h("span", { class: "caps" }, "Próximo hito"), chipHito(p) || h("span", { class: "t-meta soft" }, p.plan ? "Sin hitos pendientes" : "Sin plan"))));
     const q = bloqueCalidad(p); if (q) cuerpo.push(q);
-    cuerpo.push(bloquePendientes());
+    if (!(AP.olas34 && AP.olas34.haySeguimiento(nombre))) cuerpo.push(bloquePendientes());   // con seguimiento, los pendientes van solo allí (con sus acciones)
+    if (AP.hooks.fichaBloques) cuerpo.push(...AP.hooks.fichaBloques(nombre));   // preparación sugerida, seguimiento y métricas del proyecto (olas34.js)
     const c = P.ctx;
     if (!c || c.estado === "cargando") cuerpo.push(h("p", { class: "t-meta", id: "vp-cargando" }, "Leyendo la carpeta del proyecto… (si está en OneDrive puede tardar)"));
     else if (c.estado === "error") cuerpo.push(h("p", { class: "error", id: "vp-error-ctx" }, c.msg === "No existe ese proyecto."
@@ -639,6 +642,6 @@
     if (tocarFoco) { const e = document.getElementById(tocarFoco); if (e) e.focus({ preventScroll: true }); }
   }
 
-  AP.proyectos = { hace, etiquetas, resaltar, colorDe, iniciales, recientes: () => [...P.rec], favoritos: () => [...P.fav], alternarFav, recordar, abrirPanel, cerrarPanel, empezarEn, etapa, cambiarProyecto,
+  AP.proyectos = { repintarPanel: (n) => { if (P.panel === n) pintarPanel(); }, hace, etiquetas, resaltar, colorDe, iniciales, recientes: () => [...P.rec], favoritos: () => [...P.fav], alternarFav, recordar, abrirPanel, cerrarPanel, empezarEn, etapa, cambiarProyecto,
     estado: () => ({ etapa: P.etapa, modo: P.modo, orden: P.orden, filtro: P.filtro, panel: P.panel }) };
 })();

@@ -511,7 +511,7 @@
       const contexto_reunion = UI.contextoReunion || "";             // «Contexto de la reunión» aceptado (vacío = todo como siempre)
       reiniciarReunion();
       await api("POST", "/api/sesion/iniciar", { proyecto: UI.sel, tema: $("#i-tema").value.trim(), cadencia: UI.cad,
-        sesion_plan: UI.proy && UI.proy.plan ? UI.sesionPlan : null, objetivos: UI.objetivosPropios || [], contexto_reunion, idioma: UI.idioma || "auto" });
+        sesion_plan: UI.proy && UI.proy.plan ? UI.sesionPlan : null, objetivos: UI.objetivosPropios || [], contexto_reunion, idioma: UI.idioma || "auto", ...(AP.hooks.extraIniciar ? AP.hooks.extraIniciar() : {}) });
     } catch (e) {
       $("#i-error").textContent = e.message;
       $("#i-error").hidden = false;

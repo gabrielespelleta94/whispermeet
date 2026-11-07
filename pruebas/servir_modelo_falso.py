@@ -27,6 +27,11 @@ class FalsoLento(ModeloLLM):
     def completar(self, sistema, usuario, modelo, esfuerzo="", timeout_s=240, sin_razonamiento=False, web=False):
         time.sleep(self.retardo)
         uso = [Uso(modelo, 3000, 800)]
+        if "preparas la siguiente reunión" in sistema:   # brief de preparación (datos ficticios, formato de apuntes/brief.py)
+            return Respuesta(json.dumps({"objetivos": ["Cerrar el alcance de SAP", "Fijar la fecha del piloto", "Confirmar quién valida el catálogo de hoteles"],
+                                         "preguntas": ["¿Quién valida el catálogo de hoteles?", "¿Qué hoteles entran en el piloto?"], "datos": ["Catálogo de hoteles en CSV", "Listado de licencias vigentes"]}), uso, int(self.retardo * 1000))
+        if "Formula UNA pregunta corta" in sistema:   # pregunta del Capitán para cerrar un objetivo sin tratar
+            return Respuesta(json.dumps({"q": "¿Quién del cliente confirma este punto y para cuándo?"}), uso, int(self.retardo * 1000))
         if "acaba de hacer la pregunta" in sistema:   # el asesor en directo: respuesta sugerida a una pregunta del cliente (datos ficticios)
             q = usuario.split("<<<DATOS pregunta>>>")[-1].lower()
             if "cuesta" in q or "cuánto" in q:

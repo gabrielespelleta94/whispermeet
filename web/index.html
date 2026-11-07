@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/static/asesor.css">
 <link rel="stylesheet" href="/static/backlog.css">
 <link rel="stylesheet" href="/static/ola2.css">
+<link rel="stylesheet" href="/static/olas34.css">
 </head>
 <body data-vista="inicio" data-efectos="alto">
 <div class="ambiente" id="ambiente" aria-hidden="true"></div>
@@ -24,6 +25,7 @@
       <span class="rec" id="r-rec" role="img" aria-label="Grabando"></span>
       <div class="reunion-id"><span class="reunion-tema t-body-m" id="r-tema"></span><span class="reunion-meta t-meta" id="r-meta"></span></div>
       <span class="obj-prog t-meta" id="r-obj-prog" role="status" hidden></span>
+      <span class="chip-local t-meta" id="r-local" role="status" hidden title="Nada de esta reunión sale de este equipo: solo transcripción y detección local">Solo local</span>
       <div class="medidores">
         <div class="medidor" title="Micro"><span class="t-label">Micro</span><div class="vu" id="vu-yo" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div></div>
         <div class="medidor" title="Reunión"><span class="t-label">Reunión</span><div class="vu" id="vu-reunion" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><span class="retraso t-meta" id="r-retraso" hidden></span></div>
@@ -108,6 +110,7 @@
             <div class="seg gal-modo" id="i-modo" role="radiogroup" aria-label="Vista de proyectos">
               <button type="button" role="radio" data-modo="rejilla" aria-checked="true" title="Tarjetas"><span class="gal-ic" data-ic="rejilla"></span>Rejilla</button>
               <button type="button" role="radio" data-modo="lista" aria-checked="false" title="Lista compacta"><span class="gal-ic" data-ic="lista"></span>Lista</button>
+              <button type="button" role="radio" data-modo="cartera" aria-checked="false" title="Salud de cada proyecto, ordenada por lo que necesita atención"><span class="gal-ic" data-ic="cartera"></span>Cartera</button>
             </div>
           </div>
           <div class="gal-chips" id="i-filtros" role="group" aria-label="Filtrar proyectos"></div>
@@ -158,6 +161,11 @@
             <div class="plan-detalle" id="i-ses-detalle" hidden></div>
           </div>
 
+          <div class="campo" id="i-plantilla-campo" hidden>
+            <span class="t-label" id="i-plantilla-l">Plantilla de reunión</span>
+            <div class="chips-pl" id="i-plantillas" role="radiogroup" aria-labelledby="i-plantilla-l"></div>
+            <div class="pl-detalle" id="i-plantilla-detalle" hidden></div>
+          </div>
           <div class="campo">
             <label class="t-label" for="i-tema">Tema de la reunión</label>
             <input class="input" id="i-tema" type="text" maxlength="120" placeholder="Por ejemplo, seguimiento de alcance" autocomplete="off">
@@ -180,6 +188,7 @@
             </div>
           </div>
 
+          <label class="check i-local" id="i-local-l"><input type="checkbox" id="i-local"> <span>Solo local en esta reunión: no se envía nada a Claude</span></label>
           <details class="opciones" id="i-opciones">
             <summary><span class="t-label">Opciones</span><span class="t-meta soft" id="i-opciones-estado"></span></summary>
             <div class="campo">
@@ -218,6 +227,10 @@
             </div>
           </details>
 
+          <details class="brief-det" id="i-brief" hidden open>
+            <summary><span class="t-label">Preparación sugerida</span><span class="t-meta soft" id="i-brief-estado"></span></summary>
+            <div id="i-brief-cuerpo"></div>
+          </details>
           <section class="contexto" id="i-contexto" hidden aria-label="Contexto del proyecto y de la reunión"></section>
         </div>
         <div class="ini-barra" id="i-barra-empezar">
@@ -259,6 +272,7 @@
         <div class="col-der" id="col-der">
           <div class="zona zona-ahora" id="zona-ahora" aria-label="Ahora">
             <div class="panel-h zona-h"><span class="t-label">Ahora</span><span class="t-meta soft" id="ahora-estado"></span></div>
+            <div class="ahora-local t-meta" id="ahora-local" role="status" hidden><b>Solo local.</b> El equipo no analiza y nada sale de este equipo: hay transcripción, detección local y tus notas.</div>
             <div class="ahora-top" id="ahora-top">
               <section class="as-carril" id="as-carril" hidden aria-label="Asesor: respuesta sugerida"></section>
               <section class="ahora-paso" id="ahora-paso" aria-label="Siguiente paso propuesto" hidden></section>
@@ -408,6 +422,14 @@
             </div>
           </details>
         </fieldset>
+        <fieldset class="campo" id="aj-autonomia"><legend class="t-label">Cuánto hace el equipo por su cuenta</legend>
+          <p class="t-meta soft">Avisar: solo te lo dice. Proponer: te lo propone y decides. Hacer: lo hace y puedes deshacerlo (solo lo local y reversible).</p>
+          <div class="aj-aut-lista" id="aj-aut-lista"><span class="t-meta soft">Leyendo…</span></div>
+        </fieldset>
+        <fieldset class="campo" id="aj-silenciados"><legend class="t-label">Avisos silenciados</legend>
+          <p class="t-meta soft">Avisos que marcaste con «Esto está mal»: el equipo no los repite.</p>
+          <div class="aj-sil-lista" id="aj-sil-lista"><span class="t-meta soft">Leyendo…</span></div>
+        </fieldset>
         <fieldset class="campo"><legend class="t-label">Qué modelo usa cada tarea</legend>
           <p class="t-meta soft">Ligero: rápido y gasta poco. Potente: más cuidadoso, tarda más y gasta más.</p>
           <div class="fila3">
@@ -423,14 +445,15 @@
       <!-- ============ PRIVACIDAD: qué se lee, qué se ve y qué sale de tu equipo ============ -->
       <section class="aj-sec" id="aj-privacidad" role="tabpanel" aria-labelledby="aj-tab-privacidad" data-aj="privacidad" hidden>
         <label class="check"><input type="checkbox" name="excluir_captura"> Ocultar la ventana en capturas y al compartir pantalla</label>
-        <!-- los conecta otra fase: sin datos del servidor, quedan ocultos (ajustes.js) -->
         <div class="aj-solo" id="aj-solo-local" hidden>
-          <label class="check"><input type="checkbox" name="modo_solo_local"> Modo solo local: no se envía nada fuera de este equipo</label>
-          <p class="t-meta soft">Sin análisis del equipo ni respuestas del asesor: solo transcripción y detección en local.</p>
+          <label class="check"><input type="checkbox" id="aj-modo-local"> Modo solo local: no se envía nada a Claude</label>
+          <p class="t-meta soft">Solo transcripción y detección local, sin análisis del equipo ni respuestas del asesor. Vale para las reuniones nuevas; cada reunión puede cambiarlo al prepararla.</p>
+          <p class="t-meta" id="aj-local-estado" role="status"></p>
         </div>
         <section class="aj-registro" id="aj-registro-envios" aria-label="Registro de envíos" hidden>
           <span class="t-label">Registro de envíos</span>
-          <p class="t-meta soft">Lo que ha salido de este equipo hacia Claude, sin el contenido de las reuniones.</p>
+          <p class="t-meta soft">Cada llamada a Claude: qué agente la hizo, cuántos tokens gastó y cuándo. Se guarda un extracto de 120 caracteres como mucho; nunca el contenido de las reuniones.</p>
+          <div class="aj-reg-res t-meta" id="aj-registro-res"></div>
           <div class="aj-reg-lista" id="aj-registro-lista" tabindex="0" role="region" aria-label="Lista de envíos"></div>
         </section>
         <div class="campo-grupo">
@@ -482,6 +505,7 @@
 <script src="/static/contexto-reunion.js"></script>
 <script src="/static/backlog.js"></script>
 <script src="/static/avisos.js"></script>
+<script src="/static/olas34.js"></script>
 <script src="/static/disposicion.js"></script>
 <script src="/static/ajustes.js"></script>
 <script src="/static/paleta.js"></script>

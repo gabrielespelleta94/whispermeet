@@ -24,6 +24,9 @@ _RE_OBJETIVO_SECCION = re.compile(r"^\s*\*\*(?P<t>[^*]+?)\*\*\s*$|^\s*#{1,6}\s+(
 _RE_ITEM = re.compile(r"^\s*[-*+]\s+(?:\[(?P<marca>[^\]]{1,20})\]\s*)?(?P<x>.+?)\s*(?:\((?:minuto|min)\s*[\d:]+\))?\s*$")
 
 
+AVISO_LOCAL = "No se ha podido preparar con Claude; te enseño la versión local."   # el detalle técnico va en `aviso_detalle` (log o tooltip), nunca en el texto
+
+
 def objetivos_sin_cerrar(resumen: str) -> list[str]:
     """Objetivos que quedaron sin cubrir en una sesión, leídos del bloque «Objetivos de la sesión» que la app añade al resumen: los apartados
     «Parciales» y «Sin tratar» (`**…**` + viñetas) o las viñetas `[Parcial]` / `[Sin tratar]`. FUNCIÓN PURA."""
@@ -124,7 +127,7 @@ def local(datos: dict) -> dict:
     objetivos: list[str] = []
     ult = datos.get("ultima_sesion") or {}
     for o in ult.get("objetivos_sin_cerrar") or []:
-        objetivos.append(f"Cerrar: {o}")
+        objetivos.append(o)   # el objetivo ya es una frase con verbo: se usa tal cual
     sig = datos.get("siguiente_sesion") or {}
     for o in sig.get("objetivos") or []:
         objetivos.append(o)
@@ -189,7 +192,7 @@ class ServicioBrief:
                 return {**base, **c["brief"], "generado": c.get("generado"), "origen": c.get("origen", "modelo"), "desde_cache": True}
         if not (ultima or pendientes or recordatorios or siguiente):
             return {**base, **local(datos), "generado": self.ahora().isoformat(timespec="seconds"), "aviso": "Todavía no hay sesiones, pendientes ni plan de este proyecto."}
-        origen, aviso, cuerpo = "modelo", "", None
+        origen, aviso, cuerpo, detalle = "modelo", "", None, ""
         analista = None
         try:
             analista = self.analista()
@@ -199,9 +202,9 @@ class ServicioBrief:
             try:
                 cuerpo = analista._llamar("brief", sistema(), usuario(datos), validar, intentos=1)
             except ErrorAnalisis as e:
-                aviso = f"No se pudo generar con Claude ({e.mensaje}); se muestra la versión local."
+                aviso, detalle = AVISO_LOCAL, str(e.mensaje)
             except Exception as e:   # noqa: BLE001
-                aviso = f"No se pudo generar con Claude ({type(e).__name__}); se muestra la versión local."
+                aviso, detalle = AVISO_LOCAL, type(e).__name__
         else:
             aviso = "Sin modelo disponible: se muestra la versión local (pendientes abiertos y objetivos sin cerrar)."
         if cuerpo is None:
@@ -213,4 +216,4 @@ class ServicioBrief:
                 self.g.escribir_cache(nombre, json.dumps({"version": VERSION, "generado": generado, "origen": origen, "brief": cuerpo}, ensure_ascii=False))
             except (OSError, RutaProhibida):
                 pass
-        return {**base, **cuerpo, "generado": generado, "origen": origen, "desde_cache": False, "aviso": aviso}
+        return {**base, **cuerpo, "generado": generado, "origen": origen, "desde_cache": False, "aviso": aviso, "aviso_detalle": detalle}

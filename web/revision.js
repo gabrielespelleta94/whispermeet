@@ -42,6 +42,8 @@
     const b2 = $("#v-rev-correo-outlook"); if (b2) b2.hidden = R.outlook === false;
   }
 
+  // autonomía para «cambio al contexto» (Ajustes › Equipo): `acciones` y `/api/info` la traen; sin dato, «proponer»
+  const nivelCambios = () => { const a = (AP.olas34 && AP.olas34.estado.autonomia) || (UI.info && UI.info.config && UI.info.config.autonomia) || {}; return a.cambio_contexto || "proponer"; };
   const tokensDe = (agente) => { const l = [...AP.O.tareas.values()].filter((t) => t.agente === agente && t.estado === "ok"); const t = l[l.length - 1]; return t || null; };
 
   // ---- diferencias palabra a palabra entre dos versiones del resumen (LCS), pintadas en acento suave
@@ -110,9 +112,9 @@
     el._p = { si, no, des, estado };
     if (c.preaceptado === true) {   // el backend ya lo da por bueno: va marcado y con la cita que lo justifica
       el.classList.add("preaceptado");
-      const cita = c.cita || c.evidencia || "";
+      const cita = c.cita && typeof c.cita === "object" ? c.cita : { texto: c.cita || c.evidencia || "", minuto: c.minuto };
       el.querySelector(".cambio-h .f").after(h("span", { class: "pre-et t-label" }, AP.icono("check", "ic-s"), "Preaceptado"));
-      el.insertBefore(h("blockquote", { class: "pre-cita t-body" }, h("span", { class: "t-meta soft" }, "Cita de la reunión" + (c.minuto ? ` · ${c.minuto}` : "") + ": "), cita ? "«" + cita + "»" : "sin cita registrada"), el.querySelector(".diff-wrap"));
+      el.insertBefore(h("blockquote", { class: "pre-cita t-body" }, h("span", { class: "t-meta soft" }, "Cita de la reunión" + (cita.minuto ? ` · ${cita.minuto}` : "") + ": "), cita.texto ? "«" + cita.texto + "»" : "sin cita registrada"), el.querySelector(".diff-wrap"));
     }
     pintarDecision(el, UI.decisiones[c.id], false);
     return el;
@@ -219,7 +221,7 @@
     $("#v-rev-aplicar").hidden = false;
     if (R.sesion !== s.id) { R.sesion = s.id; R.paso = 1; R.visitados = new Set([1]); R.premarcados = new Set(); R.ganttAbierto = false; R.correoEstado = ""; }
     // cambios que el backend ya da por buenos (`preaceptado: true`): salen marcados, con su cita; el usuario puede deshacerlos. Sin el campo, todo igual que antes.
-    for (const c of rev.cambios || []) if (c.valido && c.preaceptado === true && !R.premarcados.has(c.id)) { R.premarcados.add(c.id); if (UI.decisiones[c.id] === undefined && !rev.aplicado) UI.decisiones[c.id] = "si"; }
+    for (const c of rev.cambios || []) if (c.valido && c.preaceptado === true && !R.premarcados.has(c.id)) { R.premarcados.add(c.id); if (nivelCambios() === "hacer" && UI.decisiones[c.id] === undefined && !rev.aplicado) UI.decisiones[c.id] = "si"; }   // con autonomía «hacer» sale marcado; con «proponer», solo resaltado y con su cita
     const pu = rev.pulido || { estado: "ninguno" };
     const elegir = (v) => AP.api("POST", "/api/revision/resumen", { version: v }).catch((e) => AP.avisarError(e));
     const validos = (rev.cambios || []).filter((c) => c.valido);
@@ -232,6 +234,7 @@
     // ---- paso 1: decisiones y resumen (con «Pulir» como opción aquí)
     let comparacion = null;
     const colResumen = h("div", { class: "rev-col" });
+    const local = AP.olas34 ? AP.olas34.bannerLocal(rev) : null; if (local) colResumen.append(local);   // reunión en modo solo local: «Analizar con el equipo»
     if ((rev.avisos || []).length) {   // comprobación local del resumen: falta de contenido afirmada o tramos sin cubrir, con sus minutos
       colResumen.append(h("section", { class: "sec aviso", id: "v-rev-avisos" }, h("span", { class: "t-label" }, "Aviso sobre el resumen"),
         h("ul", {}, rev.avisos.map((a) => h("li", { class: "t-body" }, a)))));
@@ -306,7 +309,8 @@
         h("li", { class: "t-body" }, `La transcripción y el resumen ya están guardados en ${s.compartido ? "una copia local" : "«" + s.carpeta + "»"}.`),
         s.proyecto ? h("li", { class: "t-body", id: "rev-cierre-cambios" }, rev.aplicado ? "Los cambios aceptados ya se han aplicado al contexto." : aceptados ? `${aceptados} de ${validos.length} cambios aceptados: se aplicarán al contexto del proyecto al pulsar «Aplicar cambios aceptados».` : "No has aceptado ningún cambio: el contexto del proyecto no se toca.") : h("li", { class: "t-body" }, "Sin proyecto, no hay contexto que actualizar."),
         rev.correo ? h("li", { class: "t-body" }, "El correo de cierre es un borrador: la app no envía nada.") : null));
-    const p4 = panel(4, resumenCierre, pub);
+    const acciones = AP.olas34 ? AP.olas34.seccionAcciones() : null, metricas = AP.olas34 ? AP.olas34.seccionMetricas(rev.metricas) : null;
+    const p4 = panel(4, h("div", { class: "rev-p-cols rev-p4" }, h("div", { class: "rev-col" }, acciones), h("div", { class: "rev-col" }, metricas, resumenCierre, pub)));
 
     const stepper = h("nav", { class: "rev-nav-pasos", "aria-label": "Pasos de la revisión" },
       h("ol", { class: "rev-stepper", id: "rev-stepper" }, PASOS.map(([t], i) => h("li", { class: R.visitados.has(i + 1) && R.paso !== i + 1 ? "visto" : "" },

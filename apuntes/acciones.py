@@ -86,7 +86,11 @@ def normalizar_datos(tipo: str, datos) -> dict:
     if tipo == "cambio_contexto":
         return {k: limpiar(datos.get(k), 120) for k in ("cambio_id", "fichero", "tipo_cambio") if datos.get(k)}
     if tipo == "recordatorio":
-        return {"origen_item": limpiar(datos.get("origen_item"), 40)} if datos.get("origen_item") else {}
+        out = {"origen_item": limpiar(datos.get("origen_item"), 40)} if datos.get("origen_item") else {}
+        objs = [limpiar(x, 200) for x in (datos.get("objetivos") if isinstance(datos.get("objetivos"), list) else []) if limpiar(x, 200)][:12]
+        if objs:
+            out["objetivos"] = objs
+        return out
     return {}
 
 
@@ -357,11 +361,12 @@ class ServicioAcciones:
                 continue
             if a:
                 nuevas.append(a)
-        for o in PL.activos(s.objetivos):
-            if o.get("estado") != PL.CUBIERTO:
-                a = self.crear("recordatorio", f"Cerrar el objetivo: {o['texto']}", ORIGEN_CAPITAN, None, emitir=False, minuto="")
-                if a:
-                    nuevas.append(a)
+        sin_cubrir = [o["texto"] for o in PL.activos(s.objetivos) if o.get("estado") != PL.CUBIERTO]
+        if sin_cubrir:   # UN solo recordatorio con la lista (no uno por objetivo); al aceptarlo, cada objetivo llega al brief de la próxima sesión
+            n = len(sin_cubrir)
+            a = self.crear("recordatorio", f"Para la próxima reunión: {n} objetivo{'' if n == 1 else 's'} sin tratar", ORIGEN_CAPITAN, None, {"objetivos": sin_cubrir}, emitir=False, minuto="")
+            if a:
+                nuevas.append(a)
         if nuevas:
             self._emitir(nuevas)
         return nuevas
@@ -379,5 +384,11 @@ class ServicioAcciones:
         if s.proyecto and seguimiento is not None:
             ref = {"sesion": s.ruta.name, "fecha": f"{s.inicio:%Y-%m-%d}", "tema": s.tema}
             out["pendientes"] = seguimiento.anadir_pendientes(s.proyecto, [a for a in aceptadas if a["tipo"] == "pendiente"], ref)
-            out["recordatorios"] = seguimiento.anadir_recordatorios(s.proyecto, [a for a in aceptadas if a["tipo"] == "recordatorio"], ref)
+            recs = []
+            for a in aceptadas:
+                if a["tipo"] != "recordatorio":
+                    continue
+                objs = (a.get("datos") or {}).get("objetivos")
+                recs.extend([{"texto": f"Retomar el objetivo: {o}"} for o in objs] if objs else [a])   # el agrupado vuelve a ser uno por objetivo en el brief
+            out["recordatorios"] = seguimiento.anadir_recordatorios(s.proyecto, recs, ref)
         return out

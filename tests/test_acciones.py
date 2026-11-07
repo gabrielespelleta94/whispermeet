@@ -233,7 +233,8 @@ def test_propuestas_locales_al_terminar_la_revision(tmp_path):
     assert por[("correo", "Riesgo: Proveedor si")]["origen"] == "Capitán"
     assert por[("correo", "Contradicción a acla")]["prioridad"] == "fijo" and por[("correo", "Contradicción a acla")]["origen"] == "Auditor"
     assert por[("recordatorio", "Retomar: ¿Quién vali")]["estado"] == "propuesta"
-    assert por[("recordatorio", "Cerrar el objetivo: ")]["texto"].endswith("Fijar fecha del piloto")   # solo el no cubierto
+    agrupado = [a for a in s.acciones if a["tipo"] == "recordatorio" and a["texto"].startswith("Para la próxima reunión")]
+    assert len(agrupado) == 1 and agrupado[0]["texto"] == "Para la próxima reunión: 1 objetivo sin tratar" and agrupado[0]["datos"]["objetivos"] == ["Fijar fecha del piloto"]   # UN recordatorio con solo lo no cubierto
     assert len([a for a in s.acciones if a["tipo"] == "recordatorio"]) == 2
 
 

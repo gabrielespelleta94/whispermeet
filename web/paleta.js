@@ -30,6 +30,7 @@
       else if (typeof UI.sel === "string" && AP.proyectos) add({ id: "empezar", titulo: `Empezar una reunión en ${UI.sel}`, grupo: "Reunión", icono: "empezar", palabras: "grabar transcribir iniciar comenzar preparar", accion: () => AP.proyectos.empezarEn(UI.sel) });
       add({ id: "empezar-bandeja", titulo: "Empezar una reunión sin proyecto", grupo: "Reunión", icono: "empezar", palabras: "bandeja grabar transcribir iniciar", si: () => !!AP.elegirProyecto && !!AP.proyectos,
         accion: () => { AP.elegirProyecto(null, null); AP.proyectos.etapa("preparar"); const t = $("#i-tema"); if (t) t.focus({ preventScroll: true }); } });
+      add({ id: "cartera", titulo: "Ver la cartera de proyectos", grupo: "Ir a", icono: "cartera", palabras: "salud riesgos pendientes antiguos atención", si: () => !!$('#i-modo [data-modo="cartera"]'), accion: () => { if (AP.proyectos) AP.proyectos.etapa("galeria"); const b = $('#i-modo [data-modo="cartera"]'); if (b) b.click(); } });
       add({ id: "galeria", titulo: "Ir a la galería de proyectos", grupo: "Ir a", icono: "rejilla", palabras: "inicio proyectos cambiar elegir", si: () => !!AP.proyectos && AP.proyectos.estado().etapa !== "galeria", accion: () => AP.proyectos.etapa("galeria") });
       add({ id: "buscar-proyecto", titulo: "Buscar entre los proyectos", grupo: "Ir a", icono: "buscar", palabras: "filtrar galeria", si: () => !!AP.proyectos, accion: () => { AP.proyectos.etapa("galeria"); const b = $("#i-buscar"); if (b) { b.focus(); b.select(); } } });
     }
@@ -67,6 +68,8 @@
     add({ id: "detalle", titulo: "Mostrar u ocultar el detalle del equipo", grupo: "Ir a", icono: "monitor", palabras: "orquestación agentes capitán lupa arquitecto auditor sherpa", si: () => !!$("#orq-plegar") && !!$("#orq") && !$("#orq").hidden, accion: pulsar("#orq-plegar") });
     add({ id: "tema", titulo: `Cambiar el tema (ahora ${NOMBRE_TEMA[leerTema()] || "automático"})`, grupo: "Aspecto", icono: "tema", palabras: "claro oscuro modo color", accion: pulsar("#b-tema") });
     for (const [k, n] of [["claro", "Tema claro"], ["oscuro", "Tema oscuro"], ["auto", "Tema automático"]]) add({ id: "tema-" + k, titulo: n, grupo: "Aspecto", icono: "tema", palabras: "modo color apariencia", si: () => leerTema() !== k, accion: () => ponerTema(k) });
+    add({ id: "modo-local", titulo: "Modo solo local: activar o desactivar", grupo: "Privacidad", icono: "candado", palabras: "privacidad claude enviar nada local", si: () => !!(AP.olas34),
+      accion: async () => { const l = AP.olas34.estado.local; try { await AP.api("POST", "/api/modo-local", { activo: !(l && l.activo) }); } catch (e) { AP.avisarError(e); } } });
     add({ id: "captura", titulo: "Ocultar o mostrar la ventana al compartir pantalla", grupo: "Privacidad", icono: "pantalla", palabras: "captura compartir excluir privacidad", si: hayBoton("#b-captura"), accion: pulsar("#b-captura") });
     return L;
   }

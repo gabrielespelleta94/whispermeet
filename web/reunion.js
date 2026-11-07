@@ -26,7 +26,7 @@
   function lineaTrans(s, previa) {
     const el = h("div", { class: "lin " + s.fuente + (previa && previa.fuente !== s.fuente ? " cambia" : ""), "data-t": s.t, "data-id": s.id },
       h("div", { class: "lin-m t-meta" }, h("span", { class: "t" }, s.mmss), h("span", { class: "q" }, s.fuente === "yo" ? "Micro" : "Reunión")),
-      h("div", { class: "x t-body" }, s.texto));
+      h("div", { class: "x t-body" }, ...(AP.textoSegmento ? AP.textoSegmento(s) : [s.texto])));   // palabras dudosas subrayadas (olas34.js)
     T.lineas.set(s.id, el);
     return el;
   }
@@ -227,6 +227,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
     meta.push(h("span", { class: "perfil" }, AP.chipAgente(t.perfil || "analista")));
     if (t.referencia) { const f = String(t.referencia).match(/[\w.\-]+\.md/); meta.push(h("span", { class: "contra" }, "contra: " + (f ? f[0] : "«" + String(t.referencia).slice(0, 90) + "»"))); }
     if (t.nota) meta.push(h("span", {}, t.nota));
+    if (t.perfil && AP.malBoton) meta.push(AP.malBoton(t.id, t.mal));   // «Esto está mal»: el equipo no repite un aviso equivalente
     p.meta.replaceChildren(...meta);
     p.meta.hidden = !meta.length;
     el.title = posible ? "Se confirmará al terminar la reunión" : "";
@@ -242,8 +243,11 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
     S.tarjetas.forEach((t) => {
       if (I.llegada.has(t.id)) return;
       I.llegada.set(t.id, I.primera ? -1e9 : ahora);
-      if (!I.primera && prioridadDe(t) === "discreto") setTimeout(() => AP.hooks.pintarInsights(), DISCRETO_MS + 50);
     });
+    // UN solo temporizador, para el discreto que antes se aparta; se cancela al salir de la reunión (con todo vacío no queda ninguno vivo)
+    clearTimeout(I.timerDiscretos); I.timerDiscretos = null;
+    const restos = S.tarjetas.filter((t) => prioridadDe(t) === "discreto" && !apartado(t)).map((t) => DISCRETO_MS - (ahora - I.llegada.get(t.id)));
+    if (restos.length && (S.estado === "grabando" || S.estado === "pausada")) I.timerDiscretos = setTimeout(() => { I.timerDiscretos = null; AP.hooks.pintarInsights(); }, Math.max(50, Math.min(...restos)) + 50);
     const porAnalisis = new Map();
     const fijos = [], vistos = [];
     S.tarjetas.forEach((t) => {
@@ -367,7 +371,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
   const previoReinicio = AP.hooks.reiniciar;
   AP.hooks.reiniciar = () => {
     if (previoReinicio) previoReinicio();
-    T.lineas.clear(); T.sep = null; I.grupos.clear(); I.tarjetas.clear(); I.vistas.clear(); I.primera = true; I.cerrados.clear(); I.llegada.clear(); I.verDiscretos = false;
+    T.lineas.clear(); T.sep = null; I.grupos.clear(); I.tarjetas.clear(); I.vistas.clear(); I.primera = true; I.cerrados.clear(); I.llegada.clear(); I.verDiscretos = false; clearTimeout(I.timerDiscretos); I.timerDiscretos = null;
     O_.filas.clear(); O_.previo.clear(); autosPrevios = new Set();
     $("#r-insights").replaceChildren(); $("#r-obj-lista").replaceChildren();
     Object.values(NUEVOS).forEach((x) => { x.n = 0; $(x.btn).hidden = true; });
@@ -375,6 +379,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
   const previoEvento = AP.hooks.evento;
   AP.hooks.evento = (d) => {
     if (previoEvento) previoEvento(d);
+    if ((d.tipo === "estado" || d.tipo === "snapshot") && "estado" in d && d.estado !== "grabando" && d.estado !== "pausada") { clearTimeout(I.timerDiscretos); I.timerDiscretos = null; }
     if (d.tipo === "traza") {
       if (d.hasta_id != null) requestAnimationFrame(() => colocarSeparador(true));
       requestAnimationFrame(() => AP.hooks.pintarInsights());

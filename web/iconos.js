@@ -56,6 +56,9 @@
     rayo: ["M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"],
     reloj: [["circle", { cx: 12, cy: 12, r: 10 }], "M12 6v6l4 2"],
     pantalla: [["rect", { width: 20, height: 14, x: 2, y: 3, rx: 2 }], "M8 21h8", "M12 17v4"],
+    cartera: [["rect", { width: 20, height: 14, x: 2, y: 7, rx: 2 }], "M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"],                                           // maletín: la cartera de proyectos
+    candado: [["rect", { width: 18, height: 11, x: 3, y: 11, rx: 2 }], "M7 11V7a5 5 0 0 1 10 0v4"],                                                       // modo solo local
+    deshacer: ["M3 7v6h6", "M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"],
     fijar: ["M12 17v5", "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"],
   };
   // tipos de tarjeta, hallazgo y consejo que comparten icono (los del asesor usan sus cinco etiquetas)

@@ -187,8 +187,10 @@
       const nueva = !E.primera && !E.vistasFeed.has(e.id) && quieto && !reducido();
       E.vistasFeed.add(e.id);
       const cls = "eq-fila t-meta" + (e.tipo === "toca" ? " apagada" : e.tipo === "sin_tratar" ? " ambar" : "") + (nueva ? " nueva" : "");
-      return h("button", { type: "button", class: cls, "data-t": e.t, title: "Detección local, sin modelo. Ir a ese momento de la transcripción",
+      const fila = h("button", { type: "button", class: cls, "data-t": e.t, title: "Detección local, sin modelo. Ir a ese momento de la transcripción",
         "aria-label": `detección local · ${etiquetaFila(e)}`, onclick: () => AP.hooks.irAlMinuto && AP.hooks.irAlMinuto(e.t) }, etiquetaFila(e));
+      const mal = e.regla_tipo && AP.malBoton ? AP.malBoton(e.id, e.silenciado) : null;   // sin `regla_tipo` ese aviso no se puede silenciar
+      return mal ? h("div", { class: "eq-fila-c" }, fila, mal) : fila;
     });
     if (!filas.length) filas.push(h("div", { class: "eq-vacio t-meta" }, "El Monitor aún no ha detectado nada."));
     cont.replaceChildren(...filas);

@@ -79,8 +79,8 @@ def test_brief_sin_modelo_es_local_con_pendientes_y_objetivos_sin_cerrar(tmp_pat
     cli, gestor, cfg, g, bl, modelo, _e = montaje(tmp_path, sesiones=[("2026-10-27-diseno.md", S1)])   # el modelo falla siempre
     with cli:
         b = cli.get(f"/api/proyectos/{PROYECTO}/brief").json()
-        assert b["origen"] == "local" and "versión local" in b["aviso"]
-        assert "Cerrar: Cerrar el modelo de datos" in b["objetivos"] and "Cerrar: Fijar el calendario del piloto" in b["objetivos"]
+        assert b["origen"] == "local" and "versión local" in b["aviso"] and "(" not in b["aviso"]
+        assert "Cerrar el modelo de datos" in b["objetivos"] and "Fijar el calendario del piloto" in b["objetivos"] and not any(o.startswith("Cerrar: ") for o in b["objetivos"])
         assert any("Enviar el modelo de datos" in o for o in b["objetivos"])
         assert any("modelo de datos" in q for q in b["preguntas"])
         assert not list((tmp_path / "cache").glob("brief-*")) if (tmp_path / "cache").exists() else True   # lo local no se cachea
