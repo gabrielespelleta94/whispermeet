@@ -25,6 +25,8 @@ AGENTES = {
     "contradicciones_confirmar": ("verificador", "Verificador de contradicciones"),
     "final": ("redactor", "Redactor del resumen final"),
     "pulido": ("pulidor", "Pulidor"),
+    "brief": ("brief", "Brief de preparación"),          # ola 3: al abrir la ficha de un proyecto (cacheado)
+    "pregunta_capitan": ("coordinador", "Capitán"),      # ola 3: la pregunta que cerraría un objetivo sin tratar
     "consulta": ("consultas", "Consultas"),            # «Pregúntale»: una llamada por pregunta, solo si el usuario la lanza
     "consulta_sonnet": ("consultas", "Consultas"),
     # el asesor en directo: respuestas sugeridas, consejos del Estratega y «Profundizar»

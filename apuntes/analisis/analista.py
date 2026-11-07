@@ -7,6 +7,7 @@ from . import ErrorAnalisis, ModeloLLM
 from . import prompts as P
 from .. import checks as CK
 from .. import planes as PL
+from ..envios import marcar_tarea   # ola 4: el registro de envíos y el modo solo local necesitan saber qué tarea llama
 from ..contexto import Fuentes, digest_de_contexto
 from ..equipo import perfiles as PF
 from ..rutas import Guardian, slug
@@ -29,6 +30,7 @@ class Analista:
         ultimo: ErrorAnalisis | None = None
         extra = {"web": True} if web else {}   # solo se pasa cuando hace falta: los modelos de prueba antiguos no lo conocen
         for intento in range(intentos):  # como máximo UN reintento (el pulido no reintenta)
+            marcar_tarea(tarea)
             try:
                 r = self.modelo.completar(sistema, usuario, self.config.modelo(tarea),
                                           self.config["esfuerzo"], self.config["timeout_s"],

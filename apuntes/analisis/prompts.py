@@ -111,7 +111,8 @@ def sistema_final(con_ficheros: bool, con_objetivos: bool = False, con_huecos: b
                    '"sec": "título exacto de sección existente (solo anadir; vacío = al final)", '
                    '"ant": "texto EXACTO a sustituir, tal como aparece y una sola vez en el fichero (solo reemplazar)", '
                    '"nuevo": "Markdown a añadir o sustituir, máx. 600 caracteres", '
-                   '"motivo": "máx. 160 caracteres", "m": "MM:SS"}], '
+                   '"motivo": "máx. 160 caracteres", "m": "MM:SS", '
+                   '"q": "frase LITERAL de la transcripción que respalda el cambio, máx. 120 caracteres (vacío si no la hay)"}], '
                    '"sin_cambios": "solo si «cambios» va vacío: el motivo en una frase, máx. 200 caracteres"')
         extra = ("\nMáximo 6 cambios, mínimos y localizados, solo sobre los ficheros entregados entre los datos. "
                  "Compara cada decisión de «insights_emitidos» y del resumen con el contenido de esos ficheros: si una decisión o un hecho "

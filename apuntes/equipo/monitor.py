@@ -246,6 +246,7 @@ class Monitor:
              "asesor_separacion_llamada_s": 90, "asesor_rotacion_s": 480, "asesor_rotacion_palabras": 200}
         c.update(cfg or {})
         self.c = c
+        self.filtro_silencio = None   # ola 4: (tipo, texto) -> bool, reglas locales de «Esto está mal»; lo pone el Director
         self.reiniciar()
 
     def reiniciar(self) -> None:
@@ -262,6 +263,8 @@ class Monitor:
         self.t_pasada = 0.0
         self.ultima_pasada_real = None
         self.ultimo_toque: dict[int, float] = {}
+        self.primer_toque: dict[int, float] = {}   # ola 4: reloj de la reunión en el PRIMER toque de cada objetivo (métricas de valor)
+        self.pesos: dict[str, int] = {}            # ola 4: peso de cada perfil en el reparto (plantilla de reunión): 0 = no habla, 1 = normal, 2 = doble
         self.ultimo_toque_check: dict[str, float] = {}
         self.sin_tratar_avisado: set[tuple[int, int]] = set()
         self.ultimo_aviso_silencio = 0.0
@@ -275,8 +278,18 @@ class Monitor:
         self._terminos_chk: dict[str, set[str]] = {}
 
     # ---------------------------------------------------------- una pasada
-    def _entrada(self, t: float, tipo: str, texto: str, **extra) -> dict:
+    def _silenciada(self, tipo: str, texto: str) -> bool:
+        """ola 4: ¿hay una regla local de «Esto está mal» que cubra este aviso? Un fallo del filtro nunca tapa un aviso."""
+        f = self.filtro_silencio
+        try:
+            return bool(f and f(tipo, texto))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _entrada(self, t: float, tipo: str, texto: str, regla: tuple[str, str] | None = None, **extra) -> dict:
         self._n_entrada += 1
+        if regla:   # con qué tipo y texto se silenciaría esta entrada si el usuario pulsa «Esto está mal»
+            extra.update(regla_tipo=regla[0], regla_texto=regla[1])
         e = {"id": f"m{self._n_entrada}", "t": round(t, 1), "minuto": mmss(t), "tipo": tipo, "texto": texto, "local": True, **extra}
         self.feed.append(e)
         del self.feed[:-600]
@@ -311,11 +324,13 @@ class Monitor:
                            "t": s.t, "minuto": mmss(s.t), "origen": "local"}
                     self.locales.append(reg)
                     pas.definiciones.append(reg)
-                    pas.entradas.append(self._entrada(s.t, "definicion", f"definición (local) · {reg['termino']}", termino=reg["termino"]))
+                    if not self._silenciada("definicion", reg["termino"]):
+                        pas.entradas.append(self._entrada(s.t, "definicion", f"definición (local) · {reg['termino']}", regla=("definicion", reg["termino"]), termino=reg["termino"]))
             self.frase_previa = texto
         candidatos.sort()
+        candidatos = [x for x in candidatos if not self._silenciada("senal:" + x[2]["tipo"], x[2]["q"])]   # ola 4: lo que el usuario marcó como «mal» no vuelve
         for _prio, _orden, c in candidatos[:MAX_ENTRADAS_PASADA]:
-            e = self._entrada(c["t"], "senal", f"señal: {ETIQUETA[c['tipo']]} · «{c['q']}»", senal=c["tipo"])
+            e = self._entrada(c["t"], "senal", f"señal: {ETIQUETA[c['tipo']]} · «{c['q']}»", regla=("senal:" + c["tipo"], c["q"]), senal=c["tipo"])
             pas.senales.append(e)
             pas.entradas.append(e)
         pas.tipos = sorted(vistos)
@@ -331,9 +346,10 @@ class Monitor:
             if ts and len(ts & palabras_ventana) >= (1 if len(ts) == 1 else 2):
                 prev = self.ultimo_toque.get(n)
                 self.ultimo_toque[n] = ahora
+                self.primer_toque.setdefault(n, ahora)
                 pas.toca.append(n)
-                if prev is None or ahora - prev >= self.c["equipo_toque_repetido_s"]:
-                    pas.entradas.append(self._entrada(ahora, "toca", f"toca objetivo {n}", objetivo=n))
+                if (prev is None or ahora - prev >= self.c["equipo_toque_repetido_s"]) and not self._silenciada("toca", o["texto"]):
+                    pas.entradas.append(self._entrada(ahora, "toca", f"toca objetivo {n}", regla=("toca", o["texto"]), objetivo=n))
         for c in (checks or []):
             cid = c["id"]
             if cid not in self._terminos_chk:
@@ -354,7 +370,9 @@ class Monitor:
                     cuarto = int(desde // limite)
                     if (n, cuarto) not in self.sin_tratar_avisado:
                         self.sin_tratar_avisado.add((n, cuarto))
-                        pas.entradas.append(self._entrada(ahora, "sin_tratar", f"objetivo {n} sin tratar desde hace {int(desde // 60)} min", objetivo=n))
+                        if self._silenciada("sin_tratar", o["texto"]):
+                            continue
+                        pas.entradas.append(self._entrada(ahora, "sin_tratar", f"objetivo {n} sin tratar desde hace {int(desde // 60)} min", regla=("sin_tratar", o["texto"]), objetivo=n))
                         sin_tratar = True
         # puntuación
         presentes = set(vistos)
@@ -365,6 +383,7 @@ class Monitor:
         for perfil, tabla in PUNTOS.items():
             for tipo, pts in tabla.items():
                 if tipo in presentes:
+                    pts = pts * self.pesos.get(perfil, 1)   # ola 4: el reparto de la plantilla de reunión (0 = ese perfil no suma)
                     self.puntos[perfil] += pts
                     self.contrib[perfil][tipo] = self.contrib[perfil].get(tipo, 0) + pts
         pas.puntos = dict(self.puntos)
@@ -377,8 +396,11 @@ class Monitor:
         """«94 palabras nuevas · nadie tiene turno»: como mucho una vez cada 5 minutos."""
         if ahora - self.ultimo_aviso_silencio < self.c["equipo_silencio_aviso_s"] or n_pal < 30:
             return None
+        if self._silenciada("silencio", "silencio"):   # ola 4: el usuario marcó este aviso como «mal»
+            self.ultimo_aviso_silencio = ahora
+            return None
         self.ultimo_aviso_silencio = ahora
-        return self._entrada(ahora, "silencio", f"{n_pal} palabras nuevas · nadie tiene turno")
+        return self._entrada(ahora, "silencio", f"{n_pal} palabras nuevas · nadie tiene turno", regla=("silencio", "silencio"))
 
     # ---------------------------------------------------------- turnos
     def motivo(self, perfil: str) -> str:
@@ -399,14 +421,15 @@ class Monitor:
         if ahora - self.ultima_llamada < glob:
             return None, ""
         cand = [p for p in ORDEN_ROTACION
-                if self.puntos[p] >= self.c["equipo_puntuacion_min"] and self.palabras_desde[p] >= self.c["equipo_palabras_min"]
+                if self.pesos.get(p, 1) > 0 and self.puntos[p] >= self.c["equipo_puntuacion_min"] and self.palabras_desde[p] >= self.c["equipo_palabras_min"]
                 and self._perfil_listo(p, ahora, por_perfil)]
         if cand:
             p = max(cand, key=lambda x: (ahora - self.ultimo_turno[x], -ORDEN_ROTACION.index(x)))
             return p, self.motivo(p)
         if rotacion and ahora - self.ultima_llamada >= self.c["equipo_rotacion_s"]:
-            antiguo = max(ORDEN_ROTACION, key=lambda x: (ahora - self.ultimo_turno[x], -ORDEN_ROTACION.index(x)))
-            if self.palabras_desde[antiguo] >= self.c["equipo_rotacion_palabras"]:
+            activos = [p for p in ORDEN_ROTACION if self.pesos.get(p, 1) > 0]   # ola 4: un perfil con peso 0 tampoco rota
+            antiguo = max(activos, key=lambda x: (ahora - self.ultimo_turno[x], -ORDEN_ROTACION.index(x))) if activos else None
+            if antiguo and self.palabras_desde[antiguo] >= self.c["equipo_rotacion_palabras"]:
                 return antiguo, "rotación"
         return None, ""
 

@@ -32,13 +32,22 @@ class Segmento:
     texto: str   # lo que ven el .md, el Monitor y los análisis: sin el eco de Reunión si el filtro está activo ("" = todo era eco)
     original: str = ""    # tal como lo transcribió Whisper (de aquí se recalcula `texto`)
     llegada: float = 0.0  # reloj de la reunión al llegar (el Micro espera a su pareja de Reunión: ver `eco.micro_listo`)
+    palabras: list = field(default_factory=list)   # ola 4: [{w, p, d}] palabra, probabilidad de Whisper y si es dudosa (vacío = sin word_timestamps)
+    corregido: bool = False                        # ola 4: el usuario corrigió el texto a mano
 
     def __post_init__(self):
         if not self.original:
             self.original = self.texto
 
     def publico(self) -> dict:
-        return {"id": self.id, "t": round(self.t, 1), "mmss": mmss(self.t), "fuente": self.fuente, "texto": self.texto}
+        d = {"id": self.id, "t": round(self.t, 1), "mmss": mmss(self.t), "fuente": self.fuente, "texto": self.texto}
+        # las palabras solo valen mientras el texto sea el de Whisper (si el filtro de eco lo recortó o el usuario lo corrigió, ya no casan)
+        if self.palabras and self.texto == self.original and not self.corregido:
+            d["palabras"] = [dict(p) for p in self.palabras]
+            d["dudosas"] = sum(1 for p in self.palabras if p.get("d"))
+        if self.corregido:
+            d["corregido"] = True
+        return d
 
 
 def temas_fusionados(temas: list[dict]) -> list[dict]:
@@ -119,6 +128,7 @@ class Sesion:
     cobertura: list[dict] = field(default_factory=list)     # por análisis: qué tramo leyó y qué recortó (apuntes/cobertura.py)
     incidencias: list[str] = field(default_factory=list)    # fallos del análisis automático: «[mm:ss] tipo: Excepción» (sin traza ni contenido de la reunión)
     avisos_resumen: list[str] = field(default_factory=list)  # avisos locales sobre el resumen final (falta de contenido, tramos sin cubrir)
+    acciones: list[dict] = field(default_factory=list)       # ola 3: bandeja de acciones propuestas (apuntes/acciones.py); viven en la sesión, no en el .md
 
     def __post_init__(self):
         self._lock = threading.RLock()
@@ -137,9 +147,9 @@ class Sesion:
         self._ahora = ahora
 
     # ------------------------------------------------------------ edición
-    def agregar_segmento(self, t: float, fuente: str, texto: str) -> Segmento:
+    def agregar_segmento(self, t: float, fuente: str, texto: str, palabras: list | None = None) -> Segmento:
         with self._lock:
-            seg = Segmento(len(self.segmentos) + 1, t, fuente, texto, llegada=self._ahora() if self._ahora else t)
+            seg = Segmento(len(self.segmentos) + 1, t, fuente, texto, llegada=self._ahora() if self._ahora else t, palabras=list(palabras or []))
             self.segmentos.append(seg)
             if self.filtrar_eco:
                 self._recalcular_eco(seg)

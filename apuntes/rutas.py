@@ -12,6 +12,7 @@ Reglas:
 - Backlog: lectura de los .md de sesión (bandeja, sesiones locales y `02. Sesiones` de cada proyecto) con las mismas exclusiones y topes; lo único
   que se escribe es `backlog/estado.json` (local, fuera de git, escritura atómica). Los .md de sesión no se modifican nunca.
 - Planes de sesiones: solo lectura de `planes/*.json` (locales de la app).
+- Ola 3: `seguimiento/<proyecto>.json` (pendientes entre sesiones, local) y borradores `.eml` en una carpeta temporal propia (`WhisperMeet-borradores`).
 - Nunca se escribe CLAUDE.md, AGENTS.md, docs/ ni nada bajo las raíces de solo lectura (Knowledge).
 - Nada de path traversal: los nombres de proyecto y de fichero se validan por componente y la ruta
   resuelta (symlinks incluidos) debe quedar dentro de la carpeta permitida.
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -51,6 +53,7 @@ _RE_NOMBRE_SECRETO = re.compile(
 _RE_FICHERO_CONTEXTO = re.compile(r"^[0-9]{2}-[A-Za-z0-9][A-Za-z0-9\-]{0,80}\.md$")
 _RE_FICHERO_SESION = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*\.md$")
 _RE_CACHE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,120}\.json$")
+_RE_DATOS = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,60}\.(json|jsonl)$")   # ola 4: ficheros de datos propios de la app (reglas de silencio, envíos, métricas…)
 _RE_SESION_MD = re.compile(r"^\d{4}-\d{2}-\d{2}.*\.md$", re.I)   # lectura del backlog: más tolerante que _RE_FICHERO_SESION (que es para escribir)
 NOMBRE_ESTADO_BACKLOG = "estado.json"
 
@@ -150,7 +153,7 @@ def sugerir_compartida(ruta: str | os.PathLike, entorno=None) -> bool:
 
 class Guardian:
     def __init__(self, raiz_proyectos, bandeja, cache, solo_lectura=(), extras=(), sesiones_locales=None,
-                 planes=None, checks=None, backlog=None):
+                 planes=None, checks=None, backlog=None, datos=None):
         self.raiz = Path(raiz_proyectos)
         self.bandeja = Path(bandeja)
         self.cache = Path(cache)
@@ -159,6 +162,10 @@ class Guardian:
         self.planes = Path(planes) if planes else None
         self.checks = Path(checks) if checks else None
         self.backlog = Path(backlog) if backlog else None   # carpeta local del estado del backlog (estado.json); fuera de git
+        # ola 3: seguimiento entre sesiones (<seguimiento>/<proyecto>.json, local, fuera de git) y borradores .eml (carpeta temporal PROPIA de la app)
+        self.seguimiento = (self.backlog.parent / "seguimiento") if self.backlog else None
+        self.borradores = Path(tempfile.gettempdir()) / "WhisperMeet-borradores"
+        self.datos = Path(datos) if datos else None         # ola 4: carpeta local de datos de la app (reglas de silencio, envíos, métricas, glosario); fuera de git
         self.extras: dict[str, tuple[Path, bool]] = {}
         self._nombres_extra: dict[str, str] = {}
         self.fijar_extras(extras)
@@ -656,6 +663,102 @@ class Guardian:
                 os.replace(p, nuevo)
                 return nuevo
         return None
+
+    # ---------- datos locales de la app (ola 4): solo ficheros NOMBRE.json|jsonl en `self.datos`, nunca dentro de un proyecto ----------
+    def ruta_datos(self, nombre: str) -> Path:
+        if self.datos is None:
+            raise RutaProhibida("no hay carpeta local de datos configurada")
+        if not isinstance(nombre, str) or not _RE_DATOS.match(nombre):
+            raise RutaProhibida("nombre de fichero de datos no válido")
+        destino = self.datos / nombre
+        self._comprobar_escritura(destino, self.datos)
+        return destino
+
+    def hay_datos(self) -> bool:
+        return self.datos is not None
+
+    def leer_datos(self, nombre: str, tope_bytes: int = 4_000_000) -> str | None:
+        """Texto del fichero de datos, o None si no existe (o no hay carpeta). Con tope: de un .jsonl se lee el FINAL (lo más reciente)."""
+        if self.datos is None:
+            return None
+        p = self.ruta_datos(nombre)
+        if not p.is_file():
+            return None
+        with open(p, "rb") as f:
+            tam = p.stat().st_size
+            if tam > tope_bytes:
+                f.seek(tam - tope_bytes)
+                f.readline()   # una línea cortada no vale
+            return f.read().decode("utf-8-sig", errors="replace")
+
+    def escribir_datos(self, nombre: str, texto: str) -> Path:
+        destino = self.ruta_datos(nombre)
+        self._escribir(destino, texto)   # temporal + os.replace: atómico
+        return destino
+
+    def anadir_datos(self, nombre: str, linea: str) -> Path:
+        """Añade UNA línea a un .jsonl (la carpeta se crea si falta)."""
+        destino = self.ruta_datos(nombre)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        with open(destino, "a", encoding="utf-8", newline="\n") as f:
+            f.write(linea.rstrip("\r\n") + "\n")
+        return destino
+
+    # ---------- ola 3: seguimiento de pendientes entre sesiones (local) ----------
+    def ruta_seguimiento(self, proyecto: str) -> Path:
+        if self.seguimiento is None:
+            raise RutaProhibida("no hay carpeta local de seguimiento configurada")
+        self.proyecto_dir(proyecto)  # el proyecto debe existir
+        destino = self.seguimiento / (slug(proyecto, 60) + ".json")
+        self._comprobar_escritura(destino, self.seguimiento)
+        return destino
+
+    def leer_seguimiento(self, proyecto: str, tope_bytes: int = 2_000_000) -> str | None:
+        p = self.ruta_seguimiento(proyecto)
+        if not p.is_file():
+            return None
+        with open(p, "rb") as f:
+            return f.read(tope_bytes + 1).decode("utf-8-sig", errors="replace")
+
+    def escribir_seguimiento(self, proyecto: str, texto: str) -> Path:
+        destino = self.ruta_seguimiento(proyecto)
+        self._escribir(destino, texto)   # temporal + os.replace: atómico
+        return destino
+
+    def apartar_seguimiento(self, proyecto: str) -> Path | None:
+        """Aparta un seguimiento dañado (renombra a <proyecto>.json.roto-AAAAMMDD-HHMMSS, sin borrar nada)."""
+        p = self.ruta_seguimiento(proyecto)
+        if not p.is_file():
+            return None
+        from datetime import datetime
+        for n in range(100):
+            nuevo = p.with_name(f"{p.name}.roto-{datetime.now():%Y%m%d-%H%M%S}" + (f"-{n}" if n else ""))
+            if not nuevo.exists():
+                os.replace(p, nuevo)
+                return nuevo
+        return None
+
+    # ---------- ola 3: borradores de correo (.eml con X-Unsent: 1) en una carpeta temporal propia; NUNCA datos del usuario ni el repo ----------
+    def escribir_borrador(self, nombre: str, contenido: bytes) -> Path:
+        if not re.fullmatch(r"borrador-[0-9a-f]{8,32}\.eml", nombre or ""):
+            raise RutaProhibida("nombre de borrador no válido")
+        destino = self.borradores / nombre
+        self._comprobar_escritura(destino, self.borradores)
+        self.borradores.mkdir(parents=True, exist_ok=True)
+        with open(destino, "wb") as f:
+            f.write(contenido)
+        return destino
+
+    def abrir_borrador(self, ruta, abridor=None) -> None:
+        """Abre un .eml de la carpeta de borradores con el programa del sistema (Outlook lo muestra como borrador). Nunca envía nada."""
+        p = Path(ruta)
+        if not esta_dentro(self.borradores, p) or p.suffix.lower() != ".eml" or not p.is_file():
+            raise RutaProhibida("solo se abren borradores de la carpeta de borradores")
+        if abridor is None:
+            abridor = getattr(os, "startfile", None)
+            if abridor is None:
+                raise RutaProhibida("abrir con el sistema solo está disponible en Windows")
+        abridor(str(p))
 
     def ruta_contexto(self, proyecto: str, fichero: str, permitir_subcarpeta_plantilla: bool = False) -> Path:
         pdir = self.proyecto_dir(proyecto)

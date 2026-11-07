@@ -4,6 +4,8 @@ Todo local (sin LLM). El modelo propone; aquí se decide cuántas y cuáles se m
 """
 from __future__ import annotations
 
+import re
+
 from .texto import a_segundos, mmss, tokens_utiles
 
 # Orden de prioridad cuando un análisis propone más del tope: lo accionable antes que lo que solo conviene preguntar.
@@ -13,6 +15,21 @@ VENTANA_CRUZADA_S = 150     # una pregunta y una decisión sobre lo mismo en est
 UMBRAL_MISMA = 0.6          # solapamiento de términos útiles dentro de la misma categoría
 UMBRAL_CRUZADA = 0.5        # entre categorías distintas y cercanas en el tiempo
 MIN_COMPARTIDOS = 3
+
+
+_RE_FIJO = re.compile(r"alcance|importe|presupuesto|precio|tarifa|coste|cuant[ií]a|honorario|€|\beuros?\b|\b\d[\d.,]*\s?(?:k|mil)\b", re.I)
+
+
+def prioridad_de(t: dict) -> str:
+    """ola 3: `fijo` (se queda en pantalla hasta que se atienda), `normal` o `discreto`. Una contradicción de ALCANCE o IMPORTE (la que ve el Auditor,
+    o el análisis generalista) sale fija; una idea, discreta; el resto, normal. Solo etiqueta: no cambia qué tarjetas se muestran."""
+    cat = t.get("categoria")
+    if cat == "contradicción":
+        texto = " ".join(str(t.get(k) or "") for k in ("texto", "referencia", "linea", "nota"))
+        if _RE_FIJO.search(texto) and t.get("perfil") in (None, "", "revisor"):
+            return "fijo"
+        return "normal"
+    return "discreto" if cat == "idea" else "normal"
 
 
 def solapamiento(a: str, b: str) -> tuple[float, int]:

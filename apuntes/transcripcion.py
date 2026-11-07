@@ -163,6 +163,20 @@ def decidir_idioma(probs, duracion_s: float, ultimo: str | None, idiomas_auto=("
     return mejor, "detectado"
 
 
+def alinear_palabras(palabras_whisper, texto: str, umbral: float = 0.5) -> list[dict]:
+    """Palabras con su probabilidad (ola 4). FUNCIÓN PURA. `palabras_whisper`: [(palabra, probabilidad)] de `word_timestamps`; `texto`: el texto FINAL del
+    fragmento (ya filtrado y con el glosario aplicado). Se alinean palabra a palabra (el texto se parte por espacios, como Whisper): si el número no coincide
+    (el filtro quitó algo, un bucle repetido…) no se adivina nada y la lista queda vacía. -> [{w, p, d}] con `d` = dudosa (probabilidad < `umbral`)."""
+    tokens = (texto or "").split()
+    if not palabras_whisper or len(tokens) != len(palabras_whisper):
+        return []
+    out = []
+    for tok, (_w, p) in zip(tokens, palabras_whisper):
+        p = max(0.0, min(1.0, float(p or 0.0)))
+        out.append({"w": tok, "p": round(p, 2), "d": p < umbral})
+    return out
+
+
 def _solo_credito_o_url(t: str) -> bool:
     if not URL.search(t):
         return False
@@ -272,6 +286,8 @@ class Transcriptor:
         self._idioma_usado: dict[str, str] = {}    # idioma con el que se transcribió el último tramo de cada fuente (es | ca)
         self.ultima_deteccion_ms = None            # coste de la última detección de idioma (None si no hubo)
         self.velocidad_x = None  # tiempo de audio / tiempo de cálculo, última medición
+        self.entrega_palabras = False   # ola 4: el Gestor lo activa; solo entonces se piden word_timestamps y `on_texto` recibe `palabras=` (el dictado no)
+        self._palabras: list[tuple[str, float]] = []   # (palabra, probabilidad) del último fragmento transcrito
         self.on_tarea = None     # on_tarea(fase, ident, **datos): inicio y fin REALES de cada tramo (panel de orquestación)
         self._n_tarea = 0
 
@@ -340,7 +356,11 @@ class Transcriptor:
                 if texto:
                     texto = corregir_glosario(texto, self.vocabulario, self.vocabulario_curado)   # mayúsculas y acentos del glosario, antes de entrar en la sesión
                     self._ultima[fuente] = ultima_frase(texto)
-                    self.on_texto(fuente, t0, texto)
+                    pal = alinear_palabras(self._palabras, texto, self._umbral_dudosa()) if self.entrega_palabras else []
+                    if pal:
+                        self.on_texto(fuente, t0, texto, palabras=pal)
+                    else:
+                        self.on_texto(fuente, t0, texto)
                 self._avisar("fin", ident, ok=True, ms=int(calc * 1000), palabras=len(texto.split()))
             except Exception as e:  # noqa: BLE001
                 self.error = f"Fallo al transcribir un tramo: {e}"
@@ -416,15 +436,29 @@ class Transcriptor:
         ms = self._cfg("whisper_vad_min_silencio_ms", 500)
         return {"vad_filter": True, "vad_parameters": dict(min_silence_duration_ms=int(ms))}
 
+    def _quiere_palabras(self) -> bool:
+        return bool(self.entrega_palabras and self._cfg("whisper_palabras", True))
+
+    def _umbral_dudosa(self) -> float:
+        try:
+            return float(self._cfg("palabra_dudosa_umbral", 0.5))
+        except (TypeError, ValueError):
+            return 0.5
+
     def transcribir(self, audio: np.ndarray, fuente: str) -> str:
         idioma = self.elegir_idioma(audio, fuente)
+        self._palabras = []
         # temperature en tupla: faster-whisper reintenta con la siguiente si un tramo falla por compresión (>2,4) o log-prob (<-1,0)
         segs, _ = self._modelo.transcribe(
             audio, language=idioma, beam_size=max(1, int(self.config["whisper_beam"])),
             condition_on_previous_text=False, temperature=(0.0, 0.2, 0.4),
             no_speech_threshold=0.6, initial_prompt=self.prompt_para(fuente, idioma) or None,
-            hotwords=construir_hotwords(self.vocabulario) or None, **self._opciones_vad())
-        return " ".join(s.text.strip() for s in segs if s.no_speech_prob < 0.7 and s.avg_logprob > -1.3)
+            hotwords=construir_hotwords(self.vocabulario) or None, **self._opciones_vad(),
+            **({"word_timestamps": True} if self._quiere_palabras() else {}))   # ola 4: probabilidad por palabra (algo más de CPU)
+        buenos = [s for s in segs if s.no_speech_prob < 0.7 and s.avg_logprob > -1.3]
+        if self._quiere_palabras():
+            self._palabras = [(w.word.strip(), w.probability) for s in buenos for w in (getattr(s, "words", None) or []) if w.word.strip()]
+        return " ".join(s.text.strip() for s in buenos)
 
     def detener(self) -> None:
         self._parar.set()

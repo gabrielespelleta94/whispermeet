@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import datetime
 
 from .rutas import CARPETA_CONTEXTO, CARPETA_SESIONES
-from .texto import recortar
+from .texto import mmss, recortar
 
 MAX_CAMBIOS = 6
 MAX_NUEVO = 3000
@@ -30,6 +31,8 @@ class Cambio:
     valido: bool = True
     error: str = ""
     diff: str = ""
+    preaceptado: bool = False   # ola 3: la cita del cambio aparece literalmente (normalizada) en la transcripción
+    cita: dict | None = None    # ola 3: {texto, minuto} de esa frase en la transcripción (None si no hay cita fiable)
 
     def publico(self) -> dict:
         return asdict(self)
@@ -99,8 +102,36 @@ def diff_unificado(antes: str, despues: str, fichero: str) -> str:
     return "\n".join(d)
 
 
-def normalizar(raw, contenidos: dict[str, str | None]) -> list[Cambio]:
-    """Valida la salida del modelo. `contenidos`: fichero -> texto actual (None si no existe)."""
+MIN_PALABRAS_CITA = 4
+
+
+def _plano(texto: str) -> str:
+    """Minúsculas, sin acentos ni signos, espacios colapsados: para comparar una cita con la transcripción."""
+    t = unicodedata.normalize("NFD", str(texto or "").lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", t)).strip()
+
+
+def buscar_cita(cita, transcripcion) -> dict | None:
+    """ola 3. `cita`: frase que el modelo dice haber oído; `transcripcion`: [(t_seg, texto)] en orden. Devuelve {texto, minuto} (el texto, tal como
+    figura en la transcripción) solo si la cita normalizada, de al menos `MIN_PALABRAS_CITA` palabras, aparece LITERALMENTE dentro de un fragmento
+    o a caballo entre dos seguidos; si no, None (ante la duda no se da por fiable). FUNCIÓN PURA."""
+    q = _plano(cita)
+    if len(q.split()) < MIN_PALABRAS_CITA or not transcripcion:
+        return None
+    planos = [(t, texto, _plano(texto)) for t, texto in transcripcion]
+    for t, texto, p in planos:
+        if q in p:
+            return {"texto": " ".join(str(texto).split()), "minuto": mmss(t)}
+    for (t, texto, p), (_t2, texto2, p2) in zip(planos, planos[1:]):
+        if q in f"{p} {p2}":
+            return {"texto": " ".join(f"{texto} {texto2}".split()), "minuto": mmss(t)}
+    return None
+
+
+def normalizar(raw, contenidos: dict[str, str | None], transcripcion=None) -> list[Cambio]:
+    """Valida la salida del modelo. `contenidos`: fichero -> texto actual (None si no existe). `transcripcion` (opcional, ola 3): [(t_seg, texto)]; un
+    cambio válido cuya cita (`q`) aparece literalmente en ella sale `preaceptado` y con su `cita`."""
     out: list[Cambio] = []
     if not isinstance(raw, list):
         return out
@@ -134,6 +165,8 @@ def normalizar(raw, contenidos: dict[str, str | None]) -> list[Cambio]:
             c.diff = diff_unificado(actual, aplicar(actual, c), fichero)
             if not c.diff:
                 raise ValueError("el cambio no modifica nada")
+            c.cita = buscar_cita(r.get("q") or r.get("cita"), transcripcion)
+            c.preaceptado = c.cita is not None
         except ValueError as e:
             c.valido, c.error = False, str(e)
         out.append(c)

@@ -35,7 +35,9 @@ def _tokens(llamadas: list[dict]) -> int:
 class Director:
     def __init__(self, gestor):
         self.g = gestor
+        self.ajustes_sesion: dict = {}          # ola 4: ritmo de la plantilla de reunión (claves de CLAVES_MONITOR); manda sobre la configuración durante la sesión
         self.monitor = Monitor({k: gestor.cfg[k] for k in CLAVES_MONITOR})
+        self._enganchar_silencio()
         self.presupuesto = Presupuesto(gestor.cfg["presupuesto_tokens_hora"])
         self.definiciones = Definiciones()
         self.estado = {p: self._perfil_nuevo() for p in PF.ORDEN_PERFILES}
@@ -53,7 +55,9 @@ class Director:
 
     def reiniciar(self) -> None:
         cfg = self.g.cfg
+        self.ajustes_sesion = {}
         self.monitor = Monitor({k: cfg[k] for k in CLAVES_MONITOR})
+        self._enganchar_silencio()
         self.presupuesto = Presupuesto(cfg["presupuesto_tokens_hora"])
         self.definiciones = Definiciones()
         self.estado = {p: self._perfil_nuevo() for p in PF.ORDEN_PERFILES}
@@ -62,6 +66,11 @@ class Director:
         self.n_turnos = self.tokens_equipo = 0
         self._ultima_comprobacion = -1e9
         self.g.sonda.al_terminar = self._al_terminar
+
+    def _enganchar_silencio(self) -> None:
+        """ola 4: el Monitor consulta las reglas locales de «Esto está mal» antes de emitir un aviso."""
+        reglas = getattr(self.g, "reglas_silencio", None)
+        self.monitor.filtro_silencio = reglas.silenciado if reglas is not None else None
 
     # ---------------------------------------------------------------- presupuesto
     def _al_terminar(self, reg: dict, llamadas: list[dict]) -> None:
@@ -98,12 +107,13 @@ class Director:
         s = self.g.sesion
         # los parámetros del Monitor se leen de la configuración en cada pasada (se pueden cambiar en Ajustes)
         self.monitor.c.update({k: c[k] for k in CLAVES_MONITOR})
+        self.monitor.c.update(self.ajustes_sesion)   # ola 4: el ritmo de la plantilla de reunión
         segs = self._segmentos_nuevos()
         pas = self.monitor.pasada(ahora, segs, self._objetivos_monitor(), s.checks)
         for d in pas.definiciones:
             self.definiciones.anadir_local(d)
         self._n_pal_pasada = pas.palabras
-        asesor_on = bool(c["asesor_activo"])
+        asesor_on = bool(c["asesor_activo"]) and self.monitor.pesos.get("estratega", 1) > 0   # ola 4: la plantilla de reunión puede dejar al Estratega sin turno
         if asesor_on and segs:   # señales estratégicas (precio, plazos, oportunidad, cierre…): suman al Estratega, todo local
             self.monitor.sumar_estratega(AS.senales_estrategicas(" ".join(x.texto for x in segs)).keys())
         turno = None

@@ -20,6 +20,8 @@ from pydantic import BaseModel
 from . import __version__
 from . import contexto as CX
 from . import aviso as AV
+from . import api_ola3
+from . import api_ola4
 from . import backlog as BL
 from . import resumen as RS
 from . import llamadas as LL
@@ -61,6 +63,8 @@ class Inicio(BaseModel):
     objetivos: list[str] = []       # objetivos propios escritos antes de empezar (sin plan o «Otra reunión»)
     contexto_reunion: str = ""      # «Contexto de la reunión» aceptado por el usuario (vacío = todo como siempre)
     idioma: str | None = None       # «Idioma de la reunión»: auto | es | ca (None = el de la configuración); se valida en el gestor
+    plantilla: str | None = None    # ola 4: id de una plantilla de reunión (GET /api/plantillas); None = sin plantilla
+    modo_local: bool | None = None  # ola 4: modo solo local de ESTA reunión (None = el de la configuración)
 
 
 class DictadoIn(BaseModel):
@@ -127,6 +131,10 @@ class Publicacion(BaseModel):
     publicar: bool = True
 
 
+class TerminarIn(BaseModel):
+    lanzar_agentes: bool = False   # ola 4: en una reunión en modo solo local, confirma lanzar los agentes del cierre (resumen final y cambios al contexto)
+
+
 class Version(BaseModel):
     version: str
 
@@ -182,7 +190,7 @@ class CheckIn(BaseModel):
 
 def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
               al_cambiar_captura=None, ventana=None, al_avisar_llamada=None, vigilar_llamadas_activo=False, aviso=None,
-              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None) -> FastAPI:
+              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None) -> FastAPI:
     """`ventana`: función sin argumentos que devuelve la `Ventana` nativa (o None con `--sin-ventana`).
     `backlog`: el `Backlog` (pruebas: con tiempos, reloj y abridor propios); por defecto uno sobre el Guardian.
     `vigilar_llamadas_activo`: solo la app real vigila el micro de Teams (los tests no leen el registro).
@@ -408,7 +416,8 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
     @app.post("/api/sesion/iniciar")
     @envolver
     async def iniciar(b: Inicio):
-        r = await gestor.iniciar(b.proyecto, b.tema, b.cadencia, b.sesion_plan, b.objetivos, b.contexto_reunion, b.idioma)
+        r = await gestor.iniciar(b.proyecto, b.tema, b.cadencia, b.sesion_plan, b.objetivos, b.contexto_reunion, b.idioma,
+                                  plantilla=b.plantilla, modo_local=b.modo_local)
         AV.recordar_ultimo(cfg, b.proyecto, b.idioma)   # el aviso de llamada propondrá este proyecto e idioma
         if aviso is not None:
             aviso.cerrar("empezar")                      # si había un aviso flotante abierto, ya no hace falta
@@ -561,8 +570,8 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
 
     @app.post("/api/sesion/terminar")
     @envolver
-    async def terminar():
-        return await gestor.terminar()
+    async def terminar(b: TerminarIn | None = None):
+        return await gestor.terminar(lanzar_agentes=bool(b and b.lanzar_agentes))   # ola 4: en modo solo local, solo con la confirmación explícita
 
     @app.post("/api/revision/reintentar")
     @envolver
@@ -761,6 +770,9 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         if r is None:
             raise HTTPException(404, "No existe esa sesión.")
         return r
+
+    app.include_router(api_ola3.crear_router(gestor, cfg, guardian, bl, abridor=abridor_ola3))   # ola 3: acciones, autonomía, brief, seguimiento, Outlook
+    app.include_router(api_ola4.crear_router(gestor, cfg, guardian, bl, envolver))   # ola 4: confianza y escala (api_ola4.py, demo/api-ola4.md)
 
     # ------------------------------------------------------------ WebSocket
     @app.websocket("/ws")

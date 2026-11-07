@@ -1,6 +1,7 @@
 """Configuración persistente (datos/config.json). Sin secretos: no se guarda ninguna clave."""
 from __future__ import annotations
 
+import contextlib
 import copy
 import getpass
 import json
@@ -40,12 +41,39 @@ MODELOS_POR_DEFECTO = {
     "asesor_consejo": "haiku",              # el Estratega (quinto perfil del equipo): consejos de valor
     "asesor_consejo_sonnet": "sonnet",      # el Estratega con señales estratégicas (hasta ASESOR_SONNET_HORA por hora)
     "asesor_profundizar": "sonnet",         # botón «Profundizar»: UNA llamada con más extractos y, si el usuario lo marca, búsqueda web
+    # ola 3 (capa agéntica)
+    "brief": "haiku",                       # brief de preparación de un proyecto: UNA llamada al abrir la ficha (cacheada por hash de entrada)
+    "pregunta_capitan": "haiku",            # pregunta propuesta por el Capitán para cerrar un objetivo sin tratar: una llamada ligera, una vez por objetivo
 }
 
 # Proyectos fuera de la raíz. `compartido: true` = carpeta de OneDrive compartida y de otra persona:
 # la sesión se guarda en local (apuntes\sesiones\<proyecto>) y nunca se crea «02. Sesiones» allí.
 # Vacío por defecto: cada instalación declara los suyos en datos/config.json (`proyectos_extra`).
 PROYECTOS_EXTRA_POR_DEFECTO: list[dict] = []
+
+# ola 3: autonomía por tipo de acción. «hacer» SOLO en lo local y reversible (marcar, consolidar, preaceptar); nada se envía fuera sin clic.
+TIPOS_ACCION = ("pregunta", "pendiente", "cambio_contexto", "correo", "recordatorio")
+TIPOS_AUTONOMIA = TIPOS_ACCION + ("consolidar_pendientes",)
+NIVELES_AUTONOMIA = ("avisar", "proponer", "hacer")
+HACER_ADMITIDO = ("cambio_contexto", "consolidar_pendientes")
+AUTONOMIA_POR_DEFECTO = {t: ("hacer" if t == "consolidar_pendientes" else "proponer") for t in TIPOS_AUTONOMIA}
+
+
+def validar_autonomia(cambios, base: dict | None = None) -> dict:
+    """Mezcla `cambios` ({tipo: nivel}) con `base` y devuelve el resultado. ValueError si un tipo o un nivel no existe, o si se pide «hacer» donde no se admite."""
+    if not isinstance(cambios, dict):
+        raise ValueError("La autonomía debe ser un objeto {tipo: nivel}.")
+    out = dict(base or AUTONOMIA_POR_DEFECTO)
+    for t, n in cambios.items():
+        if t not in TIPOS_AUTONOMIA:
+            raise ValueError(f"Tipo de acción desconocido: {t}.")
+        if n not in NIVELES_AUTONOMIA:
+            raise ValueError("El nivel debe ser avisar, proponer o hacer.")
+        if n == "hacer" and t not in HACER_ADMITIDO:
+            raise ValueError("«Hacer» solo se admite para lo local y reversible (" + ", ".join(HACER_ADMITIDO) + "); lo demás se propone y decides tú.")
+        out[t] = n
+    return out
+
 
 DEFAULTS: dict = {
     "raiz_proyectos": str(Path.home() / "Proyectos"),
@@ -62,7 +90,7 @@ DEFAULTS: dict = {
     "proyectos_extra": PROYECTOS_EXTRA_POR_DEFECTO,
     "modelos": MODELOS_POR_DEFECTO,
     "esfuerzo": "low",
-    "sin_razonamiento": ["digest", "periodico", "consulta", "equipo", "contexto_reunion"],  # tareas haiku: sin tokens de razonamiento
+    "sin_razonamiento": ["digest", "periodico", "consulta", "equipo", "contexto_reunion", "brief", "pregunta_capitan"],  # tareas haiku: sin tokens de razonamiento
     "timeout_s": 240,
     "cadencia_min": 5,
     "cadencia_defecto": "equipo",          # equipo | 5 | 10 | manual (selector de inicio; «adaptativo» de versiones anteriores = equipo)
@@ -130,6 +158,17 @@ DEFAULTS: dict = {
     "contexto_md_max_ficheros": 80,        # .md del proyecto que se leen como máximo (por prioridad: 00. CONTEXTO, CLAUDE.md…, cercanía a la raíz y novedad)
     "contexto_md_profundidad": 4,          # niveles de subcarpetas que se recorren
     "contexto_md_tope_total_chars": 14000, # caracteres de contexto que entran en el digest (como siempre; subirlo gasta más tokens por reunión)
+    # ola 3: capa agéntica (apuntes/acciones.py, brief.py, seguimiento.py, api_ola3.py)
+    "autonomia": dict(AUTONOMIA_POR_DEFECTO),   # por tipo de acción: avisar | proponer | hacer («hacer» solo en lo local y reversible: ver HACER_ADMITIDO)
+    "objetivo_sin_tratar_min": 10,         # minutos sin tocar un objetivo para que el Capitán proponga la pregunta que lo cierra (una por objetivo)
+    "seguimiento_umbral": 0.6,             # fracción de las palabras clave de un pendiente que debe aparecer en una frase de una sesión posterior para darlo por hecho
+    "brief_max_chars": 6000,               # tope de caracteres de la última sesión y los pendientes que viajan a la llamada del brief
+    # ola 4: confianza y escala (palabras dudosas, silencio, envíos, modo solo local, cartera)
+    "whisper_palabras": True,              # word_timestamps: cada segmento lleva sus palabras con probabilidad (algo más de CPU por fragmento)
+    "palabra_dudosa_umbral": 0.5,          # una palabra con probabilidad menor que esto se marca como dudosa
+    "modo_local": False,                   # sin agentes en vivo: solo transcripción y Monitor; ninguna llamada sale (conmutable por sesión)
+    "cartera_ventana_dias": 30,            # «sesiones recientes» de la vista de cartera
+    "cartera_pendiente_antiguo_dias": 14,  # un pendiente abierto de hace más de estos días cuenta como antiguo
 }
 
 _CLAVES_LISTA = {"sin_razonamiento"}
@@ -148,8 +187,12 @@ _CLAVES_INT = {"whisper_beam", "whisper_hilos", "timeout_s", "cadencia_min", "mi
                "consulta_max_ficheros", "max_objetivos_sugeridos", "presupuesto_asesor_tokens_hora", "asesor_respuesta_cada_s",
                "asesor_chars_extractos", "asesor_chars_extractos_profundizar", "asesor_chars_transcripcion", "asesor_max_consejos",
                "asesor_consejo_cada_s", "fuentes_max_ficheros", "fuentes_tiempo_s",
-               "contexto_md_max_ficheros", "contexto_md_profundidad", "contexto_md_tope_total_chars"}
+               "contexto_md_max_ficheros", "contexto_md_profundidad", "contexto_md_tope_total_chars",
+               "objetivo_sin_tratar_min", "brief_max_chars"}   # ola 3
 _ESFUERZOS = {"low", "medium", "high", "xhigh", "max", ""}
+# ola 4: tipos de sus claves (bloque propio; `Config.actualizar` solo tiene una rama para ellas)
+_OLA4_BOOL = {"whisper_palabras", "modo_local"}
+_OLA4_INT = {"cartera_ventana_dias", "cartera_pendiente_antiguo_dias"}
 
 
 def _validar_extras(lista: list) -> list[dict]:
@@ -247,6 +290,18 @@ class Config:
                             self.datos[k][kk] = None if v[kk] is None else round(v[kk])
                     if isinstance(v.get("opacidad"), (int, float)) and not isinstance(v["opacidad"], bool):
                         self.datos[k]["opacidad"] = max(60, min(100, round(v["opacidad"])))
+                elif k == "autonomia" and isinstance(v, dict):   # ola 3: lo no válido se descarta (la API lo rechaza antes con un error claro)
+                    for kk, vv in v.items():
+                        with contextlib.suppress(ValueError):
+                            self.datos[k] = validar_autonomia({kk: vv}, self.datos[k])
+                elif k in _OLA4_BOOL and isinstance(v, bool):   # ola 4
+                    self.datos[k] = v
+                elif k in _OLA4_INT and isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 3650:
+                    self.datos[k] = v
+                elif k == "palabra_dudosa_umbral" and isinstance(v, (int, float)) and not isinstance(v, bool) and 0.0 <= v <= 1.0:
+                    self.datos[k] = float(v)
+                elif k == "seguimiento_umbral" and isinstance(v, (int, float)) and not isinstance(v, bool) and 0.2 <= v <= 1.0:
+                    self.datos[k] = float(v)
                 elif k == "proyectos_extra" and isinstance(v, list):
                     self.datos[k] = _validar_extras(v)
                 elif k == "vocabulario_transcripcion" and isinstance(v, list):

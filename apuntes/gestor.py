@@ -10,6 +10,7 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
+from . import acciones as AC
 from . import asesor as AS
 from . import cambios as CB
 from . import checks as CK
@@ -23,7 +24,13 @@ from .analisis import ErrorAnalisis, ModeloLLM
 from .analisis import prompts as P
 from .analisis.analista import Analista
 from .asesor_directo import Asesor
+from . import correccion as CORR   # ola 4
+from . import metricas as MT       # ola 4
 from .config import validar_idioma
+from .envios import ModeloVigilado, RegistroEnvios   # ola 4
+from .glosario import Glosario                        # ola 4
+from .plantillas import Plantillas, pesos_de          # ola 4
+from .silencio import ReglasSilencio                  # ola 4
 from .dictado import Dictado
 from .consumo import Consumo
 from .equipo.director import MODOS_CON_EQUIPO, Director
@@ -125,8 +132,20 @@ class Gestor:
         self._cierre: COB.Cierre | None = None   # lo que recibió la llamada final (para avisar de lo que quedó fuera)
         self._salud: dict[str, dict] = {}      # por tipo de fallo del bucle: {seguidas, ultimo_aviso, avisado, texto}
         self.fuentes = ServicioFuentes(guardian, config)   # índice local de fuentes (BM25) para el asesor: se construye en segundo plano, nunca bloquea
+        # ola 4 (confianza y escala): registro de envíos, modo solo local, reglas de silencio, glosario, plantillas y métricas
+        self.envios = RegistroEnvios(guardian)
+        self.reglas_silencio = ReglasSilencio(guardian)
+        self.glosario = Glosario(guardian, config)
+        self.plantillas = Plantillas(guardian)
+        self.metricas = MT.AlmacenMetricas(guardian)
+        self.llm = ModeloVigilado(modelo_llm, self)   # EL punto único: impone el modo solo local y registra cada envío (apuntes/envios.py)
+        self.modo_local_sesion = bool(config["modo_local"])   # el de la reunión en curso (conmutable); sin reunión manda la configuración
+        self.agentes_cierre_ok = False         # el usuario confirmó lanzar los agentes al cerrar una reunión en modo solo local
+        self.plantilla: dict | None = None     # la plantilla de reunión aplicada al empezar
         self.asesor = Asesor(self)             # respuestas sugeridas a las preguntas del cliente y «Profundizar» (presupuesto propio)
         self.equipo = Director(self)           # el Monitor local, el presupuesto, las definiciones y los turnos de los perfiles (con el Estratega)
+        self.acciones = AC.ServicioAcciones(self)   # ola 3: bandeja de acciones propuestas (apuntes/acciones.py); el router de api_ola3 le añade `seguimiento`
+        self.seguimiento = None                # ola 3: apuntes/seguimiento.py (lo pone api_ola3.crear_router)
 
     # ------------------------------------------------------------------ utilidades
     def emitir(self, tipo: str, **datos) -> None:
@@ -185,6 +204,8 @@ class Gestor:
             "captura": None if self.captura is None else {"errores": {k: str(v) for k, v in dict(self.captura.errores).items()}},
             "avisos": list(self.avisos), "consumo": self.consumo.resumen(),
             "revision": self.revision_publica(),
+            "modo_local": self.modo_local_publico(),   # ola 4
+            "plantilla": None if not (s and self.plantilla) else {"id": self.plantilla["id"], "nombre": self.plantilla["nombre"]},   # ola 4
         }
 
     def snapshot(self) -> dict:
@@ -200,24 +221,59 @@ class Gestor:
         d.update(self.sonda.publico())   # tareas (agente, modelo, tramo, duración, tokens, resultado) y traza por análisis
         d["monitor"] = self.equipo.snapshot() if s else {"feed": [], "definiciones": [], "pasadas": []}
         d["asesor"] = self.asesor.publico() if s else {"respuestas": [], "consejos": [], **self.asesor.estado_publico()}
+        d["acciones"] = self.acciones.listar()   # ola 3
         return d
 
     def _emitir_estado(self) -> None:
         self.emitir("estado", **self.estado_ligero())
 
+    # ------------------------------------------------------------------ ola 4: modo solo local (se impone en apuntes/envios.py, el único punto hacia el modelo)
+    def modo_local_activo(self) -> bool:
+        """¿Está cerrada la salida al modelo? Con reunión (en curso o en revisión) manda la de la sesión, salvo que el usuario haya confirmado lanzar los agentes al cerrar;
+        sin reunión, la configuración."""
+        if self.sesion is not None:
+            return bool(self.modo_local_sesion) and not self.agentes_cierre_ok
+        return bool(self.cfg["modo_local"])
+
+    def modo_local_publico(self) -> dict:
+        return {"activo": self.modo_local_activo(), "sesion": bool(self.modo_local_sesion) if self.sesion else None,
+                "config": bool(self.cfg["modo_local"]), "agentes_cierre_confirmados": self.agentes_cierre_ok}
+
+    def poner_modo_local(self, activo: bool) -> dict:
+        """Conmuta el modo solo local de la reunión en curso (sin reunión, el de la configuración). Al desactivarlo a mitad de reunión se prepara el contexto
+        que se saltó al empezar."""
+        activo = bool(activo)
+        if self.sesion is None:
+            self.cfg.actualizar({"modo_local": activo})
+        else:
+            era = self.modo_local_activo()
+            self.modo_local_sesion = activo
+            if era and not activo and self.estado in ("grabando", "pausada") and self.digest_origen == "local":
+                self.digest_origen = ""
+                self._digest_tarea = asyncio.get_running_loop().create_task(self._preparar_digest())
+                self._tareas.append(self._digest_tarea)
+        self._emitir_estado()
+        return self.modo_local_publico()
+
     # ------------------------------------------------------------------ inicio
     async def iniciar(self, proyecto: str | None, tema: str, cadencia=None, sesion_plan: str | None = None,
-                      objetivos: list[str] | None = None, contexto_reunion: str = "", idioma: str | None = None) -> dict:
+                      objetivos: list[str] | None = None, contexto_reunion: str = "", idioma: str | None = None,
+                      plantilla: str | None = None, modo_local: bool | None = None) -> dict:
         """`cadencia`: adaptativo (por defecto) | 5 | 10 | manual. `objetivos`: los que el usuario escribe antes de empezar
         (solo sin plan o en «Otra reunión»; con la sesión de un plan mandan los del plan). `contexto_reunion`: el texto que el usuario
         aceptó en «Contexto de la reunión»; entra en el digest y en su clave de caché (vacío: nada cambia)."""
         if self.estado != "inactivo":
             raise ValueError("Ya hay una reunión en curso o pendiente de revisar.")
+        plant = None
+        if plantilla:   # ola 4: plantilla de reunión (objetivos, reparto de perfiles y ritmo); se valida ANTES de tocar nada
+            plant = self.plantillas.obtener(plantilla)
+            if plant is None:
+                raise ValueError("Esa plantilla de reunión no existe.")
         # «Idioma de la reunión» (auto | es | ca), validado en servidor; sin valor, el de la configuración (un «es» guardado sigue valiendo)
         self.idioma = validar_idioma(self.cfg["idioma"] if idioma is None else idioma)
         if self.dictado.activo:   # el micro y el modelo de transcripción pasan a la reunión
             await asyncio.to_thread(self.dictado.cancelar)
-        modo = DP.normalizar_modo(self.cfg["cadencia_defecto"] if cadencia is None else cadencia)
+        modo = DP.normalizar_modo((plant["ritmo"]["cadencia"] if plant else self.cfg["cadencia_defecto"]) if cadencia is None else cadencia)
         plan = PL.plan_de(self.g, proyecto)
         if sesion_plan and not plan:
             raise ValueError("Este proyecto no tiene plan de sesiones.")
@@ -235,6 +291,8 @@ class Gestor:
         if not s.objetivos:   # sin plan, «Otra reunión» o sesión sin objetivos: los propios del usuario
             propios = [" ".join(str(t).split())[:200] for t in (objetivos or []) if isinstance(t, str) and t.strip()][:12]
             s.objetivos = [PL.objetivo_nuevo(i, t, "usuario") for i, t in enumerate(propios, 1)]
+            if not s.objetivos and plant:   # ola 4: sin objetivos propios, los de la plantilla
+                s.objetivos = [PL.objetivo_nuevo(i, t, "plantilla") for i, t in enumerate(plant["objetivos"], 1)]
         self._plan_sesion = ses
         self.contexto_reunion = P.limpiar_texto_usuario(contexto_reunion)
         self._plan_con_objetivos = bool(ses and ses["objetivos"])
@@ -247,7 +305,14 @@ class Gestor:
         self.analista = Analista(self.llm, self.cfg, self.consumo, self.g, s.id)
         self.sonda.reiniciar()
         self.equipo.reiniciar()
+        self.plantilla = plant
+        self.modo_local_sesion = self.cfg["modo_local"] if modo_local is None else bool(modo_local)   # ola 4
+        self.agentes_cierre_ok = False
+        if plant:   # el reparto de perfiles y el ritmo de la plantilla valen solo para esta reunión
+            self.equipo.monitor.pesos = pesos_de(plant)
+            self.equipo.ajustes_sesion = dict(plant["ritmo"]["ajustes"])
         self.asesor.reiniciar()
+        self.acciones.reiniciar()
         self.fuentes.preparar_proyecto(proyecto, s.ruta.name, self.contexto_reunion)   # hilo demonio: contexto del proyecto y sesiones anteriores
         self.sonda.instrumentar(self.analista)   # punto único de las llamadas al LLM: inicio y fin reales de cada tarea
         self.reloj = Reloj(self.velocidad if self.sim is not None else 1.0)
@@ -286,6 +351,7 @@ class Gestor:
         self._vocabulario_contexto = []
         self._actualizar_vocabulario()
         self.transcriptor.on_tarea = self.sonda.transcripcion
+        self.transcriptor.entrega_palabras = True   # ola 4: word_timestamps (si `whisper_palabras`) y `on_texto(..., palabras=)`
         self.transcriptor.iniciar()
         self.captura = Captura(self.reloj.ahora, self._on_enunciado, self._on_nivel,
                                self.cfg["dispositivo_mic"], self.cfg["dispositivo_sistema"])
@@ -303,12 +369,13 @@ class Gestor:
         if not self.transcriptor:
             return
         vistos, lista = set(), []
-        for t in list(self.cfg["vocabulario_transcripcion"]) + list(self._vocabulario_contexto):
+        curado = list(self.cfg["vocabulario_transcripcion"]) + self.glosario.de_proyecto(self.sesion.proyecto if self.sesion else None)   # ola 4: + el glosario del proyecto
+        for t in curado + list(self._vocabulario_contexto):
             if t.lower() not in vistos:
                 vistos.add(t.lower())
                 lista.append(t)
         self.transcriptor.vocabulario = lista
-        self.transcriptor.vocabulario_curado = list(self.cfg["vocabulario_transcripcion"])
+        self.transcriptor.vocabulario_curado = curado
 
     # ------------------------------------------------------------------ audio -> texto
     def _on_enunciado(self, fuente: str, audio, t0: float) -> None:
@@ -319,14 +386,14 @@ class Gestor:
         self.niveles[fuente] = db
         self.emitir("nivel", fuente=fuente, db=round(db, 1))
 
-    def _on_texto(self, fuente: str, t0: float, texto: str) -> None:
-        self._agregar(t0, fuente, texto)
+    def _on_texto(self, fuente: str, t0: float, texto: str, palabras: list | None = None) -> None:
+        self._agregar(t0, fuente, texto, palabras)
 
-    def _agregar(self, t: float, fuente: str, texto: str) -> None:
+    def _agregar(self, t: float, fuente: str, texto: str, palabras: list | None = None) -> None:
         s = self.sesion
         if not s:
             return
-        seg = s.agregar_segmento(t, fuente, texto)
+        seg = s.agregar_segmento(t, fuente, texto, palabras)   # ola 4: `palabras` = [{w, p, d}] con la confianza de Whisper (solo con audio real)
         s.duracion_s = max(s.duracion_s, self.reloj.ahora())
         try:
             s.guardar()  # guardado incremental: sobrevive a un cierre inesperado
@@ -423,7 +490,7 @@ class Gestor:
         self.emitir("tick", **{k: v for k, v in self.estado_ligero().items() if k in ("t", "analisis", "transcripcion", "consumo", "avisos", "equipo", "asesor")})
 
     def _disparar_periodico(self) -> bool:
-        if self.analizando or self.bloqueo:
+        if self.analizando or self.bloqueo or self.modo_local_activo():
             return False
         motivo = self._toca_analizar()
         if not motivo:
@@ -434,6 +501,8 @@ class Gestor:
     def _asesor_paso(self):
         """Una pasada del asesor (cada segundo, local): detecta preguntas del cliente en lo nuevo y, si toca (límite de 20 s, la más reciente, presupuesto), lanza UNA
         respuesta sugerida. False = nada que hacer. Un fallo queda en datos\\apuntes.log y la reunión sigue."""
+        if self.modo_local_activo():   # ola 4: en modo solo local el asesor no responde (no hay llamadas)
+            return False
         a = self.asesor
         a.observar()
         p = a.siguiente()
@@ -486,7 +555,7 @@ class Gestor:
             self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] {tipo}: {type(e).__name__}"
                                            + (f" ({h['seguidas']} pasadas seguidas)" if grave else ""))
             self._poner_aviso(h, TEXTO_FALLO_GRAVE if grave else TEXTO_FALLO)
-            self.emitir("aviso", mensaje=h["texto"], componente=tipo, grave=grave)
+            self.emitir("aviso", mensaje=h["texto"], componente=tipo, grave=grave, prioridad="fijo" if grave else "normal")
             self._emitir_estado()
             with contextlib.suppress(Exception):
                 self.sesion.guardar()
@@ -504,7 +573,7 @@ class Gestor:
                 return
             self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] {tipo}: recuperado")
             self._poner_aviso(h, TEXTO_RECUPERADO)
-            self.emitir("aviso", mensaje=TEXTO_RECUPERADO, componente=tipo, grave=False, recuperado=True)
+            self.emitir("aviso", mensaje=TEXTO_RECUPERADO, componente=tipo, grave=False, recuperado=True, prioridad="discreto")
             self._emitir_estado()
             with contextlib.suppress(Exception):
                 self.sesion.guardar()
@@ -525,6 +594,7 @@ class Gestor:
         r = await self._protegida("monitor", self._monitor_comprobar)
         if not r:
             return
+        await self._protegida("acciones", lambda: self.acciones.paso(self.reloj.ahora()))   # ola 3: pregunta del Capitán para un objetivo sin tratar
         await self._protegida("monitor_eventos", lambda: self._monitor_publicar(r))
         await self._protegida("turno", lambda: self._monitor_turno(r))
 
@@ -552,7 +622,7 @@ class Gestor:
     def _monitor_turno(self, r: dict) -> None:
         eq = self.equipo
         try:
-            if r["turno"]:
+            if r["turno"] and not self.modo_local_activo():   # ola 4: en modo solo local el Monitor sigue, pero no se lanza ningún turno
                 perfil, motivo = r["turno"]
                 eq.eligiendo = perfil
                 self._lanzar("turno", eq.turno(perfil, motivo))
@@ -594,8 +664,11 @@ class Gestor:
             self.analista.ficheros_digest = list(self.digest_ficheros)
             if prio and prio not in [e for e, _ in fuentes.textos]:
                 self.avisos.append(f"El fichero prioritario de la sesión ({prio}) no está disponible o está vacío.")
-            self.digest, self.digest_origen = await asyncio.to_thread(self.analista.digest, s.proyecto, fuentes, foco,
-                                                                      base, con_checks, con_objetivos, propios, bool(prio), ctx)
+            if self.modo_local_activo():   # ola 4: el digest es una llamada al modelo; en modo solo local no se hace (se hará si se desactiva a mitad de reunión)
+                self.digest, self.digest_origen = "", "local"
+            else:
+                self.digest, self.digest_origen = await asyncio.to_thread(self.analista.digest, s.proyecto, fuentes, foco,
+                                                                          base, con_checks, con_objetivos, propios, bool(prio), ctx)
             if con_checks and self.analista.checks_sugeridos and self.sesion is s:
                 self.checks.incorporar_sugeridos(s.proyecto, s.plan_id or None, self.analista.checks_sugeridos, base)
                 self._sync_checks()
@@ -622,6 +695,8 @@ class Gestor:
             return {"ok": False, "motivo": "No hay reunión en curso."}
         if self.analizando:
             return {"ok": False, "motivo": "Ya hay un análisis en curso."}
+        if self.modo_local_activo():
+            return {"ok": False, "motivo": "Modo solo local: los agentes no están activos en esta reunión."}
         if s.modo_cadencia in MODOS_CON_EQUIPO:   # «Analizar ahora» con el equipo: el perfil con más puntos
             return await self.equipo.a_peticion() if manual else {"ok": False, "motivo": "En este modo habla el equipo."}
         nuevos = s.nuevos_desde_ultimo_analisis(esperar=not manual)   # a petición se lee lo recibido, sin esperar a la pareja de un Micro
@@ -730,9 +805,12 @@ class Gestor:
             cands.append({"categoria": "contradicción", "texto": c["x"], "minuto": m, "t_seg": a_segundos(m or ""),
                           "responsable": "", "referencia": c["q"], "estado": "posible", "linea": self._linea_cercana(lineas, m),
                           **({"perfil": res["perfil"]} if res.get("perfil") else {})})
+        cands = [c for c in cands if not self.reglas_silencio.silenciado("tarjeta:" + c["categoria"], c["texto"])]   # ola 4: «Esto está mal» no vuelve
         elegidas = TJ.seleccionar(cands, s.tarjetas, self.cfg["max_tarjetas_analisis"])
         nuevas = [self._tarjeta(t) for t in elegidas]
         s.tarjetas.extend(nuevas)
+        with contextlib.suppress(Exception):   # ola 3: un pendiente detectado se propone como acción (local); nunca rompe el análisis
+            self.acciones.desde_tarjetas(nuevas)
         return nuevas
 
     async def _confirmar_contradicciones(self) -> None:
@@ -757,8 +835,10 @@ class Gestor:
 
     def _tarjeta(self, t: dict) -> dict:
         n = len(self.sesion.tarjetas) + 1
-        return {"id": f"t{n}-{random.randrange(16**4):04x}", "analisis": self.n_analisis,
-                "referencia": "", "nota": "", **t, "t_seg": a_segundos(t.get("minuto") or "")}
+        tj = {"id": f"t{n}-{random.randrange(16**4):04x}", "analisis": self.n_analisis,
+              "referencia": "", "nota": "", **t, "t_seg": a_segundos(t.get("minuto") or "")}
+        tj.setdefault("prioridad", TJ.prioridad_de(tj))   # ola 3: fijo | normal | discreto (una contradicción de alcance o importe del Auditor sale fija)
+        return tj
 
     # ------------------------------------------------------------------ anotaciones del usuario (comentario | pregunta | idea)
     def _en_reunion(self) -> Sesion:
@@ -1023,10 +1103,14 @@ class Gestor:
         return out
 
     # ------------------------------------------------------------------ terminar y revisar
-    async def terminar(self) -> dict:
+    async def terminar(self, lanzar_agentes: bool = False) -> dict:
+        """`lanzar_agentes` (ola 4): en una reunión en modo solo local, el cierre NO lanza ningún agente salvo que la petición lo confirme explícitamente
+        (también se puede pedir después con `lanzar_agentes_cierre`). Fuera del modo solo local no cambia nada."""
         if self.estado not in ("grabando", "pausada"):
             raise ValueError("No hay reunión en curso.")
         s = self.sesion
+        if lanzar_agentes is True:
+            self.agentes_cierre_ok = True
         self.estado = "terminando"
         self.reloj.pausar()
         self._emitir_estado()
@@ -1048,8 +1132,22 @@ class Gestor:
         await asyncio.to_thread(s.guardar)
         self.revision = {"estado": "generando", "resumen": "", "cambios": [], "error": "", "aplicado": None,
                          "carpeta_contexto": None, "compartido": s.compartido, "destino_contexto": "", "sin_cambios": "", "resumen_sonnet": "", "pulido": self._pulido_inicial(),
-                         "objetivos": [], "avisos": [], "publicacion": self._publicacion_inicial()}
+                         "objetivos": [], "avisos": [], "publicacion": self._publicacion_inicial(),
+                         "modo_local": self.modo_local_activo(), "agentes_pendientes": False, "metricas": None}
         self.estado = "revision"
+        self._emitir_estado()
+        asyncio.get_running_loop().create_task(self._generar_revision())
+        return {"ok": True}
+
+    async def lanzar_agentes_cierre(self) -> dict:
+        """ola 4: el usuario confirma, en la revisión de una reunión en modo solo local, que SÍ se lancen los agentes del cierre (resumen final y cambios de contexto).
+        A partir de aquí esa reunión puede llamar al modelo (Pulir con Opus incluido)."""
+        if self.estado != "revision" or not self.revision:
+            raise ValueError("No hay una revisión abierta.")
+        if self.revision["estado"] == "generando":
+            raise ValueError("La revisión se está generando.")
+        self.agentes_cierre_ok = True
+        self.revision.update(estado="generando", error="", modo_local=False, agentes_pendientes=False)
         self._emitir_estado()
         asyncio.get_running_loop().create_task(self._generar_revision())
         return {"ok": True}
@@ -1071,6 +1169,9 @@ class Gestor:
         s, rev = self.sesion, self.revision
         try:
             s.checks = self.checks.listar(s.proyecto, s.plan_id or None, self._base_checks())
+            if self.modo_local_activo():   # ola 4: modo solo local sin confirmar → revisión local, sin una sola llamada
+                self._revision_local()
+                return
             nuevos = s.nuevos_desde_ultimo_analisis(final=True)
             cierre = COB.preparar_cierre(s, self.cfg["final_chars_tramo"], self.cfg["final_chars_huecos"])   # local: sin llamadas nuevas
             self._cierre = cierre
@@ -1102,7 +1203,8 @@ class Gestor:
             cambios = []
             if s.proyecto:
                 contenidos = await asyncio.to_thread(self._contenidos, s.proyecto)
-                cambios = [c.publico() for c in CB.normalizar(res["cambios"], contenidos)]
+                transcripcion = [(x.t, x.texto) for x in s.segmentos if x.texto.strip()]   # ola 3: la cita de cada cambio se busca LITERALMENTE aquí
+                cambios = [c.publico() for c in CB.normalizar(res["cambios"], contenidos, transcripcion)]
             carpeta_existe = bool(s.proyecto) and (self.g.proyecto_dir(s.proyecto) / "00. CONTEXTO (IA)").is_dir()
             sin_cambios = ""
             if s.proyecto and not any(c["valido"] for c in cambios):
@@ -1118,8 +1220,37 @@ class Gestor:
         except Exception as e:  # noqa: BLE001
             rev.update(estado="error", error=f"No se pudo generar el resumen final: {e}")
         finally:
+            if rev.get("estado") == "lista":   # ola 3: propuestas locales al cerrar (cambios con cita, entradas de correo, recordatorios)
+                with contextlib.suppress(Exception):
+                    self.acciones.desde_revision()
+            with contextlib.suppress(Exception):   # ola 4: métricas de valor de la reunión (van en la revisión y se guardan en local)
+                self._metricas_cierre()
             self.emitir("consumo", **self.consumo.resumen())
             self._emitir_estado()
+
+    def _revision_local(self) -> None:
+        """ola 4: la revisión de una reunión en modo solo local. Sin resumen de agentes ni cambios al contexto; lleva lo que la app sabe en local (objetivos, checks,
+        definiciones, anotaciones) y ofrece «lanzar los agentes del cierre» (`lanzar_agentes_cierre`). Cero llamadas."""
+        s, rev = self.sesion, self.revision
+        partes = ["Reunión en modo solo local: no se ha enviado nada a Claude y no hay resumen generado por agentes. "
+                  "La transcripción, los objetivos y las anotaciones están guardados; puedes lanzar los agentes del cierre desde esta pantalla.", self._bloques_finales()]
+        s.resumen_final = "\n\n".join(p for p in partes if p).strip()
+        s.avisos_resumen = []
+        s.resumen_modelo = ""
+        rev.update(estado="lista", resumen=s.resumen_final, resumen_sonnet=s.resumen_final, pulido=self._pulido_inicial(), cambios=[], error="",
+                   carpeta_contexto=bool(s.proyecto) and (self.g.proyecto_dir(s.proyecto) / CARPETA_CONTEXTO).is_dir(),
+                   sin_cambios="Modo solo local: no se proponen cambios al contexto sin lanzar los agentes del cierre.",
+                   objetivos=[dict(o) for o in s.objetivos], avisos=[], modo_local=True, agentes_pendientes=True, **self._datos_destino())
+
+    def _metricas_cierre(self) -> None:
+        s, rev = self.sesion, self.revision
+        if s is None or rev is None:
+            return
+        envios = self.envios.resumir(self.envios.listar(s.id, 100_000)) if self.g.hay_datos() else None
+        m = MT.de_sesion(s, self.equipo, list(self.consumo.llamadas), envios, modo_local=bool(self.modo_local_sesion))
+        rev["metricas"] = m
+        if rev.get("estado") == "lista":   # solo se guarda la medida definitiva (una sesión con la revisión en error se mide al reintentar)
+            self.metricas.guardar(m)
 
     @staticmethod
     def _pulido_inicial() -> dict:
@@ -1183,6 +1314,10 @@ class Gestor:
 
     def revision_publica(self) -> dict | None:
         rev, s = self.revision, self.sesion
+        if rev and s and rev.get("estado") == "lista" and not rev.get("metricas"):   # ola 4: entre «lista» y el cálculo definitivo (que también las guarda) nunca falta el campo
+            with contextlib.suppress(Exception):
+                envios = self.envios.resumir(self.envios.listar(s.id, 100_000)) if self.g.hay_datos() else None
+                rev["metricas"] = MT.de_sesion(s, self.equipo, list(self.consumo.llamadas), envios, modo_local=bool(self.modo_local_sesion))
         if rev and s and rev.get("estado") == "lista":   # borrador del correo de cierre: local, sin modelo; solo se copia, nunca se envía
             return {**rev, "correo": CC.correo_de_sesion(s)}
         return rev
@@ -1320,6 +1455,7 @@ class Gestor:
             elif not p["publicar"]:
                 p["estado"] = "omitida"
         ruta = p["ruta"] if p else ""
+        await asyncio.to_thread(self._cierre_ola3)   # ola 3: lo aceptado va a su sitio (seguimiento, brief, correo)
         self.estado = "inactivo"
         self.sesion = None
         self.revision = None
@@ -1328,6 +1464,19 @@ class Gestor:
         self.fuentes.olvidar_reunion()
         self._emitir_estado()
         return {"ok": True, "ruta": ruta}
+
+    def _cierre_ola3(self) -> dict:
+        """Al cerrar la revisión: los `pendiente` aceptados pasan al seguimiento del proyecto, los `recordatorio` al brief de la próxima sesión (los `correo`
+        ya están en el borrador del correo de cierre) y se aplica el cierre automático de pendientes cubiertos. Todo local; nunca lanza."""
+        try:
+            r = self.acciones.al_cerrar(self.seguimiento)
+            s = self.sesion
+            if self.seguimiento is not None and s is not None and s.proyecto:
+                self.seguimiento.tras_cerrar(s.proyecto)
+            return r
+        except Exception as e:  # noqa: BLE001
+            registrar_error("Gestor._cierre_ola3", e)
+            return {}
 
     # ------------------------------------------------------------------ apagado
     def apagar(self) -> None:
