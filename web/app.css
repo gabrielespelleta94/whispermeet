@@ -28,6 +28,8 @@
   --ok: #1E8A4C; --err: #B3261E; --warn: #B25E09; --ok-bg: rgba(30, 138, 76, .12); --err-bg: rgba(179, 38, 30, .12); --warn-bg: rgba(178, 94, 9, .12);
   --t-decision: #187A41; --t-pendiente: #A35508; --t-riesgo: #B3261E; --t-contradiccion: #A3226F; --t-consejo: #1D5FC4;
   --t-pregunta: #0B7285; --t-idea: #6D3FB8; --t-regla: #50607E; --t-definicion: #0F766E; --t-respuesta: #1D5FC4;
+  /* agentes con nombre (nombres.js): contraste AA sobre fondo, tarjeta y papel en los dos temas */
+  --ag-capitan: #1D5FC4; --ag-lupa: #0B6B63; --ag-arquitecto: #8F5200; --ag-auditor: #A3226F; --ag-sherpa: #2A7430; --ag-monitor: #4A5A78; --ag-asesor: #6D3FB8; --ag-analista: #4A5A78;
   /* alias de los nombres anteriores (sesion.css, equipo.css y el JS los usan) */
   --bg: var(--bg0); --panel: var(--vidrio); --elev: var(--elev-solido);
   color-scheme: light;
@@ -49,6 +51,7 @@
   --ok: #5ED38B; --err: #F28B82; --warn: #F0A94E; --ok-bg: rgba(94, 211, 139, .12); --err-bg: rgba(242, 139, 130, .12); --warn-bg: rgba(240, 169, 78, .12);
   --t-decision: #5ED38B; --t-pendiente: #F0A94E; --t-riesgo: #F28B82; --t-contradiccion: #F29AD0; --t-consejo: #7EB4FF;
   --t-pregunta: #6FD0DE; --t-idea: #C4A8F5; --t-regla: #A9B4D0; --t-definicion: #7FD6C2; --t-respuesta: #7EB4FF;
+  --ag-capitan: #7EB4FF; --ag-lupa: #7FD6C2; --ag-arquitecto: #F0B45E; --ag-auditor: #F29AD0; --ag-sherpa: #8FD694; --ag-monitor: #A9B4D0; --ag-asesor: #C4A8F5; --ag-analista: #A9B4D0;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -69,6 +72,7 @@
     --ok: #5ED38B; --err: #F28B82; --warn: #F0A94E; --ok-bg: rgba(94, 211, 139, .12); --err-bg: rgba(242, 139, 130, .12); --warn-bg: rgba(240, 169, 78, .12);
     --t-decision: #5ED38B; --t-pendiente: #F0A94E; --t-riesgo: #F28B82; --t-contradiccion: #F29AD0; --t-consejo: #7EB4FF;
     --t-pregunta: #6FD0DE; --t-idea: #C4A8F5; --t-regla: #A9B4D0; --t-definicion: #7FD6C2; --t-respuesta: #7EB4FF;
+    --ag-capitan: #7EB4FF; --ag-lupa: #7FD6C2; --ag-arquitecto: #F0B45E; --ag-auditor: #F29AD0; --ag-sherpa: #8FD694; --ag-monitor: #A9B4D0; --ag-asesor: #C4A8F5; --ag-analista: #A9B4D0;
     color-scheme: dark;
   }
 }
@@ -339,8 +343,7 @@ body[data-efectos="apagado"] .eq-tarj::after, body[data-efectos="apagado"] .nodo
 .panel-h { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 4px 0; flex: none; border-bottom: 1px solid var(--hair); }
 .panel-h > :first-child { flex: 1; }
 .tab-panel { display: none; flex: 1; }
-#v-reunion[data-tab="consejos"] #tab-consejos, #v-reunion[data-tab="insights"] #col-plan, #v-reunion[data-tab="objetivos"] #tab-objetivos, #v-reunion[data-tab="equipo"] #col-eq,
-#v-reunion[data-tab="pregunta"] #tab-pregunta, #v-reunion[data-tab="sesion"] #tab-sesion { display: flex; }
+#v-reunion[data-tab="avisos"] #tab-avisos, #v-reunion[data-tab="pregunta"] #tab-pregunta, #v-reunion[data-tab="sesion"] #tab-sesion { display: flex; }   /* tres pestañas: Avisos, Pregúntale y Sesión */
 /* pestañas: segmentadas, de 32 px; la activa en acento, con el recuento al lado */
 .r-tabs { display: flex; flex: none; gap: 2px; margin: 8px 0 4px; padding: 0 0 4px; border-bottom: 1px solid var(--hair); }
 .r-tab { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--soft); font-size: var(--f-14); line-height: 20px; font-weight: 500; cursor: pointer;

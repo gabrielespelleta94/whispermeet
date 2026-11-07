@@ -20,7 +20,7 @@
 
   S.monitor = S.monitor || { feed: [], definiciones: [], pasadas: [] };
   const E = { tarjetas: new Map(), vistasDef: new Set(), vistasFeed: new Set(), primera: true, verTodas: false, ultPasada: null, indTimer: null, cronometro: null, estadoPrev: new Map() };
-  const MONO = { coordinador: "CO", funcional: "AF", constructor: "CT", revisor: "RV", estratega: "ES" };   // monogramas: la única «iconografía» de agente
+  // cada agente, con su nombre, color e icono (nombres.js)
   const ESTADO = { espera: "En espera", turno: "Le toca", trabajando: "Trabajando", hecho: "Hecho", error: "Error", sin_presupuesto: "Sin presupuesto" };
 
   // ------------------------------------------------------------ datos reales de las llamadas
@@ -74,7 +74,7 @@
       onkeydown: (ev) => { if (ev.target === el && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); abrir(ev); } } });
     el._p = { ind: h("i", { class: "ind-p", "aria-hidden": "true" }), nombre: h("span", { class: "t-body-m" }, p.nombre), estado: h("span", { class: "t-label" }), marca,
       l2: h("span", { class: "eq-l2 t-body" }), l3: h("span", { class: "eq-l3 t-meta" }) };
-    el.append(h("span", { class: "eq-l1" }, h("span", { class: "mono", "aria-hidden": "true" }, MONO[p.id] || "AN"), h("span", { class: "eq-nombre" }, el._p.ind, el._p.nombre), h("span", { class: "eq-estado" }, el._p.marca, el._p.estado)), el._p.l2, el._p.l3);
+    el.append(h("span", { class: "eq-l1" }, h("span", { class: "mono ins-ag", "aria-hidden": "true", style: `--ag: ${AP.agente(p.id).color}` }, AP.icono(AP.agente(p.id).icono, "ag-ic")), h("span", { class: "eq-nombre" }, el._p.ind, el._p.nombre), h("span", { class: "eq-estado" }, el._p.marca, el._p.estado)), el._p.l2, el._p.l3);
     return el;
   }
   const hora = (s) => (s == null ? "" : mmss(s));
@@ -141,7 +141,7 @@
   }
 
   // ------------------------------------------------------------ Definiciones
-  const chipFuente = (d) => (d.origen === "local" ? "detección local" : "Analista funcional");
+  const chipFuente = (d) => (d.origen === "local" ? "detección local" : AP.nombreAgente("funcional"));
   function pintarDefiniciones() {
     const lista = (S.monitor && S.monitor.definiciones) || [];
     const modo = enReunionModo();
@@ -239,17 +239,17 @@
     const objetivos = (S.objetivos || []).filter((o) => !o.sugerido && toques[o.n] != null);
     if (!feed.length && !objetivos.length) {
       return h("div", { class: "vacio-i vacio-util" },
-        h("p", { class: "t-body" }, "Aquí irán apareciendo las decisiones, los pendientes, los riesgos y las preguntas que salgan de la conversación."),
-        h("p", { class: "t-meta" }, "El equipo propone la primera tarjeta cuando se ha dicho algo que lo merece; suele ser en los primeros minutos."));
+        h("p", { class: "t-body" }, "Aquí irán apareciendo los avisos: decisiones, pendientes, riesgos y preguntas que salgan de la conversación."),
+        h("p", { class: "t-meta" }, "El equipo avisa cuando se ha dicho algo que lo merece; suele ser en los primeros minutos."));
     }
     const filas = [
       ...objetivos.map((o) => h("li", { class: "vacio-fila" }, h("span", { class: "t-meta vacio-min" }, mmss(toques[o.n])), h("span", { class: "t-body" }, "Se ha tocado el objetivo «" + o.texto + "»"))),
       ...feed.slice(-5).reverse().map((e) => h("li", { class: "vacio-fila" }, h("span", { class: "t-meta vacio-min" }, e.minuto), h("span", { class: "t-body" }, textoDeteccion(e)))),
     ];
     return h("div", { class: "vacio-i vacio-util" },
-      h("p", { class: "t-body" }, "Todavía no hay tarjetas, pero esto es lo que ya se ha detectado en la conversación:"),
+      h("p", { class: "t-body" }, "Todavía no hay avisos, pero esto es lo que ya se ha detectado en la conversación:"),
       h("ul", { class: "vacio-lista" }, filas),
-      h("p", { class: "t-meta" }, "Las tarjetas aparecen cuando el equipo analiza un tramo."));
+      h("p", { class: "t-meta" }, "Los avisos aparecen cuando el equipo analiza un tramo."));
   }
   AP.vacioInsights = vacioInsights;
   let vacioPendiente = false;

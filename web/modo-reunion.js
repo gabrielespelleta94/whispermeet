@@ -57,7 +57,7 @@
     if (l.modo === "uno") mostrarTab(M.tab); else delete body.dataset.mrTab;
     $("#mr-div-izq").setAttribute("aria-valuenow", String(l.izq));
     $("#mr-div-der").setAttribute("aria-valuenow", String(l.der));
-    $("#mr-div-der").setAttribute("aria-label", l.modo === "uno" ? "Ancho del panel" : "Ancho del panel de insights");
+    $("#mr-div-der").setAttribute("aria-label", l.modo === "uno" ? "Ancho del panel" : "Ancho del panel de avisos");
   }
 
   function mostrarTab(t) {

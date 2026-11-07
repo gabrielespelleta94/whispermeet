@@ -146,11 +146,25 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
   // ------------------------------------------------------------ insights, agrupados por análisis
   const CATS = { "idea": ["Idea", "idea"], "decisión": ["Decisión", "decision"], "pendiente": ["Pendiente", "pendiente"], "contradicción": ["Contradicción", "contradiccion"],
     "pregunta": ["Pregunta", "pregunta"], "riesgo": ["Riesgo", "riesgo"], "regla": ["Regla", "regla"], "definición": ["Definición", "definicion"] };
-  const NOMBRE_PERFIL = { coordinador: "Coordinador", funcional: "Analista funcional", constructor: "Constructor", revisor: "Revisor", estratega: "Estratega" };
+  const NOMBRE_PERFIL = Object.fromEntries(["coordinador", "funcional", "constructor", "revisor", "estratega", "monitor", "asesor"].map((k) => [k, AP.nombreAgente(k)]));   // Capitán, Lupa, Arquitecto, Auditor, Sherpa…
   // Filtro propio de las ideas (aria-pressed), recordado
   let verIdeas = true;
   try { verIdeas = localStorage.getItem("apuntes_ver_ideas") !== "0"; } catch { /* sin almacenamiento */ }
-  const I = { grupos: new Map(), tarjetas: new Map(), vistas: new Set(), primera: true };
+  const I = { grupos: new Map(), tarjetas: new Map(), vistas: new Set(), primera: true, cerrados: new Set(), llegada: new Map(), verDiscretos: false };
+
+  // Prioridad de un aviso: cambia la duración y la posición, no solo el color. FIJO (contradicción de importe o alcance): arriba, hasta que se cierre. NORMAL: en la lista, por orden.
+  // DISCRETO (ideas, definiciones): visible un rato y luego se aparta solo a «ya vistos». Si el backend manda `prioridad`, manda él.
+  const RE_FIJO = /importe|€|euros?\b|\bk€|precio|coste|presupuesto|tarifa|alcance|fase|incluid|fuera de/i;
+  const DISCRETO_MS = 45000;
+  function prioridadDe(t) {
+    if (t && ["fijo", "normal", "discreto"].includes(t.prioridad)) return t.prioridad;
+    if (!t) return "normal";
+    if (t.categoria === "contradicción" && RE_FIJO.test([t.texto, t.referencia, t.nota].filter(Boolean).join(" "))) return "fijo";
+    if (t.categoria === "idea" || t.categoria === "definición") return "discreto";
+    return "normal";
+  }
+  AP.prioridad = prioridadDe;
+  AP.avisosEstado = I;
 
   const motivoFallo = (e) => ({ limite: "límite del plan", sesion: "sesión no iniciada", tiempo: "sin respuesta del modelo", salida: "respuesta no interpretable" }[e.clase] || String(e.mensaje || "error").slice(0, 80));
 
@@ -199,15 +213,18 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
       el.append(el._p.cab, tx, mas, el._p.meta);
       I.tarjetas.set(t.id, el);
     }
-    el.className = cls + (el.classList.contains("abierta") ? " abierta" : "") + (el.classList.contains("nueva") ? " nueva" : "") + (el.classList.contains("barra") ? " barra" : "");
+    const prio = prioridadDe(t);
+    el.className = cls + " prio-" + prio + (el.classList.contains("abierta") ? " abierta" : "") + (el.classList.contains("nueva") ? " nueva" : "") + (el.classList.contains("barra") ? " barra" : "");
+    el.dataset.ag = t.perfil || "analista"; el.dataset.prio = prio;
     const p = el._p;
-    p.cab.replaceChildren(h("span", { class: "t-label cat" }, glifo(clase, posible), etiqueta), chipMin(t.minuto, t.t_seg));
+    p.cab.replaceChildren(...[h("span", { class: "t-label cat" }, glifo(clase, posible), etiqueta), prio === "fijo" ? h("span", { class: "av-fijo-et t-label" }, AP.icono("fijar", "ic-s"), "Fijo") : null, chipMin(t.minuto, t.t_seg),
+      prio === "fijo" ? h("button", { type: "button", class: "btn btn-mini btn-ghost av-cerrar", "data-accion": "cerrar-fijo", title: "Cerrar este aviso: ya está atendido", onclick: () => { I.cerrados.add(t.id); AP.hooks.pintarInsights(); } }, "Cerrar") : null].filter(Boolean));
     if (p.tx.textContent !== t.texto) p.tx.textContent = t.texto;
     const meta = [];
     if (t.responsable) meta.push(h("span", {}, "Responsable: " + t.responsable));
     if (t.fecha) meta.push(h("span", {}, "Fecha: " + t.fecha));
     if (t.sistema) meta.push(h("span", {}, "Sistema: " + t.sistema));
-    if (t.perfil) meta.push(h("span", { class: "perfil" }, NOMBRE_PERFIL[t.perfil] || t.perfil));
+    meta.push(h("span", { class: "perfil" }, AP.chipAgente(t.perfil || "analista")));
     if (t.referencia) { const f = String(t.referencia).match(/[\w.\-]+\.md/); meta.push(h("span", { class: "contra" }, "contra: " + (f ? f[0] : "«" + String(t.referencia).slice(0, 90) + "»"))); }
     if (t.nota) meta.push(h("span", {}, t.nota));
     p.meta.replaceChildren(...meta);
@@ -219,31 +236,81 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
   AP.hooks.pintarInsights = () => {
     const c = $("#r-insights"), sc = scrollDe(NUEVOS.ins);
     const traza = AP.traza || [];
+    const ahora = performance.now();
+    // un discreto se aparta a «ya vistos» a los 45 s de llegar; los que ya estaban al abrir la reunión (instantánea) nacen apartados
+    const apartado = (t) => prioridadDe(t) === "discreto" && (ahora - (I.llegada.has(t.id) ? I.llegada.get(t.id) : -1e9)) > DISCRETO_MS;
+    S.tarjetas.forEach((t) => {
+      if (I.llegada.has(t.id)) return;
+      I.llegada.set(t.id, I.primera ? -1e9 : ahora);
+      if (!I.primera && prioridadDe(t) === "discreto") setTimeout(() => AP.hooks.pintarInsights(), DISCRETO_MS + 50);
+    });
     const porAnalisis = new Map();
-    S.tarjetas.forEach((t) => { if (!verIdeas && t.categoria === "idea") return; const n = t.analisis || 0; (porAnalisis.get(n) || porAnalisis.set(n, []).get(n)).push(t); });
+    const fijos = [], vistos = [];
+    S.tarjetas.forEach((t) => {
+      if (!verIdeas && t.categoria === "idea") return;
+      const prio = prioridadDe(t);
+      if (prio === "fijo" && !I.cerrados.has(t.id)) { fijos.push(t); return; }
+      if (apartado(t)) { vistos.push(t); return; }
+      const n = t.analisis || 0; (porAnalisis.get(n) || porAnalisis.set(n, []).get(n)).push(t);
+    });
     const nodos = [];
     const usadas = new Set();
     const nuevas = [];
     const crono = traza.map((e) => ({ e, n: e.fila === "analisis" ? e.n : null }));
-    // análisis con tarjetas pero sin entrada de traza (aún no llegó): fila mínima
+    // análisis con tarjetas pero sin entrada de traza todavía: fila mínima
     for (const n of [...porAnalisis.keys()].sort((a, b) => a - b)) if (!crono.some((x) => x.n === n)) crono.push({ e: null, n });
-    for (const { e, n } of crono.reverse()) {
-      nodos.push(filaTraza(e, n));
-      for (const t of (n != null ? porAnalisis.get(n) || [] : [])) {
+    // bloques de reciente a antiguo: cada análisis (su fila de traza y sus tarjetas) y cada consejo del Sherpa, suelto, en su minuto
+    const bloques = [];
+    for (const { e, n } of crono) {
+      const ts = n != null ? porAnalisis.get(n) || [] : [];
+      const fila = filaTraza(e, n);
+      fila.dataset.ag = e && e.perfil ? e.perfil : "analista";
+      const els = [fila];
+      for (const t of ts) {
         const el = tarjetaEl(t); usadas.add(t.id);
         if (!I.vistas.has(t.id)) { I.vistas.add(t.id); nuevas.push(el); }
-        nodos.push(el);
+        els.push(el);
+      }
+      const tt = Math.max(e && e.hasta_t != null ? e.hasta_t : 0, e && e.t != null ? e.t : 0, ...ts.map((t) => t.t_seg || 0));
+      bloques.push({ t: tt, els });
+    }
+    for (const x of ((AP.avisos && AP.avisos.extras && AP.avisos.extras()) || [])) bloques.push({ t: x.t, els: [x.el] });
+    bloques.sort((a, b) => b.t - a.t);
+    bloques.forEach((x) => nodos.push(...x.els));
+    for (const [n, ts] of porAnalisis) if (n === 0) ts.forEach((t) => { nodos.push(tarjetaEl(t)); usadas.add(t.id); if (!I.vistas.has(t.id)) { I.vistas.add(t.id); nuevas.push(I.tarjetas.get(t.id)); } });
+    // fijos: arriba del todo, fuera de la lista
+    const nodosFijos = fijos.map((t) => { const el = tarjetaEl(t); usadas.add(t.id); if (!I.vistas.has(t.id)) { I.vistas.add(t.id); nuevas.push(el); } return el; });
+    const cFijos = $("#av-fijos"); if (cFijos) { reconciliar(cFijos, nodosFijos); cFijos.hidden = !nodosFijos.length; }
+    // «ya vistos»: los discretos apartados, plegados
+    vistos.forEach((t) => { tarjetaEl(t); usadas.add(t.id); });
+    const cDisc = $("#av-discretos");
+    if (cDisc) {
+      cDisc.hidden = !vistos.length;
+      if (vistos.length) {
+        let boton = cDisc.querySelector(".av-disc-b"), lista = cDisc.querySelector(".av-disc-l");
+        if (!boton) {
+          boton = h("button", { type: "button", class: "btn btn-ghost btn-mini av-disc-b", "aria-expanded": "false", onclick: () => { I.verDiscretos = !I.verDiscretos; AP.hooks.pintarInsights(); } });
+          lista = h("div", { class: "av-disc-l" });
+          cDisc.append(boton, lista);
+        }
+        boton.setAttribute("aria-expanded", String(I.verDiscretos));
+        boton.textContent = (I.verDiscretos ? "Ocultar" : "Ver") + ` ${vistos.length} aviso${vistos.length === 1 ? " discreto" : "s discretos"} ya visto${vistos.length === 1 ? "" : "s"}`;
+        lista.hidden = !I.verDiscretos;
+        reconciliar(lista, I.verDiscretos ? vistos.map((t) => I.tarjetas.get(t.id)) : []);
       }
     }
-    for (const [n, ts] of porAnalisis) if (n === 0) ts.forEach((t) => { nodos.push(tarjetaEl(t)); usadas.add(t.id); if (!I.vistas.has(t.id)) { I.vistas.add(t.id); nuevas.push(I.tarjetas.get(t.id)); } });
-    if (!nodos.length) nodos.push(AP.vacioInsights ? AP.vacioInsights() : h("div", { class: "vacio-i t-body" }, "Aquí irán apareciendo las decisiones, los pendientes, los riesgos y las preguntas que salgan de la conversación."));
+    if (!nodos.length && !nodosFijos.length) nodos.push(AP.vacioInsights ? AP.vacioInsights() : h("div", { class: "vacio-i t-body" }, "Aquí irán apareciendo los avisos del equipo: decisiones, pendientes, riesgos y preguntas que salgan de la conversación."));
     for (const k of [...I.tarjetas.keys()]) if (!usadas.has(k)) I.tarjetas.delete(k);
+    // filtro por agente (avisos.js): oculta por CSS lo que no es del agente elegido
+    const fl = (AP.avisos && AP.avisos.filtro && AP.avisos.filtro()) || "";
+    [c, cFijos, cDisc].forEach((x) => { if (x) { if (fl) x.dataset.filtro = fl; else delete x.dataset.filtro; } });
     const desplazada = sc.scrollTop > 1;
     reconciliar(c, nodos);
     // «Más» solo si el texto pasa de 3 líneas
     nodos.forEach((el) => { if (el._p) { const tx = el._p.tx; el._p.mas.hidden = !(el.classList.contains("abierta") || tx.scrollHeight > tx.clientHeight + 1); } });
     const visibles = S.tarjetas.filter((t) => verIdeas || t.categoria !== "idea").length;
     $("#r-ins-n").textContent = S.tarjetas.length ? (visibles === S.tarjetas.length ? String(S.tarjetas.length) : `${visibles} de ${S.tarjetas.length}`) : "";
+    if (AP.avisos && AP.avisos.pintarFiltros) AP.avisos.pintarFiltros();
     if (nuevas.length && !I.primera) {
       if (desplazada) marcarNuevos("ins", nuevas.length);
       else if (!reducido()) nuevas.forEach((el, i) => {
@@ -300,7 +367,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
   const previoReinicio = AP.hooks.reiniciar;
   AP.hooks.reiniciar = () => {
     if (previoReinicio) previoReinicio();
-    T.lineas.clear(); T.sep = null; I.grupos.clear(); I.tarjetas.clear(); I.vistas.clear(); I.primera = true;
+    T.lineas.clear(); T.sep = null; I.grupos.clear(); I.tarjetas.clear(); I.vistas.clear(); I.primera = true; I.cerrados.clear(); I.llegada.clear(); I.verDiscretos = false;
     O_.filas.clear(); O_.previo.clear(); autosPrevios = new Set();
     $("#r-insights").replaceChildren(); $("#r-obj-lista").replaceChildren();
     Object.values(NUEVOS).forEach((x) => { x.n = 0; $(x.btn).hidden = true; });
@@ -354,7 +421,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
     const panel = $("#r-bandeja"), btn = $("#r-bandeja-btn");
     const ENTRADA = "cubic-bezier(.4,0,1,1)";
     const CADA = 900;
-    const MONO = { coordinador: "CO", funcional: "AF", constructor: "CT", revisor: "RV", estratega: "ES" };
+    const MONO = Object.fromEntries(["coordinador", "funcional", "constructor", "revisor", "estratega"].map((k) => [k, AP.agente(k).mono]));
     const VIDA_LARGA = new Set(["decisión", "contradicción", "riesgo"]);
     const EMERGE = new Set(["decision", "contradiccion", "riesgo"]);   // solo estos tipos merecen un aviso emergente; el resto, contador y resaltado en su pestaña, y la fila en Hallazgos
     const MAX_VISIBLES = 2, CADUCA_COLA = 30000;                       // como mucho 2 avisos a la vez; lo que espera más de 30 s ya no es «ahora»: se queda en Hallazgos
@@ -364,7 +431,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
     const norm = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 
     // ---- datos de cada notificación / fila de la Bandeja
-    const admite = (t) => !!t && !!t.texto && (verIdeas || t.categoria !== "idea");
+    const admite = (t) => !!t && !!t.texto && (verIdeas || t.categoria !== "idea") && prioridadDe(t) !== "fijo";   // el FIJO no emerge: ya está arriba de Avisos, con su tarjeta, hasta que se cierre (y en Hallazgos)
     function datosTarjeta(t) {
       const posible = t.estado === "posible";
       const [nombre, clase] = CATS[t.categoria] || [t.categoria, "pregunta"];
@@ -374,20 +441,20 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
       if (t.sistema) partes.push("Sistema: " + t.sistema);
       if (t.referencia) { const f = String(t.referencia).match(/[\w.\-]+\.md/); partes.push("contra: " + (f ? f[0] : "«" + t.referencia + "»")); }
       const id = t.id != null ? t.id : "x" + (++N.n);
-      return { clave: "t:" + id, k: posible ? "posible" : clase, tipo: clase, mono: MONO[t.perfil] || "AN", nombre: NOMBRE_PERFIL[t.perfil] || "Analista",
+      return { clave: "t:" + id, k: posible ? "posible" : clase, tipo: clase, mono: MONO[t.perfil] || "AN", perfil: t.perfil || "analista", nombre: NOMBRE_PERFIL[t.perfil] || "Analista",
         cat: posible ? "Posible contradicción" : nombre, texto: t.texto, minuto: t.minuto, t: t.t_seg, meta: partes.join(" · "),
         bmeta: [t.perfil ? NOMBRE_PERFIL[t.perfil] || t.perfil : null, ...partes].filter(Boolean).join(" · "),
-        ref: { t: t.t_seg, tarjeta: t.id }, preguntar: ["pregunta", "contradicción", "riesgo"].includes(t.categoria), vida: VIDA_LARGA.has(t.categoria) ? 20000 : 12000 };
+        ref: { t: t.t_seg, tarjeta: t.id }, preguntar: ["pregunta", "contradicción", "riesgo"].includes(t.categoria), vida: prioridadDe(t) === "discreto" ? 6000 : VIDA_LARGA.has(t.categoria) ? 20000 : 12000 };   // el FIJO no caduca en su tarjeta de Avisos (arriba, hasta cerrarlo); el aviso emergente dura lo que uno largo y queda en Hallazgos
     }
     // Definición del panel del equipo: {termino, definicion, origen: "local"|"analista", t, minuto}
     function datosDef(x) {
       const local = x.origen === "local";
-      return { clave: "d:" + norm(x.termino), k: "definicion", tipo: "definicion", mono: local ? "MO" : "AF", nombre: local ? "Monitor · local" : "Analista funcional", cat: "Definición",
-        texto: `${x.termino}: ${x.definicion}`, minuto: x.minuto, t: x.t, meta: local ? "detección local" : "", bmeta: local ? "detección local" : "Analista funcional",
+      return { clave: "d:" + norm(x.termino), k: "definicion", tipo: "definicion", perfil: local ? "monitor" : "funcional", mono: local ? AP.agente("monitor").mono : AP.agente("funcional").mono, nombre: local ? "Monitor · local" : AP.nombreAgente("funcional"), cat: "Definición",
+        texto: `${x.termino}: ${x.definicion}`, minuto: x.minuto, t: x.t, meta: local ? "detección local" : "", bmeta: local ? "detección local" : AP.nombreAgente("funcional"),
         ref: { t: x.t }, preguntar: false, vida: 12000 };
     }
     // Aviso local del Monitor (monitor.py: {tipo:"sin_tratar", texto:"objetivo N sin tratar desde hace M min", objetivo:N, minuto, t})
-    const datosMonitor = (e) => ({ clave: "m:" + e.id, k: "objetivo", tipo: "objetivo", mono: "MO", nombre: "Monitor · local", cat: "Objetivo sin tratar", texto: mayus(e.texto),
+    const datosMonitor = (e) => ({ clave: "m:" + e.id, k: "objetivo", tipo: "objetivo", perfil: "monitor", mono: AP.agente("monitor").mono, nombre: "Monitor · local", cat: "Objetivo sin tratar", texto: mayus(e.texto),
       minuto: e.minuto, t: e.t, meta: "", bmeta: "detección local", ref: { objetivo: e.objetivo }, preguntar: false, vida: 12000 });
 
     // «Ver»: el mismo camino que un marcador de la banda Sesión (su clic llama a ir(): línea de la transcripción, tarjeta y barra de 1,6 s)
@@ -414,7 +481,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
       return h("article", { class: "notif", "data-k": d.k },
         h("span", { class: "n-ico", "aria-hidden": "true" }, glifo(d.tipo, d.k === "posible")),
         h("div", { class: "n-cuerpo" },
-          h("div", { class: "n-l1" }, h("span", { class: "n-cat t-label" }, h("span", {}, d.cat)), h("span", { class: "n-mono t-label", "aria-hidden": "true" }, d.mono), h("span", { class: "n-nombre t-meta" }, d.nombre),
+          h("div", { class: "n-l1" }, h("span", { class: "n-cat t-label" }, h("span", {}, d.cat)), h("span", { class: "n-mono t-label", "aria-hidden": "true", style: `--ag: ${AP.agente(d.perfil).color}` }, AP.icono(AP.agente(d.perfil).icono, "ag-ic"), d.mono), h("span", { class: "n-nombre t-meta" }, d.nombre),
             h("span", { class: "n-der" }, chipMin(d.minuto, d.t), h("button", { type: "button", class: "n-x", "aria-label": "Descartar", title: "Descartar", onclick: () => descartar(n) }, AP.icono("cerrar")))),
           h("div", { class: "n-tx t-body" }, d.texto),
           d.meta ? h("div", { class: "n-meta t-meta" }, d.meta) : null,
@@ -483,7 +550,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
 
     // cola: un único setTimeout; sale una cada 900 ms y SOLO si hay sitio (como mucho MAX_VISIBLES a la vez); lo demás espera y se agrupa en «+N hallazgos»
     const mas = h("button", { type: "button", class: "btn btn-mini notif-mas", hidden: true, title: "Lo que no ha cabido está en Hallazgos y en la pestaña Insights",
-      onclick: () => { clearTimeout(N.timerCola); N.timerCola = null; N.cola.length = 0; pintarMas(); renderBandeja(); if (AP.pestana) AP.pestana("insights"); } });
+      onclick: () => { clearTimeout(N.timerCola); N.timerCola = null; N.cola.length = 0; pintarMas(); renderBandeja(); if (AP.pestana) AP.pestana("avisos"); } });
     cont.append(mas);
     function pintarMas() {
       const n = N.cola.length;

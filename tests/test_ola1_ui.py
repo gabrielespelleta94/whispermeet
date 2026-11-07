@@ -142,9 +142,9 @@ def test_orquestacion_plegada_es_una_tira_de_36_px_con_avatares(edge, pagina):
     _abrir_reunion(edge, pagina)
     r = json.loads(edge.js("""JSON.stringify((() => {
       const o = document.querySelector('#orq'), r = o.getBoundingClientRect();
-      return { alto: r.height, plegado: o.dataset.plegado, avatares: [...o.querySelectorAll('.av')].map((a) => a.textContent), animados: [...o.querySelectorAll('.av')].filter((a) => a.dataset.estado === 'trabajando').length };
+      return { alto: r.height, plegado: o.dataset.plegado, avatares: [...o.querySelectorAll('.av')].map((a) => a.title.split(':')[0]), animados: [...o.querySelectorAll('.av')].filter((a) => a.dataset.estado === 'trabajando').length };
     })())"""))
-    assert r["plegado"] == "true" and r["alto"] <= 36 and r["avatares"][:5] == ["MO", "CO", "AF", "CT", "RV"] and r["animados"] == 0   # sin tarea abierta, nada se anima
+    assert r["plegado"] == "true" and r["alto"] <= 36 and r["avatares"][:5] == ["Monitor", "Capitán", "Lupa", "Arquitecto", "Auditor"] and r["animados"] == 0   # sin tarea abierta, nada se anima
     edge.js("window.__emitir({tipo: 'tarea', id: 't1', agente: 'coordinador', estado: 'en_curso', hora: '10:00:00', modelo: 'haiku', tarea: 'equipo'}); 1")
     time.sleep(0.4)
     assert edge.js("document.querySelector('.av[data-agente=coordinador]').dataset.estado") == "trabajando"

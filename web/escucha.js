@@ -79,7 +79,7 @@
       const c = (await api("GET", "/api/info")).config, f = $("#f-ajustes");
       f.cadencia_defecto.value = c.cadencia_defecto || "equipo";
       CAMPOS_ADAPT.forEach((k) => { f[k].value = c[k]; });
-      f.m_consulta.value = c.modelos.consulta || "haiku";
+      AP.fijarModelo(f.m_consulta, c.modelos.consulta || "haiku");
       extrasAjustes(c.proyectos_extra);
     } catch { /* app.js ya muestra el error de conexión */ }
   });

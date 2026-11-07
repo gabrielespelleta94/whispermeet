@@ -264,7 +264,7 @@ def test_animaciones_en_reposo_y_con_una_tarea(edge, pagina):
     assert [x for x in n if x.startswith("haz@")] and len([x for x in n if x.startswith("haz@")]) == 1, n   # un solo haz (el trazo único de los conectores de entrada)
     anillos = [x for x in n if x.startswith("gira@")]
     assert 1 <= len(anillos) <= 2, n                                                     # la tarjeta del perfil y el nodo «Equipo» (que muestra su monograma); nada más
-    assert edge.js("document.querySelector('.nodo[data-nodo=equipo] .mono').textContent") == "CT"
+    assert edge.js("document.querySelector('.nodo[data-nodo=equipo] .mono').textContent") == "AR"
     assert edge.js("document.querySelector('.eq-tarj[data-perfil=constructor]').dataset.estado") == "trabajando"
     tarea(edge, "fin")
     time.sleep(1.2)
@@ -488,7 +488,7 @@ def test_inicio_y_revision_cargan_con_el_nuevo_acabado(edge, pagina):
     assert r["vista"] == "inicio" and r["radio"] == "14px" and r["filtro"] != "none" and 380 <= r["ancho"] <= 620 and r["btn"] == "40px", r   # lámina de vidrio flotante única (la columna izquierda de «preparar», de dos columnas desde la ola 1)
     arrancar(edge, pagina, snapshot=foto(estado="revision", revision={"estado": "generando"}))
     time.sleep(0.6)
-    assert edge.js("document.body.dataset.vista") == "revision" and edge.js("document.querySelector('#orq').dataset.plegado") == "false"   # la revisión llega con la banda desplegada
+    assert edge.js("document.body.dataset.vista") == "revision" and edge.js("document.querySelector('#orq').dataset.plegado") == "true"   # ola 2: la revisión llega con la banda plegada (el stepper necesita la altura); «Detalle» la despliega
 
 
 # ============================================================ revisión de capturas (2026-11-04)

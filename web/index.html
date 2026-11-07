@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/static/equipo.css">
 <link rel="stylesheet" href="/static/asesor.css">
 <link rel="stylesheet" href="/static/backlog.css">
+<link rel="stylesheet" href="/static/ola2.css">
 </head>
 <body data-vista="inicio" data-efectos="alto">
 <div class="ambiente" id="ambiente" aria-hidden="true"></div>
@@ -43,6 +44,7 @@
       </div>
     </div>
     <div class="top-r">
+      <button class="btn btn-ghost btn-icono" id="b-paleta" type="button" aria-haspopup="dialog" aria-label="Paleta de comandos (Ctrl+K)" title="Paleta de comandos: todo lo que puedes hacer, buscando por texto (Ctrl+K)"></button>
       <button class="btn btn-ghost btn-captura" id="b-captura" type="button" aria-pressed="true" title="La ventana está excluida de la captura y de compartir pantalla. Pulsa para cambiarlo (es el mismo interruptor de Ajustes)." hidden>Oculta al compartir</button>
       <button class="btn btn-ghost" id="b-sesiones" type="button" aria-pressed="false" aria-controls="v-backlog" title="Todas las sesiones pasadas y la lista conjunta de pendientes, ideas, decisiones, riesgos y preguntas (sin llamadas al modelo)">Sesiones</button>
       <button class="btn btn-ghost" id="b-efectos" type="button" title="Efectos visuales: alto, medio (sin fondo con luz ni desenfoque en los avisos) o apagado (sin desenfoque ni anillo). Con Modo reunión, medio por defecto.">Efectos: alto</button>
@@ -52,6 +54,26 @@
   </header>
 
   <div class="orq" id="orq" aria-label="Estado del equipo y de las llamadas" hidden></div>
+  <!-- Detalle del equipo: lo que era la pestaña «Equipo» (tarjetas de agente, definiciones y minuto a minuto) cuelga de la tira de Orquestación cuando se despliega «Detalle» en la reunión -->
+  <div class="orq-equipo-ancla" id="orq-equipo-ancla">
+    <section class="orq-equipo" id="orq-equipo" aria-label="Detalle del equipo">
+      <div class="oe-cab"><span class="t-label">Equipo</span><span class="t-meta soft" id="eq-cuenta"></span>
+        <button class="eq-monitor" id="eq-monitor" type="button" title="Detección local, sin modelo. Abre el Registro del Monitor"><span class="mono local" aria-hidden="true">MO</span><i class="eq-ind" id="eq-ind" aria-hidden="true"></i><span class="t-meta" id="eq-monitor-t">Monitor · local · escuchando · sin señales todavía</span></button></div>
+      <div class="oe-cuerpo col-scroll" id="eq-scroll">
+        <div class="eq-perfiles" id="eq-perfiles"></div>
+        <section class="eq-def" id="eq-def" aria-label="Definiciones">
+          <div class="grupo-h"><span class="t-label">Definiciones</span><span class="n t-meta" id="eq-def-n"></span></div>
+          <div id="eq-def-lista"></div>
+          <button class="btn btn-ghost btn-mini" id="eq-def-mas" type="button" hidden></button>
+        </section>
+        <section class="eq-feed" id="eq-feed" aria-label="Minuto a minuto" title="Detección local, sin modelo">
+          <div class="grupo-h"><span class="t-label">Minuto a minuto</span><span class="n t-meta" id="eq-feed-n"></span></div>
+          <div id="eq-feed-lista"></div>
+          <button class="btn btn-ghost btn-mini" id="eq-feed-todas" type="button" hidden>Ver todas</button>
+        </section>
+      </div>
+    </section>
+  </div>
 
   <!-- Modo reunión: barra de mandos, divisores y pestañas del panel único (solo existen dentro del modo; ver modo-reunion.js) -->
   <div class="mr-barra" id="mr-barra" hidden>
@@ -63,11 +85,11 @@
     </div>
     <div class="mr-tabs" id="mr-tabs" role="tablist" aria-label="Panel" hidden>
       <button type="button" role="tab" data-tab="trans" aria-selected="true">Transcripción</button>
-      <button type="button" role="tab" data-tab="ins" aria-selected="false">Insights</button>
+      <button type="button" role="tab" data-tab="ins" aria-selected="false">Avisos</button>
     </div>
   </div>
   <div class="mr-div" id="mr-div-izq" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ancho del panel de transcripción" aria-valuemin="280" aria-valuenow="360" hidden></div>
-  <div class="mr-div" id="mr-div-der" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ancho del panel de insights" aria-valuemin="280" aria-valuenow="360" hidden></div>
+  <div class="mr-div" id="mr-div-der" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Ancho del panel de avisos" aria-valuemin="280" aria-valuenow="360" hidden></div>
 
   <main id="vistas">
     <!-- ================= INICIO ================= -->
@@ -98,7 +120,7 @@
           </div>
         </div>
         <div class="gal-lista" id="i-lista" role="listbox" aria-label="Proyectos"></div>
-        <div class="t-meta pista-teclas" id="i-teclas">Flechas para moverte · Intro abre la ficha · E empieza la reunión · Ctrl+K o / para buscar</div>
+        <div class="t-meta pista-teclas" id="i-teclas">Flechas para moverte · Intro abre la ficha · E empieza la reunión · / para buscar · Ctrl+K para todo lo demás</div>
         <div class="nota-pie t-meta" id="i-raiz"></div>
         <div class="gal-add" id="i-add-zona">
           <details class="add-carpeta" id="i-add-carpeta">
@@ -163,7 +185,7 @@
             <div class="campo">
               <span class="t-label" id="i-cad-l">Ritmo del equipo</span>
               <div class="seg seg-4" role="radiogroup" aria-labelledby="i-cad-l">
-                <button type="button" role="radio" data-cad="equipo" aria-checked="true" title="Un asistente local escucha cada 30 s y avisa a un compañero (Coordinador, Analista funcional, Constructor o Revisor) cuando se dice algo que lo merece; si no hay nada nuevo, no se llama al modelo">Según lo que se diga</button>
+                <button type="button" role="radio" data-cad="equipo" aria-checked="true" title="Un asistente local escucha cada 30 s y avisa a un compañero (Capitán, Lupa, Arquitecto o Auditor) cuando se dice algo que lo merece; si no hay nada nuevo, no se llama al modelo">Según lo que se diga</button>
                 <button type="button" role="radio" data-cad="5" aria-checked="false">Cada 5 min</button>
                 <button type="button" role="radio" data-cad="10" aria-checked="false">Cada 10 min</button>
                 <button type="button" role="radio" data-cad="manual" aria-checked="false">Solo si lo pido</button>
@@ -212,7 +234,7 @@
     </section>
 
     <!-- ================= REUNIÓN ================= -->
-    <section class="vista" id="v-reunion" hidden data-tab="consejos">
+    <section class="vista" id="v-reunion" hidden data-tab="avisos">
       <div class="avisos t-meta" id="r-avisos" hidden></div>
       <div class="reunion-grid">
         <!-- izquierda: lo que se dice (transcripción grande) y tus notas, plegables -->
@@ -233,76 +255,67 @@
             <textarea class="notas t-body" id="r-notas" aria-label="Notas" placeholder="Escribe aquí lo que quieras que se tenga en cuenta. Se enviará con el siguiente análisis."></textarea>
           </details>
         </div>
-        <!-- derecha: «Ahora» siempre arriba y, debajo, pestañas: lo importante primero, lo secundario detrás -->
+        <!-- centro y derecha: «Ahora» (lo que hay que hacer ya) con tres pestañas debajo, y Objetivos como zona fija. En Modo reunión todo va apilado en el panel derecho. -->
         <div class="col-der" id="col-der">
-          <section class="as-carril" id="as-carril" hidden aria-label="Asesor: respuesta sugerida"></section>
-          <div class="r-tabs" id="r-tabs" role="tablist" aria-label="Paneles de la reunión">
-            <button type="button" role="tab" class="r-tab" id="tab-b-consejos" data-tab="consejos" aria-selected="true" aria-controls="tab-consejos"><span class="r-tab-t">Consejos</span><span class="n" id="tab-n-consejos"></span></button>
-            <button type="button" role="tab" class="r-tab" id="tab-b-insights" data-tab="insights" aria-selected="false" aria-controls="col-plan" tabindex="-1"><span class="r-tab-t">Insights</span><span class="n" id="tab-n-insights"></span></button>
-            <button type="button" role="tab" class="r-tab" id="tab-b-objetivos" data-tab="objetivos" aria-selected="false" aria-controls="tab-objetivos" tabindex="-1"><span class="r-tab-t">Objetivos</span><span class="n" id="tab-n-objetivos"></span></button>
-            <button type="button" role="tab" class="r-tab" id="tab-b-equipo" data-tab="equipo" aria-selected="false" aria-controls="col-eq" tabindex="-1"><span class="r-tab-t">Equipo</span><span class="n" id="tab-n-equipo"></span></button>
-            <button type="button" role="tab" class="r-tab" id="tab-b-pregunta" data-tab="pregunta" aria-selected="false" aria-controls="tab-pregunta" tabindex="-1"><span class="r-tab-t">Pregúntale</span><span class="n" id="tab-n-pregunta"></span></button>
-            <button type="button" role="tab" class="r-tab" id="tab-b-sesion" data-tab="sesion" aria-selected="false" aria-controls="tab-sesion" tabindex="-1"><span class="r-tab-t">Sesión</span></button>
-          </div>
-          <section class="panel tab-panel col-cons" id="tab-consejos" role="tabpanel" aria-labelledby="tab-b-consejos" data-panel="consejos">
-            <div class="col-scroll" id="as-consejos"></div>
-          </section>
-          <section class="panel tab-panel col-ins" id="col-plan" role="tabpanel" aria-labelledby="tab-b-insights" data-panel="insights" aria-label="Insights e ideas">
-            <div class="col-scroll" id="r-plan-scroll">
-              <div class="nuevos-barra"><button class="nuevos" id="r-ins-nuevos" type="button" hidden></button></div>
-              <div class="panel-h panel-h-ins" id="r-ins-h"><span class="t-label">Insights e ideas</span><span class="t-meta soft" id="r-ins-n"></span>
-                <button class="btn btn-mini filtro-ideas" id="r-ideas" type="button" aria-pressed="true" title="Mostrar u ocultar las ideas">Ideas</button></div>
-              <div id="r-ins-scroll">
-                <div class="tuyas" id="r-tuyas" aria-label="Tus anotaciones"></div>
-                <details class="resumen-acum" id="r-resumen-det" hidden><summary class="t-label">Resumen hasta ahora</summary><p class="t-body" id="r-resumen"></p></details>
-                <div class="insights" id="r-insights"></div>
-              </div>
+          <div class="zona zona-ahora" id="zona-ahora" aria-label="Ahora">
+            <div class="panel-h zona-h"><span class="t-label">Ahora</span><span class="t-meta soft" id="ahora-estado"></span></div>
+            <div class="ahora-top" id="ahora-top">
+              <section class="as-carril" id="as-carril" hidden aria-label="Asesor: respuesta sugerida"></section>
+              <section class="ahora-paso" id="ahora-paso" aria-label="Siguiente paso propuesto" hidden></section>
+              <section class="ahora-acciones" id="ahora-acciones" aria-label="Acciones propuestas" hidden></section>
             </div>
-          </section>
-          <section class="panel tab-panel col-obj" id="tab-objetivos" role="tabpanel" aria-labelledby="tab-b-objetivos" data-panel="objetivos" aria-label="Objetivos y checks">
+            <div class="r-tabs" id="r-tabs" role="tablist" aria-label="Paneles de la reunión">
+              <button type="button" role="tab" class="r-tab" id="tab-b-avisos" data-tab="avisos" aria-selected="true" aria-controls="tab-avisos"><span class="r-tab-t">Avisos</span><span class="n" id="tab-n-avisos"></span></button>
+              <button type="button" role="tab" class="r-tab" id="tab-b-pregunta" data-tab="pregunta" aria-selected="false" aria-controls="tab-pregunta" tabindex="-1"><span class="r-tab-t">Pregúntale</span><span class="n" id="tab-n-pregunta"></span></button>
+              <button type="button" role="tab" class="r-tab" id="tab-b-sesion" data-tab="sesion" aria-selected="false" aria-controls="tab-sesion" tabindex="-1"><span class="r-tab-t">Sesión</span></button>
+            </div>
+            <section class="panel tab-panel col-ins" id="tab-avisos" role="tabpanel" aria-labelledby="tab-b-avisos" data-panel="avisos" aria-label="Avisos del equipo">
+              <div class="av-filtros" id="av-filtros" role="group" aria-label="Filtrar los avisos por agente"></div>
+              <div class="col-scroll" id="r-plan-scroll">
+                <div class="nuevos-barra"><button class="nuevos" id="r-ins-nuevos" type="button" hidden></button></div>
+                <div class="av-fijos" id="av-fijos" role="region" aria-label="Avisos fijos: se quedan hasta que los cierres" hidden></div>
+                <div class="panel-h panel-h-ins" id="r-ins-h"><span class="t-label">Lo último, primero</span><span class="t-meta soft" id="r-ins-n"></span>
+                  <button class="btn btn-mini filtro-ideas" id="r-ideas" type="button" aria-pressed="true" title="Mostrar u ocultar las ideas">Ideas</button></div>
+                <div id="r-ins-scroll">
+                  <div class="tuyas" id="r-tuyas" aria-label="Tus anotaciones"></div>
+                  <details class="resumen-acum" id="r-resumen-det" hidden><summary class="t-label">Resumen hasta ahora</summary><p class="t-body" id="r-resumen"></p></details>
+                  <div class="insights" id="r-insights"></div>
+                  <div class="av-discretos" id="av-discretos" hidden></div>
+                </div>
+              </div>
+            </section>
+            <section class="panel tab-panel col-preg" id="tab-pregunta" role="tabpanel" aria-labelledby="tab-b-pregunta" data-panel="pregunta" aria-label="Pregúntale">
+              <details class="pregunta-caja" id="r-pregunta" open>
+                <summary><span class="t-label">Pregúntale</span><span class="t-meta soft" id="r-preg-estado">Una llamada por pregunta, solo si la lanzas</span></summary>
+                <form class="pregunta-form" id="f-pregunta" autocomplete="off">
+                  <input class="input" name="pregunta" type="text" maxlength="400" placeholder="Pregunta sobre lo que se está diciendo…" aria-label="Pregunta">
+                  <select class="input" name="modelo" aria-label="Respuesta para esta pregunta"><option value="haiku">Rápida</option><option value="sonnet">Más cuidada</option></select>
+                  <button class="btn btn-primary" type="submit">Preguntar</button>
+                </form>
+                <div class="pregunta-hist" id="r-preguntas" aria-live="polite"></div>
+              </details>
+            </section>
+            <section class="panel tab-panel col-ses" id="tab-sesion" role="tabpanel" aria-labelledby="tab-b-sesion" data-panel="sesion" aria-label="Sesión: línea de tiempo"></section>
+            <div id="r-notifs" aria-live="polite" aria-label="Avisos de la reunión"></div>
+          </div>
+          <!-- Equipo: ya no es una pestaña; sus tarjetas, definiciones y el minuto a minuto viven en el «Detalle» desplegable de la tira de Orquestación (equipo.js los mueve ahí) -->
+          <section class="zona zona-obj" id="zona-obj" aria-label="Objetivos">
+            <div class="panel-h zona-h"><span class="t-label" id="r-obj-t">Objetivos</span><span class="n t-meta" id="r-obj-cuenta"></span></div>
             <div class="col-scroll" id="r-obj-scroll">
               <div class="nuevos-barra"><button class="nuevos" id="r-plan-nuevos" type="button" hidden></button></div>
               <section class="objetivos" id="r-objetivos" hidden aria-label="Objetivos de la sesión">
-                <div class="grupo-h"><span class="t-label" id="r-obj-t">Objetivos</span><span class="n t-meta" id="r-obj-cuenta"></span></div>
+                <div class="obj-prog-barra" id="r-obj-barra" aria-hidden="true"><i></i></div>
                 <div id="r-obj-lista"></div>
-                <div class="obj-edit" id="r-obj-edit"><input class="input" id="r-obj-nuevo" type="text" maxlength="200" placeholder="Añadir un objetivo propio" aria-label="Nuevo objetivo"><button class="btn btn-ghost" id="r-obj-add" type="button">Añadir</button></div>
+                <div class="obj-falta t-meta" id="r-obj-falta"></div>
+                <div class="obj-edit" id="r-obj-edit"><input class="input" id="r-obj-nuevo" type="text" maxlength="200" placeholder="Nuevo objetivo" aria-label="Nuevo objetivo"><button class="btn btn-ghost" id="r-obj-add" type="button">Añadir</button></div>
               </section>
+              <div class="obj-vacio t-body soft" id="r-obj-vacio">Esta reunión no tiene objetivos. Añade uno propio o deja que el contexto te proponga alguno.</div>
               <details class="checks-r" id="r-checks-det">
                 <summary><span class="t-label">Checks</span><span class="n t-meta" id="r-chk-cuenta"></span></summary>
                 <div id="r-checks"></div>
               </details>
             </div>
           </section>
-          <section class="panel tab-panel col-eq" id="col-eq" role="tabpanel" aria-labelledby="tab-b-equipo" data-panel="equipo" aria-label="Equipo">
-            <div class="panel-h"><span class="t-label">Equipo</span><span class="t-meta soft" id="eq-cuenta"></span></div>
-            <div class="col-scroll" id="eq-scroll">
-              <button class="eq-monitor" id="eq-monitor" type="button" title="Detección local, sin modelo. Abre el Registro del Monitor"><span class="mono local" aria-hidden="true">MO</span><i class="eq-ind" id="eq-ind" aria-hidden="true"></i><span class="t-meta" id="eq-monitor-t">Monitor · local · escuchando · sin señales todavía</span></button>
-              <div class="eq-perfiles" id="eq-perfiles"></div>
-              <section class="eq-def" id="eq-def" aria-label="Definiciones">
-                <div class="grupo-h"><span class="t-label">Definiciones</span><span class="n t-meta" id="eq-def-n"></span></div>
-                <div id="eq-def-lista"></div>
-                <button class="btn btn-ghost btn-mini" id="eq-def-mas" type="button" hidden></button>
-              </section>
-              <section class="eq-feed" id="eq-feed" aria-label="Minuto a minuto" title="Detección local, sin modelo">
-                <div class="grupo-h"><span class="t-label">Minuto a minuto</span><span class="n t-meta" id="eq-feed-n"></span></div>
-                <div id="eq-feed-lista"></div>
-                <button class="btn btn-ghost btn-mini" id="eq-feed-todas" type="button" hidden>Ver todas</button>
-              </section>
-            </div>
-          </section>
-          <section class="panel tab-panel col-preg" id="tab-pregunta" role="tabpanel" aria-labelledby="tab-b-pregunta" data-panel="pregunta" aria-label="Pregúntale">
-            <details class="pregunta-caja" id="r-pregunta" open>
-              <summary><span class="t-label">Pregúntale</span><span class="t-meta soft" id="r-preg-estado">Una llamada por pregunta, solo si la lanzas</span></summary>
-              <form class="pregunta-form" id="f-pregunta" autocomplete="off">
-                <input class="input" name="pregunta" type="text" maxlength="400" placeholder="Pregunta sobre lo que se está diciendo…" aria-label="Pregunta">
-                <select class="input" name="modelo" aria-label="Modelo para esta pregunta"><option value="haiku">haiku</option><option value="sonnet">sonnet</option></select>
-                <button class="btn btn-primary" type="submit">Preguntar</button>
-              </form>
-              <div class="pregunta-hist" id="r-preguntas" aria-live="polite"></div>
-            </details>
-          </section>
-          <section class="panel tab-panel col-ses" id="tab-sesion" role="tabpanel" aria-labelledby="tab-b-sesion" data-panel="sesion" aria-label="Sesión: línea de tiempo"></section>
-          <div id="r-notifs" aria-live="polite" aria-label="Avisos de la reunión"></div>
         </div>
         <aside class="drawer" id="r-drawer" hidden role="dialog" aria-label="Contexto del proyecto">
           <div class="drawer-h"><span class="t-title">Contexto del proyecto</span><button class="btn btn-ghost" id="r-drawer-x" type="button">Cerrar</button></div>
@@ -315,8 +328,14 @@
     <section class="vista" id="v-revision" hidden>
       <div class="revision">
         <div class="rev-cab">
-          <h1 class="t-display" id="v-rev-titulo">Revisión</h1>
-          <div class="rev-meta t-meta" id="v-rev-meta"></div>
+          <div class="rev-cab-t">
+            <h1 class="t-display" id="v-rev-titulo">Revisión</h1>
+            <div class="rev-meta t-meta" id="v-rev-meta"></div>
+          </div>
+          <div class="rev-nav-b" id="rev-nav-b" hidden>
+            <button type="button" class="btn btn-ghost" id="rev-atras">Atrás</button>
+            <button type="button" class="btn btn-primary" id="rev-siguiente">Siguiente</button>
+          </div>
         </div>
         <div id="v-rev-cuerpo"></div>
       </div>
@@ -343,62 +362,94 @@
 <dialog id="d-ajustes" class="dialogo">
   <form method="dialog" id="f-ajustes">
     <h2 class="d-titulo t-title">Ajustes</h2>
+    <div class="aj-tabs" role="tablist" aria-label="Secciones de Ajustes">
+      <button type="button" role="tab" class="aj-tab" id="aj-tab-audio" data-aj="audio" aria-controls="aj-audio" aria-selected="true">Audio</button>
+      <button type="button" role="tab" class="aj-tab" id="aj-tab-equipo" data-aj="equipo" aria-controls="aj-equipo" aria-selected="false" tabindex="-1">Equipo</button>
+      <button type="button" role="tab" class="aj-tab" id="aj-tab-privacidad" data-aj="privacidad" aria-controls="aj-privacidad" aria-selected="false" tabindex="-1">Privacidad</button>
+    </div>
     <div class="d-cuerpo">
-      <details class="add-carpeta" id="s-add-carpeta">
-        <summary class="t-meta">Añadir carpeta de proyecto</summary>
-        <div id="s-extras" class="t-meta"></div>
-        <div class="campo" data-add>
-          <input class="input" data-f="nombre" type="text" maxlength="80" placeholder="Nombre del proyecto" aria-label="Nombre del proyecto">
-          <div class="ruta-fila"><input class="input" data-f="ruta" type="text" placeholder="Ruta de la carpeta" aria-label="Ruta de la carpeta"><button class="btn btn-ghost" type="button" data-elegir-carpeta hidden title="Abre el selector de carpetas de Windows (también sirven las de OneDrive o Google Drive que tengas sincronizadas)">Elegir carpeta…</button></div>
-          <label class="check"><input type="checkbox" data-f="compartido"> Carpeta compartida</label>
-          <div class="t-meta pista-compartida" data-pista-compartida hidden>Propuesta: la ruta parece una carpeta que otra persona ha compartido contigo en OneDrive («Archivos de …»). Desmárcalo si no lo es.</div>
-          <div class="fila-b"><button class="btn btn-ghost" type="button" data-accion="add">Añadir</button><span class="t-meta" data-estado></span></div>
-          <div class="error" data-error hidden></div>
+      <!-- ============ AUDIO: qué se escucha y cómo se transcribe ============ -->
+      <section class="aj-sec" id="aj-audio" role="tabpanel" aria-labelledby="aj-tab-audio" data-aj="audio">
+        <div class="fila2">
+          <label class="campo"><span class="t-label">Micrófono</span><select class="input" name="dispositivo_mic" id="s-mic"></select></label>
+          <label class="campo"><span class="t-label">Audio de la reunión (el que suena en tu equipo)</span><select class="input" name="dispositivo_sistema" id="s-sis"></select></label>
         </div>
-      </details>
-      <label class="campo"><span class="t-label">Raíz de proyectos</span><input class="input" name="raiz_proyectos" type="text"></label>
-      <div class="fila2">
-        <label class="campo"><span class="t-label">Modelo de transcripción</span>
-          <select class="input" name="whisper_modelo"><option>tiny</option><option>base</option><option>small</option><option>medium</option><option>large-v3</option></select></label>
-        <label class="campo"><span class="t-label">Palabras mínimas por análisis</span><input class="input" name="min_palabras_analisis" type="number" min="0" max="2000"></label>
-      </div>
-      <fieldset class="campo"><legend class="t-label">Cuándo habla el equipo</legend>
-        <div class="fila3">
-          <label>Ritmo del equipo por defecto<select class="input" name="cadencia_defecto"><option value="equipo">Según lo que se diga</option><option value="5">Cada 5 min</option><option value="10">Cada 10 min</option><option value="manual">Solo si lo pido</option></select></label>
-          <label>El asistente local revisa la conversación cada (s)<input class="input" name="adaptativo_comprobar_s" type="number" min="5" max="600"></label>
-          <label>Puntos para que el equipo intervenga<input class="input" name="equipo_puntuacion_min" type="number" min="1" max="20"></label>
-          <label>Pausa entre dos intervenciones (s)<input class="input" name="equipo_enfriamiento_global_s" type="number" min="30" max="1800"></label>
-          <label>Pausa entre intervenciones de la misma persona del equipo (s)<input class="input" name="equipo_enfriamiento_perfil_s" type="number" min="60" max="3600"></label>
-          <label>Cada cuánto interviene alguien aunque no haya novedades (s)<input class="input" name="equipo_rotacion_s" type="number" min="60" max="3600"></label>
-          <label>Palabras nuevas mínimas<input class="input" name="equipo_palabras_min" type="number" min="20" max="2000"></label>
-          <label>Aviso de objetivo sin tratar (min)<input class="input" name="equipo_objetivo_sin_tratar_min" type="number" min="5" max="120"></label>
-          <label title="Ventana de 60 minutos de la reunión. Al 80 % el equipo ahorra y al 100 % solo responde a petición">Presupuesto por hora (tokens)<input class="input" name="presupuesto_tokens_hora" type="number" min="5000" max="1000000" step="1000"></label>
+        <label class="campo"><span class="t-label">Precisión de la transcripción</span>
+          <select class="input" name="whisper_modelo">
+            <option value="tiny">Mínima: la más rápida</option><option value="base">Básica</option><option value="small">Equilibrada</option><option value="medium">Precisa</option><option value="large-v3">La más precisa: necesita un equipo potente</option>
+          </select>
+          <span class="t-meta soft">Más precisión tarda más en transcribir. Se aplica a la reunión siguiente.</span></label>
+        <label class="check"><input type="checkbox" name="filtrar_eco"> Quitar del micro el eco de lo que ya suena en la reunión (vale para la siguiente reunión)</label>
+        <label class="check"><input type="checkbox" name="detectar_llamadas"> Proponer grabar cuando empiece una llamada de Teams</label>
+        <label class="campo"><span class="t-label">Efectos visuales</span>
+          <select class="input" id="s-efectos" aria-label="Efectos visuales">
+            <option value="auto">Automático: alto en vista completa y medio en Modo reunión</option>
+            <option value="alto">Alto: fondo con luz, desenfoque y brillo en lo que trabaja</option>
+            <option value="medio">Medio: sin fondo con luz; desenfoque solo en Hallazgos y Registro</option>
+            <option value="apagado">Apagado: sin desenfoque ni anillo; lo que trabaja se indica con un resplandor fijo y el cronómetro</option>
+          </select></label>
+      </section>
+      <!-- ============ EQUIPO: cuándo habla cada uno y con qué músculo ============ -->
+      <section class="aj-sec" id="aj-equipo" role="tabpanel" aria-labelledby="aj-tab-equipo" data-aj="equipo" hidden>
+        <fieldset class="campo"><legend class="t-label">Cuándo interviene el equipo</legend>
+          <label>Ritmo por defecto<select class="input" name="cadencia_defecto"><option value="equipo">Según lo que se diga</option><option value="5">Cada 5 minutos</option><option value="10">Cada 10 minutos</option><option value="manual">Solo si lo pido</option></select></label>
+          <details class="aj-avanzado">
+            <summary class="t-meta">Ajuste fino del ritmo</summary>
+            <div class="fila3">
+              <label>El asistente local revisa la conversación cada (segundos)<input class="input" name="adaptativo_comprobar_s" type="number" min="5" max="600"></label>
+              <label>Puntos para que el equipo intervenga<input class="input" name="equipo_puntuacion_min" type="number" min="1" max="20"></label>
+              <label>Pausa entre dos intervenciones (segundos)<input class="input" name="equipo_enfriamiento_global_s" type="number" min="30" max="1800"></label>
+              <label>Pausa entre intervenciones de la misma persona del equipo (segundos)<input class="input" name="equipo_enfriamiento_perfil_s" type="number" min="60" max="3600"></label>
+              <label>Cada cuánto interviene alguien aunque no haya novedades (segundos)<input class="input" name="equipo_rotacion_s" type="number" min="60" max="3600"></label>
+              <label>Palabras nuevas mínimas<input class="input" name="equipo_palabras_min" type="number" min="20" max="2000"></label>
+              <label>Aviso de objetivo sin tratar (minutos)<input class="input" name="equipo_objetivo_sin_tratar_min" type="number" min="5" max="120"></label>
+              <label title="Se cuenta en la última hora de reunión. Al 80 % el equipo ahorra y al 100 % solo responde si se lo pides">Límite de uso por hora (tokens)<input class="input" name="presupuesto_tokens_hora" type="number" min="5000" max="1000000" step="1000"></label>
+              <label>Palabras mínimas por análisis<input class="input" name="min_palabras_analisis" type="number" min="0" max="2000"></label>
+            </div>
+          </details>
+        </fieldset>
+        <fieldset class="campo"><legend class="t-label">Qué modelo usa cada tarea</legend>
+          <p class="t-meta soft">Ligero: rápido y gasta poco. Potente: más cuidadoso, tarda más y gasta más.</p>
+          <div class="fila3">
+            <label>Resumen del contexto del proyecto<select class="input sel-modelo" name="m_digest"><option value="haiku">Ligero</option><option value="sonnet">Potente</option></select></label>
+            <label>Análisis periódico<select class="input sel-modelo" name="m_periodico"><option value="haiku">Ligero</option><option value="sonnet">Potente</option></select></label>
+            <label>Confirmar contradicciones<select class="input sel-modelo" name="m_contradicciones_confirmar"><option value="haiku">Ligero</option><option value="sonnet">Potente</option></select></label>
+            <label>Resumen final y cambios al contexto<select class="input sel-modelo" name="m_final"><option value="haiku">Ligero</option><option value="sonnet">Potente</option></select></label>
+            <label>Pregúntale (por defecto)<select class="input sel-modelo" name="m_consulta"><option value="haiku">Ligero</option><option value="sonnet">Potente</option></select></label>
+            <label>Esfuerzo de razonamiento<select class="input" name="esfuerzo"><option value="">Por defecto</option><option value="low">Bajo</option><option value="medium">Medio</option><option value="high">Alto</option></select></label>
+          </div>
+        </fieldset>
+      </section>
+      <!-- ============ PRIVACIDAD: qué se lee, qué se ve y qué sale de tu equipo ============ -->
+      <section class="aj-sec" id="aj-privacidad" role="tabpanel" aria-labelledby="aj-tab-privacidad" data-aj="privacidad" hidden>
+        <label class="check"><input type="checkbox" name="excluir_captura"> Ocultar la ventana en capturas y al compartir pantalla</label>
+        <!-- los conecta otra fase: sin datos del servidor, quedan ocultos (ajustes.js) -->
+        <div class="aj-solo" id="aj-solo-local" hidden>
+          <label class="check"><input type="checkbox" name="modo_solo_local"> Modo solo local: no se envía nada fuera de este equipo</label>
+          <p class="t-meta soft">Sin análisis del equipo ni respuestas del asesor: solo transcripción y detección en local.</p>
         </div>
-      </fieldset>
-      <fieldset class="campo"><legend class="t-label">Modelos de Claude por tarea</legend>
-        <div class="fila3">
-          <label>Resumen del contexto del proyecto<input class="input" name="m_digest" type="text"></label>
-          <label>Análisis periódico<input class="input" name="m_periodico" type="text"></label>
-          <label>Confirmar contradicciones<input class="input" name="m_contradicciones_confirmar" type="text"></label>
-          <label>Resumen final y cambios<input class="input" name="m_final" type="text"></label>
-          <label>Pregúntale (por defecto)<input class="input" name="m_consulta" type="text"></label>
-          <label>Esfuerzo<select class="input" name="esfuerzo"><option value="">por defecto</option><option>low</option><option>medium</option><option>high</option></select></label>
+        <section class="aj-registro" id="aj-registro-envios" aria-label="Registro de envíos" hidden>
+          <span class="t-label">Registro de envíos</span>
+          <p class="t-meta soft">Lo que ha salido de este equipo hacia Claude, sin el contenido de las reuniones.</p>
+          <div class="aj-reg-lista" id="aj-registro-lista" tabindex="0" role="region" aria-label="Lista de envíos"></div>
+        </section>
+        <div class="campo-grupo">
+          <span class="t-label">Carpetas que lee la app</span>
+          <label class="campo"><span class="t-label">Carpeta que contiene tus proyectos</span><input class="input" name="raiz_proyectos" type="text"></label>
+          <details class="add-carpeta" id="s-add-carpeta">
+            <summary class="t-meta">Añadir otra carpeta de proyecto</summary>
+            <div id="s-extras" class="t-meta"></div>
+            <div class="campo" data-add>
+              <input class="input" data-f="nombre" type="text" maxlength="80" placeholder="Nombre del proyecto" aria-label="Nombre del proyecto">
+              <div class="ruta-fila"><input class="input" data-f="ruta" type="text" placeholder="Ruta de la carpeta" aria-label="Ruta de la carpeta"><button class="btn btn-ghost" type="button" data-elegir-carpeta hidden title="Abre el selector de carpetas de Windows (también sirven las de OneDrive o Google Drive que tengas sincronizadas)">Elegir carpeta…</button></div>
+              <label class="check"><input type="checkbox" data-f="compartido"> Carpeta compartida</label>
+              <div class="t-meta pista-compartida" data-pista-compartida hidden>Propuesta: la ruta parece una carpeta que otra persona ha compartido contigo en OneDrive («Archivos de …»). Desmárcalo si no lo es.</div>
+              <div class="fila-b"><button class="btn btn-ghost" type="button" data-accion="add">Añadir</button><span class="t-meta" data-estado></span></div>
+              <div class="error" data-error hidden></div>
+            </div>
+          </details>
         </div>
-      </fieldset>
-      <div class="fila2">
-        <label class="campo"><span class="t-label">Micrófono</span><select class="input" name="dispositivo_mic" id="s-mic"></select></label>
-        <label class="campo"><span class="t-label">Audio del sistema (Reunión)</span><select class="input" name="dispositivo_sistema" id="s-sis"></select></label>
-      </div>
-      <label class="check"><input type="checkbox" name="excluir_captura"> Ocultar la ventana en capturas y al compartir pantalla</label>
-      <label class="check"><input type="checkbox" name="detectar_llamadas"> Proponer grabar al detectar una llamada de Teams</label>
-      <label class="check"><input type="checkbox" name="filtrar_eco"> Quitar del micro el eco de lo que ya suena en la reunión (vale para la siguiente reunión)</label>
-      <label class="campo"><span class="t-label">Efectos visuales</span>
-        <select class="input" id="s-efectos" aria-label="Efectos visuales">
-          <option value="auto">Automático: alto en vista completa y medio en Modo reunión</option>
-          <option value="alto">Alto: fondo con luz, desenfoque y brillo en lo que trabaja</option>
-          <option value="medio">Medio: sin fondo con luz; desenfoque solo en Hallazgos y Registro</option>
-          <option value="apagado">Apagado: sin desenfoque ni anillo; lo que trabaja se indica con un resplandor fijo y el cronómetro</option>
-        </select></label>
+      </section>
       <div class="error" id="s-error" hidden></div>
     </div>
     <div class="d-pie">
@@ -416,6 +467,7 @@
 </aside>
 <script src="/static/app.js"></script>
 <script src="/static/iconos.js"></script>
+<script src="/static/nombres.js"></script>
 <script src="/static/agentes.js"></script>
 <script src="/static/reunion.js"></script>
 <script src="/static/revision.js"></script>
@@ -429,6 +481,9 @@
 <script src="/static/proyectos.js"></script>
 <script src="/static/contexto-reunion.js"></script>
 <script src="/static/backlog.js"></script>
+<script src="/static/avisos.js"></script>
 <script src="/static/disposicion.js"></script>
+<script src="/static/ajustes.js"></script>
+<script src="/static/paleta.js"></script>
 </body>
 </html>

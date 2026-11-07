@@ -75,6 +75,7 @@ window.AP = { hooks: {}, S: { estado: "grabando", segmentos: [], tarjetas: [], o
 AP.S.monitor = { definiciones: [], feed: [] };
 </script>
 <script src="%(web)s/iconos.js"></script>
+<script src="%(web)s/nombres.js"></script>
 <script src="%(web)s/reunion.js"></script>
 <script src="%(web)s/sesion.js"></script>
 <script>
@@ -210,7 +211,7 @@ def test_cola_escalonada_pausa_y_vaciado(tmp_path):
     assert r["visibles1"] == 2                                                 # solo decisión y riesgo avisan (y nunca más de 2 a la vez)
     huecos = [b - a for a, b in zip(r["aparicion"], r["aparicion"][1:])]
     assert all(g >= 880 for g in huecos[:4]), huecos                           # escalonado de 900 ms
-    assert r["monos"][:2] == ["CO", "CT"], r["monos"]                            # perfil → monograma
+    assert r["monos"][:2] == ["CA", "AR"], r["monos"]                            # perfil → monograma
     assert r["metaDecision"] == "Responsable: Ana · Fecha: viernes · Sistema: SAP · contra: 03-alcance.md"
     assert r["acciones"][:2] == [["Ver"], ["Ver", "Pregúntale"]]                     # Pregúntale solo en riesgo y contradicción
     assert r["sombraClaro"] and r["radio"] == "10px"

@@ -111,7 +111,7 @@
       const fila = el("div", { class: "sb-lane sb-lane-" + id + " " + extra, "data-lane": id }, el("div", { class: "sb-etq t-label" }, etq), plot);
       return { fila, plot };
     };
-    const L = { eje: lane("eje", ""), temas: lane("temas", "Temas"), obj: lane("obj", "Objetivos"), ins: lane("ins", "Insights"), tu: lane("tu", "Tú") };
+    const L = { eje: lane("eje", ""), temas: lane("temas", "Temas"), obj: lane("obj", "Objetivos"), ins: lane("ins", "Avisos"), tu: lane("tu", "Tú") };
     const sobre = el("div", { class: "sb-sobre", "aria-hidden": "true" });
     const ahora = el("div", { class: "sb-ahora" }, el("span", { class: "sb-ahora-t t-label" }, "ahora"));
     sobre.append(ahora);
@@ -386,7 +386,7 @@
   function ir(ref) {
     if (ref.t != null && AP.hooks.irAlMinuto) AP.hooks.irAlMinuto(ref.t);
     let destino = null;
-    if (ref.tarjeta) destino = document.querySelector(`#r-insights .tarj[data-id="${CSS.escape(ref.tarjeta)}"]`);
+    if (ref.tarjeta) destino = document.querySelector(`#r-insights .tarj[data-id="${CSS.escape(ref.tarjeta)}"], #av-fijos .tarj[data-id="${CSS.escape(ref.tarjeta)}"], #av-discretos .tarj[data-id="${CSS.escape(ref.tarjeta)}"]`);
     else if (ref.entrada) destino = document.querySelector(`#r-tuyas [data-id="${CSS.escape(ref.entrada)}"]`);
     else if (ref.objetivo != null) destino = document.querySelector(`#r-obj-lista .obj[data-n="${ref.objetivo}"]`);
     if (!destino) return;

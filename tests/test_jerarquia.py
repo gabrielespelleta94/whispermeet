@@ -80,8 +80,10 @@ def test_la_escala_tiene_cinco_tamanos_y_ningun_px_suelto_en_los_componentes():
 
 def test_html_dos_columnas_con_pestanas_y_notas_plegadas():
     html = (WEB / "index.html").read_text(encoding="utf-8")
-    for t in ("consejos", "insights", "objetivos", "equipo", "pregunta", "sesion"):
+    for t in ("avisos", "pregunta", "sesion"):   # ola 2: tres pestañas; Objetivos es zona fija y el Equipo vive en el «Detalle» de la tira
         assert f'data-tab="{t}"' in html and f'data-panel="{t}"' in html, t
+    for t in ("consejos", "insights", "objetivos", "equipo"):
+        assert f'data-tab="{t}"' not in html, t
     assert re.search(r'<details class="panel panel-notas" id="r-notas-det">', html)          # plegadas por defecto
     assert html.index("/static/iconos.js") < html.index("/static/agentes.js") and "/static/disposicion.js" in html
 
@@ -172,10 +174,10 @@ def test_pestanas_con_teclado_y_solo_un_panel_a_la_vez(tmp_path, pagina):
         _abrir(e, pagina)
         r = e.js("""(() => { const vis = () => [...document.querySelectorAll('.tab-panel')].filter((p) => getComputedStyle(p).display !== 'none').map((p) => p.dataset.panel);
           const out = { inicial: vis() };
-          document.querySelector('.r-tab[data-tab=objetivos]').click(); out.objetivos = vis(); out.sel = document.querySelector('.r-tab[aria-selected=true]').dataset.tab;
-          document.querySelector('.r-tab[data-tab=objetivos]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); out.flecha = vis();
+          document.querySelector('.r-tab[data-tab=pregunta]').click(); out.pregunta = vis(); out.sel = document.querySelector('.r-tab[aria-selected=true]').dataset.tab;
+          document.querySelector('.r-tab[data-tab=pregunta]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); out.flecha = vis();
           document.querySelector('.r-tab[data-tab=sesion]').click(); out.sesion = vis(); out.banda = document.querySelector('#tab-sesion #sesion-banda') !== null; return out; })()""")
-        assert len(r["inicial"]) == 1 and r["objetivos"] == ["objetivos"] and r["sel"] == "objetivos" and r["flecha"] == ["equipo"] and r["sesion"] == ["sesion"] and r["banda"], r
+        assert len(r["inicial"]) == 1 and r["pregunta"] == ["pregunta"] and r["sel"] == "pregunta" and r["flecha"] == ["sesion"] and r["sesion"] == ["sesion"] and r["banda"], r
         assert e.js("localStorage.getItem('apuntes_pestana')") == "sesion"
     finally:
         e.cerrar()
@@ -197,7 +199,7 @@ def test_ahora_respuesta_de_22_y_una_no_respuesta_atenuada_y_compacta(tmp_path, 
         _asesor(e, [RESPUESTA, dict(sin, t_seg=400, minuto="06:40")], [])                       # con una respuesta útil antes, la no-respuesta es UNA línea y «Ahora» sigue siendo la útil
         r = e.js("""({ ahora: document.querySelector('.as-ahora').dataset.id, linea: !!document.querySelector('.as-nobase'), altoLinea: document.querySelector('.as-nobase').getBoundingClientRect().height })""")
         assert r["ahora"] == "r1" and r["linea"] and r["altoLinea"] <= 32, r
-        assert "null" not in e.js("document.querySelector('#as-carril').innerText") and "null" not in e.js("document.querySelector('#tab-consejos').innerText")
+        assert "null" not in e.js("document.querySelector('#as-carril').innerText") and "null" not in e.js("document.querySelector('#tab-avisos').innerText")
     finally:
         e.cerrar()
 
@@ -206,12 +208,12 @@ def test_consejos_compactos_caben_cuatro_a_1080(tmp_path, pagina):
     e = Edge(tmp_path, _puerto(), 1920, 1080)
     try:
         _abrir(e, pagina)
-        _asesor(e, [RESPUESTA], [dict(CONSEJO, id=f"c{i}", t_seg=100.0 + i) for i in range(1, 7)])
-        r = e.js("""(() => { const p = document.querySelector('#tab-consejos').getBoundingClientRect(), cs = [...document.querySelectorAll('#as-consejos .as-cons')];
+        _asesor(e, [RESPUESTA], [dict(CONSEJO, id=f"c{i}", t_seg=700.0 + i) for i in range(1, 7)])   # ola 2: los consejos van en la lista de Avisos, junto a los insights
+        r = e.js("""(() => { const p = document.querySelector('#tab-avisos').getBoundingClientRect(), cs = [...document.querySelectorAll('#r-insights .as-cons')];
           return { alto_panel: Math.round(p.height), alto_ventana: innerHeight, n: cs.length, caben: cs.filter((c) => { const b = c.getBoundingClientRect(); return b.top >= p.top - 1 && b.bottom <= p.bottom + 1; }).length, alto: Math.round(cs[0].getBoundingClientRect().height),
             titular: parseFloat(getComputedStyle(cs[0].querySelector('.as-accion')).fontSize), peso: getComputedStyle(cs[0].querySelector('.as-accion')).fontWeight, porque: parseFloat(getComputedStyle(cs[0].querySelector('.as-porque')).fontSize) }; })()""")
         assert r["alto_panel"] < r["alto_ventana"], r                                           # la pestaña NO crece con el contenido: hace scroll en sí misma
-        assert r["n"] == 6 and r["caben"] >= 4 and r["titular"] == 15.0 and r["peso"] == "600" and r["porque"] == 14.0, r
+        assert r["n"] == 6 and r["caben"] >= 3 and r["titular"] == 15.0 and r["peso"] == "600" and r["porque"] == 14.0, r
     finally:
         e.cerrar()
 
@@ -224,7 +226,6 @@ def test_cada_tipo_tiene_su_icono_su_color_y_lo_importante_destaca(tmp_path, pag
         ts = [{"id": f"q{i}", "analisis": 1, "categoria": c, "texto": f"Texto de {c}", "minuto": "01:00", "t_seg": 60 + i, "estado": "confirmada"} for i, (c, _) in enumerate(cats)]
         e.js("window.__emitir({tipo: 'tarjetas', nuevas: %s}); 1" % json.dumps(ts))
         time.sleep(0.8)
-        e.js("document.querySelector('.r-tab[data-tab=insights]').click(); 1")
         time.sleep(0.4)
         r = e.js("""(() => { const out = {}; for (const t of document.querySelectorAll('#r-insights .tarj')) { const k = [...t.classList].find((c) => ['decision','pendiente','riesgo','contradiccion','pregunta','idea','regla','definicion'].includes(c));
           const svg = t.querySelector('svg.ic'); const cs = getComputedStyle(svg), cx = getComputedStyle(t.querySelector('.tx')), cb = getComputedStyle(t);
@@ -247,9 +248,9 @@ def test_modo_reunion_hereda_la_escala_y_las_pestanas(tmp_path, pagina):
         time.sleep(0.7)
         r = e.js("""(() => { const tam = new Set(); document.querySelectorAll('.col-izq *, .col-der *').forEach((x) => { if (x.offsetParent === null && getComputedStyle(x).position !== 'fixed') return;
             if (![...x.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) return; tam.add(parseFloat(getComputedStyle(x).fontSize)); });
-          const der = document.querySelector('.col-der'); return { tam: [...tam].sort((a, b) => a - b), tabs: !!der.querySelector('#r-tabs'), carril: der.firstElementChild.id, ancho: Math.round(der.getBoundingClientRect().width),
+          const der = document.querySelector('.col-der'); return { tam: [...tam].sort((a, b) => a - b), tabs: !!der.querySelector('#r-tabs'), carril: der.querySelector('#as-carril').parentNode.id, ancho: Math.round(der.getBoundingClientRect().width),
             resp: parseFloat(getComputedStyle(der.querySelector('.as-vin li')).fontSize) }; })()""")
-        assert set(r["tam"]) <= ESCALA and r["tabs"] and r["carril"] == "as-carril" and r["ancho"] <= 481 and r["resp"] == 22.0, r
+        assert set(r["tam"]) <= ESCALA and r["tabs"] and r["carril"] == "ahora-top" and r["ancho"] <= 481 and r["resp"] == 22.0, r
     finally:
         e.cerrar()
 
@@ -259,7 +260,7 @@ MEDIR_AVISOS = """(() => {
   const caja = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
   const cruza = (a, b) => a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
   const avisos = [...document.querySelectorAll('#r-notifs .notif:not(.saliendo)')].filter((n) => n.getBoundingClientRect().height > 0);
-  const fijos = { ahora: '#as-carril', pestanas: '#r-tabs', consejos: '#tab-consejos', insights: '#col-plan', objetivos: '#tab-objetivos', equipo: '#col-eq', pregunta: '#tab-pregunta', sesion: '#tab-sesion' };
+  const fijos = { ahora: '#as-carril', paso: '#ahora-paso', pestanas: '#r-tabs', avisos: '#tab-avisos', objetivos: '#zona-obj', pregunta: '#tab-pregunta', sesion: '#tab-sesion' };
   const cruces = [];
   avisos.forEach((a, i) => {
     const ca = caja(a);
@@ -279,7 +280,7 @@ def _avisos_en_pantalla(e, pagina, modo=False):
     cats = [("decisión", "Decisión del piloto"), ("pendiente", "Pendiente de tarifas"), ("riesgo", "Riesgo del catálogo"), ("contradicción", "Contradicción con el alcance"), ("riesgo", "Otro riesgo de plazos"),
             ("idea", "Una idea suelta"), ("pregunta", "Una pregunta sin respuesta")]
     ts = [{"id": f"av{i}", "analisis": 1, "categoria": c, "texto": f"{x} " + "con bastante texto para ocupar varias líneas " * 2, "minuto": "01:0%d" % i, "t_seg": 60 + i, "estado": "confirmada"} for i, (c, x) in enumerate(cats)]
-    e.previas = int(e.js("document.querySelector('#tab-n-insights').textContent") or 0)             # las de la foto del backend
+    e.previas = int(e.js("document.querySelector('#tab-n-avisos').textContent") or 0)             # las de la foto del backend
     e.js("window.__emitir({tipo: 'tarjetas', nuevas: %s}); 1" % json.dumps(ts))
     if modo:
         e.js("document.body.dataset.modo = 'reunion'; document.body.dataset.mr = 'dos'; document.documentElement.style.setProperty('--mr-izq', '480px'); document.documentElement.style.setProperty('--mr-der', '480px'); 1")
@@ -292,16 +293,16 @@ def test_los_avisos_nunca_tapan_ahora_ni_las_pestanas_ni_los_consejos_ni_otro_av
     e = Edge(tmp_path, _puerto(), ancho, alto)
     try:
         r = _avisos_en_pantalla(e, pagina, modo)
-        assert r["n"] == 2, r                                                                 # como mucho 2 a la vez (hay 4 que merecen aviso)
+        assert r["n"] == 2, r                                                                 # como mucho 2 a la vez (hay 3 que merecen aviso emergente y una fija)
         assert r["cruces"] == [], r["cruces"]                                                 # ninguno se cruza con «Ahora», las pestañas, los paneles ni entre sí
         assert sorted(r["tipos"]) == ["decision", "riesgo"] or all(k in ("decision", "riesgo", "contradiccion") for k in r["tipos"]), r["tipos"]   # solo decisión, contradicción y riesgo
         assert all(o[0] == 1 and o[1] == "none" for o in r["opacos"]), r["opacos"]            # fondo opaco, sin desenfoque
-        assert r["mas"] == "+2 hallazgos", r                                                  # los otros dos, agrupados
+        assert r["mas"] == "+1 hallazgo", r                                                   # el otro, agrupado (la contradicción sobre el alcance es FIJA: no emerge, ya está arriba de Avisos)
         assert r["dentro"] and r["ahora"] > 0, r
         sin_aviso = e.js("[...document.querySelectorAll('#r-notifs .notif')].some((n) => ['pendiente', 'idea', 'pregunta'].includes(n.dataset.k))")
         assert sin_aviso is False                                                             # pendiente, idea y pregunta no avisan
-        assert "Insights" in e.js("document.querySelector('.r-tab[data-tab=insights]').textContent") and int(e.js("document.querySelector('#tab-n-insights').textContent")) == e.previas + 7   # y se cuentan en su pestaña
-        assert e.js("document.querySelector('#tab-n-insights').classList.contains('nuevo')") is True   # con el resaltado de «nuevo»
+        assert "Avisos" in e.js("document.querySelector('.r-tab[data-tab=avisos]').textContent") and int(e.js("document.querySelector('#tab-n-avisos').textContent")) == e.previas + 7   # y se cuentan en su pestaña
+        assert e.js("document.querySelector('#tab-n-avisos').classList.contains('nuevo')") is False   # Avisos es la pestaña a la vista: sin resaltado de «nuevo»
     finally:
         e.cerrar()
 

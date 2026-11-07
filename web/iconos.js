@@ -39,6 +39,24 @@
     mas: ["M5 12h14", "M12 5v14"],
     buscar: [["circle", { cx: 11, cy: 11, r: 8 }], "m21 21-4.3-4.3"],
     carpeta: ["M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"],
+    // los siete agentes con nombre (mapa único en nombres.js): Capitán, Lupa, Arquitecto, Auditor, Sherpa, Monitor y Asesor
+    capitan: ["M12 22V8", "M5 12H2a10 10 0 0 0 20 0h-3", ["circle", { cx: 12, cy: 5, r: 3 }]],                                          // ancla: lleva el rumbo
+    lupa: [["circle", { cx: 11, cy: 11, r: 8 }], "m21 21-4.3-4.3", "M8 11h6"],                                                         // lupa: lo que se define con precisión
+    arquitecto: ["m12.99 6.74 1.93 3.44", "M19.136 12a10 10 0 0 1-14.271 0", "m21 21-2.16-3.84", "m3 21 8.02-14.26", ["circle", { cx: 12, cy: 5, r: 2 }]],   // compás de dibujo
+    auditor: ["M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z", "m9 12 2 2 4-4"],   // escudo con tic
+    sherpa: ["m8 3 4 8 5-5 5 15H2L8 3z"],                                                                                               // montaña: guía de la ascensión
+    monitor: ["M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"],   // pulso
+    asesor: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", "M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5", "M12 15.5h.01"],   // bocadillo con interrogación
+    ajustes: ["M21 4h-7", "M10 4H3", "M21 12h-9", "M8 12H3", "M21 20h-5", "M12 20H3", "M14 2v4", "M8 10v4", "M16 18v4"],
+    comando: ["M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"],
+    correo: [["rect", { width: 20, height: 16, x: 2, y: 4, rx: 2 }], "m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"],
+    tema: [["circle", { cx: 12, cy: 12, r: 9 }], "M12 3a9 9 0 0 0 0 18z"],
+    pausa: [["rect", { x: 14, y: 4, width: 4, height: 16, rx: 1 }], ["rect", { x: 6, y: 4, width: 4, height: 16, rx: 1 }]],
+    parar: [["rect", { width: 14, height: 14, x: 5, y: 5, rx: 2 }]],
+    rayo: ["M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"],
+    reloj: [["circle", { cx: 12, cy: 12, r: 10 }], "M12 6v6l4 2"],
+    pantalla: [["rect", { width: 20, height: 14, x: 2, y: 3, rx: 2 }], "M8 21h8", "M12 17v4"],
+    fijar: ["M12 17v5", "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"],
   };
   // tipos de tarjeta, hallazgo y consejo que comparten icono (los del asesor usan sus cinco etiquetas)
   const ALIAS = { valor: "idea", oportunidad: "idea", cierre: "decision", comentario: "respuesta", "posible": "contradiccion" };

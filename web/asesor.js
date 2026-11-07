@@ -1,6 +1,6 @@
 "use strict";
 /* Apuntes: el asesor en directo. Carril «Ahora» arriba de la reunión (y arriba del panel derecho en Modo reunión) con la respuesta sugerida más reciente,
-   grande y legible de un vistazo, y debajo los consejos del Estratega. Todo sale de datos reales del backend (evento `asesor`: respuestas, consejos y estado);
+   grande y legible de un vistazo, y debajo los consejos del Sherpa. Todo sale de datos reales del backend (evento `asesor`: respuestas, consejos y estado);
    «Profundizar» pide UNA llamada a sonnet y la casilla «Buscar también en la web» solo existe si `claude -p` lo permite y NUNCA viene marcada.
    Fijar y descartar no gastan nada. El texto siempre se ve entero (sin elipsis). Lo único que se mueve es el cronómetro de una llamada real. */
 (() => {
@@ -63,7 +63,7 @@
         onchange: (ev) => A.web.set(e.id, ev.target.checked) }), "Buscar también en la web") : null;
     return h("div", { class: "as-acc" },
       h("button", { type: "button", class: "btn btn-mini", "data-accion": "profundizar", "data-id": e.id, disabled: ocupado ? true : null,
-        title: "UNA llamada a sonnet con más extractos de tus fuentes",
+        title: "Una consulta más cuidada, con más extractos de tus fuentes",
         onclick: () => api("POST", `/api/asesor/${e.id}/profundizar`, { web: !!A.web.get(e.id) }).catch(AP.alerta) }, ocupado ? "Profundizando…" : p && p.estado === "ok" ? "Profundizar de nuevo" : "Profundizar"),
       caja,
       h("span", { class: "as-acc-der" },
@@ -98,7 +98,7 @@
   function tarjetaAhora(r) {
     const sinBase = r.sin_base && r.estado === "ok";
     return h("article", { class: "as-ahora" + (r.estado === "error" ? " error" : "") + (r.sin_base ? " sin-base" : ""), "data-id": r.id, "aria-label": `Ahora: respuesta sugerida a «${r.pregunta}»` },
-      h("div", { class: "as-cab" }, icono(sinBase ? "info" : r.estado === "error" ? "error" : "respuesta", "as-ic"), h("span", { class: "t-label as-etq" }, "Ahora"), chipMin(r.minuto, r.t_seg), h("span", { class: "t-meta" }, r.canal),
+      h("div", { class: "as-cab" }, icono(sinBase ? "info" : r.estado === "error" ? "error" : "respuesta", "as-ic"), h("span", { class: "t-label as-etq" }, "Respuesta sugerida"), chipMin(r.minuto, r.t_seg), h("span", { class: "t-meta" }, r.canal),
         h("span", { class: "as-cab-der" }, r.estado === "ok" ? chipConf(r.confianza) : null, r.estado === "ok" ? h("span", { class: "as-modelo t-meta", title: "Modelo que ha respondido" }, nombreModelo(r.modelo)) : null)),
       h("p", { class: "as-preg" }, r.pregunta),
       cuerpoRespuesta(r, true),
@@ -148,20 +148,13 @@
       aviso ? h("div", { class: "as-aviso t-meta" }, aviso) : null);
   }
 
-  // Los consejos viven en la pestaña «Consejos» (#as-consejos); el carril «Ahora» queda fijo arriba de la columna derecha
+  // Los consejos viven en la lista de Avisos (avisos.js, junto a los insights) y el último, como «Siguiente paso» en «Ahora»: aquí solo se avisa de que cambiaron
+  let sigConsejos = "";
   function pintarConsejos(cons) {
-    const cont = $("#as-consejos");
-    const n = $("#tab-n-consejos");
-    if (n) n.textContent = cons.length ? String(cons.length) : "";
-    if (!cont) return;
-    const f = document.activeElement && cont.contains(document.activeElement) ? document.activeElement : null;
-    const foco = f ? { id: f.dataset.id, accion: f.dataset.accion } : null;
-    const orden = [...cons.filter((c) => c.fijado), ...cons.filter((c) => !c.fijado).sort((a, b) => numId(b) - numId(a))];
-    cont.replaceChildren(...(orden.length ? orden.map(tarjetaConsejo) : [h("div", { class: "as-vacio t-body" }, "Todavía no hay consejos. El Estratega los propone cuando detecta una señal en la conversación.")]));
-    if (foco && foco.id) {
-      const nuevo = cont.querySelector(`[data-id="${foco.id}"][data-accion="${foco.accion}"]`);
-      if (nuevo && !nuevo.disabled) nuevo.focus({ preventScroll: true });
-    }
+    const sig = JSON.stringify(cons.map((c) => [c.id, c.accion, c.porque, c.fijado, c.profundizada && c.profundizada.estado]));
+    if (sig === sigConsejos) return;
+    sigConsejos = sig;
+    if (AP.avisos && AP.avisos.consejosCambian) AP.avisos.consejosCambian();
   }
 
   function pintar() {
@@ -231,5 +224,5 @@
   const previoReinicio = AP.hooks.reiniciar;
   AP.hooks.reiniciar = () => { if (previoReinicio) previoReinicio(); A.respuestas = []; A.consejos = []; A.estado = null; A.web.clear(); pararCrono(); render(); };
 
-  AP.asesor = { render, estado: () => A };
+  AP.asesor = { render, estado: () => A, tarjetaConsejo };
 })();

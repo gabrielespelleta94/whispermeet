@@ -6,6 +6,42 @@
   const { S, UI, h, $, $$, kfmt } = AP;
   const reducido = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // ---- la revisión es una lista de cierre en CUATRO pasos (stepper accesible). El paso actual sobrevive a los repintados; una reunión nueva empieza en el 1.
+  const PASOS = [["Decisiones y resumen", "decisiones"], ["Cambios al contexto", "cambios"], ["Correo de cierre", "correo"], ["Publicar o guardar", "publicar"]];
+  const R = { paso: 1, visitados: new Set([1]), sesion: null, premarcados: new Set(), ganttAbierto: false, outlook: null, correoEstado: "" };
+  const anuncio = () => $("#rev-anuncio");
+  function irAPaso(n, enfocar) {
+    n = Math.max(1, Math.min(PASOS.length, Number(n) || 1));
+    R.paso = n; R.visitados.add(n);
+    $$("#v-rev-cuerpo .rev-paso").forEach((p) => { p.hidden = Number(p.dataset.paso) !== n; });
+    $$("#rev-stepper .rev-st").forEach((b) => { const on = Number(b.dataset.paso) === n; if (on) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); b.closest("li").classList.toggle("visto", R.visitados.has(Number(b.dataset.paso)) && !on); });
+    const atras = $("#rev-atras"), sig = $("#rev-siguiente");
+    if (atras) atras.disabled = n === 1;
+    if (sig) sig.hidden = n === PASOS.length;
+    if (anuncio()) anuncio().textContent = `Paso ${n} de ${PASOS.length}: ${PASOS[n - 1][0]}`;
+    if (n === 1 && R.ganttAbierto && AP.refrescarSesion) requestAnimationFrame(AP.refrescarSesion);
+    if (n === 3) comprobarOutlook();
+    if (enfocar) { const t = $(`#rev-paso-${n} .rev-p-t`); if (t) t.focus(); }
+  }
+  const atras = $("#rev-atras"), siguiente = $("#rev-siguiente");
+  if (atras) atras.addEventListener("click", () => irAPaso(R.paso - 1, true));
+  if (siguiente) siguiente.addEventListener("click", () => irAPaso(R.paso + 1, true));
+  AP.revision = { irAPaso: (n) => { if (document.body.dataset.vista !== "revision") return false; irAPaso(n, true); return true; }, paso: () => R.paso, pasos: PASOS.map((p) => p[0]) };
+
+  // «Abrir en Outlook»: POST /api/correo/outlook {asunto, cuerpo}. Si el servidor no lo tiene (404), el botón desaparece; no se envía nada: Outlook abre el borrador y el usuario lo manda.
+  function partirCorreo(texto) {
+    const t = String(texto || "").replace(/\r\n/g, "\n");
+    const m = /^Asunto:[ \t]*(.*)\n+/.exec(t);
+    return m ? { asunto: m[1].trim(), cuerpo: t.slice(m[0].length).trim() } : { asunto: "", cuerpo: t.trim() };
+  }
+  async function comprobarOutlook() {
+    const b = $("#v-rev-correo-outlook");
+    if (!b || R.outlook !== null) { if (b) b.hidden = R.outlook === false; return; }
+    R.outlook = true;   // se supone disponible hasta que el servidor diga que no
+    try { await AP.api("OPTIONS", "/api/correo/outlook"); } catch (e) { if (e && e.status === 404) R.outlook = false; }
+    const b2 = $("#v-rev-correo-outlook"); if (b2) b2.hidden = R.outlook === false;
+  }
+
   const tokensDe = (agente) => { const l = [...AP.O.tareas.values()].filter((t) => t.agente === agente && t.estado === "ok"); const t = l[l.length - 1]; return t || null; };
 
   // ---- diferencias palabra a palabra entre dos versiones del resumen (LCS), pintadas en acento suave
@@ -72,6 +108,12 @@
       h("span", { class: "decide", role: "group", "aria-label": "Decisión sobre " + c.fichero }, si, no), estado, des),
     h("div", { class: "diff-wrap" }, h("div", { class: "diff", tabindex: "0" }, String(c.diff).split("\n").map((l) => h("div", { class: "dl t-body " + claseLinea(l) }, l || " ")))));
     el._p = { si, no, des, estado };
+    if (c.preaceptado === true) {   // el backend ya lo da por bueno: va marcado y con la cita que lo justifica
+      el.classList.add("preaceptado");
+      const cita = c.cita || c.evidencia || "";
+      el.querySelector(".cambio-h .f").after(h("span", { class: "pre-et t-label" }, AP.icono("check", "ic-s"), "Preaceptado"));
+      el.insertBefore(h("blockquote", { class: "pre-cita t-body" }, h("span", { class: "t-meta soft" }, "Cita de la reunión" + (c.minuto ? ` · ${c.minuto}` : "") + ": "), cita ? "«" + cita + "»" : "sin cita registrada"), el.querySelector(".diff-wrap"));
+    }
     pintarDecision(el, UI.decisiones[c.id], false);
     return el;
   }
@@ -103,6 +145,10 @@
     $("#v-rev-aplicar").hidden = !s.proyecto || !!rev.aplicado;
     $("#v-rev-aplicar").disabled = acept === 0;
     $("#v-rev-cerrar").textContent = rev.aplicado || !validos.length ? "Cerrar" : "Cerrar sin aplicar";
+    const e2 = $("#rev-st-e-2"); if (e2) e2.textContent = !s.proyecto ? "Sin proyecto" : rev.aplicado ? "Aplicados" : validos.length ? `${acept} de ${validos.length} aceptados` : "Sin cambios";
+    const e3 = $("#rev-st-e-3"); if (e3) e3.textContent = rev.correo ? "Borrador listo" : "Sin borrador";
+    const e4 = $("#rev-st-e-4"); if (e4) e4.textContent = rev.publicacion ? ({ publicada: "Publicado", error: "Con error" }[rev.publicacion.estado] || (rev.publicacion.publicar ? "Se publicará" : "No se publicará")) : "Todo guardado";
+    const c = $("#rev-cierre-cambios"); if (c) c.textContent = rev.aplicado ? "Los cambios aceptados ya se han aplicado al contexto." : acept ? `${acept} de ${validos.length} cambios aceptados: se aplicarán al contexto del proyecto al pulsar «Aplicar cambios aceptados».` : "No has aceptado ningún cambio: el contexto del proyecto no se toca.";
   }
 
   const seg = (ms) => AP.seg(ms);
@@ -131,10 +177,20 @@
       estado.textContent = ok ? "Copiado" : "No se pudo copiar; selecciona el texto a mano.";
       clearTimeout(reloj); reloj = setTimeout(() => { estado.textContent = ""; }, 2500);
     } }, "Copiar");
+    const outlook = h("button", { type: "button", class: "btn btn-mini", id: "v-rev-correo-outlook", hidden: R.outlook === false ? true : null, title: "Abre el borrador en Outlook. No se envía nada: lo revisas y lo mandas tú", onclick: async () => {
+      const { asunto, cuerpo } = partirCorreo(texto);
+      outlook.disabled = true; estado.textContent = "Abriendo Outlook…";
+      try {
+        const r = await AP.api("POST", "/api/correo/outlook", { asunto, cuerpo });
+        estado.textContent = r && r.ok === false ? "No se pudo abrir Outlook: " + (r.error || "error desconocido") + ". Puedes copiar el texto." : "Borrador abierto en Outlook. Revísalo y envíalo tú.";
+      } catch (e) {
+        if (e && e.status === 404) { R.outlook = false; outlook.hidden = true; estado.textContent = ""; } else estado.textContent = "No se pudo abrir Outlook: " + ((e && e.message) || "error") + ". Puedes copiar el texto.";
+      } finally { outlook.disabled = false; clearTimeout(reloj); reloj = setTimeout(() => { estado.textContent = ""; }, 6000); }
+    } }, AP.icono("correo", "ic-s"), "Abrir en Outlook");
     return h("section", { class: "sec", id: "v-rev-correo" }, h("span", { class: "t-label" }, "Correo de cierre"),
       h("div", { class: "correo-txt t-body", id: "v-rev-correo-texto", tabindex: "0" }, texto),
-      h("div", { class: "acciones correo-acc" }, boton, estado,
-        h("span", { class: "t-meta soft" }, "Borrador local: no se envía nada.")));
+      h("div", { class: "acciones correo-acc" }, boton, outlook, estado,
+        h("span", { class: "t-meta soft" }, "Borrador local: la app no envía nada.")));
   }
 
   AP.hooks.pintarRevision = () => {
@@ -144,6 +200,7 @@
     $("#v-rev-meta").textContent = `${s.proyecto || "Bandeja"}${s.compartido ? " (carpeta compartida)" : ""} · ${s.compartido ? "copia local en" : "transcripción guardada en"} ${s.carpeta}\\${s.fichero}`;
     const cuerpo = $("#v-rev-cuerpo"), pieEl = $("#v-rev-pie");
     cuerpo.replaceChildren();
+    const navB = $("#rev-nav-b"); if (navB) navB.hidden = true;
     if (rev.estado === "generando") {
       pieEl.hidden = true;
       cuerpo.append(h("div", { class: "cargando t-body" }, "Generando el resumen final y los cambios propuestos…"));
@@ -160,15 +217,23 @@
       return;
     }
     $("#v-rev-aplicar").hidden = false;
+    if (R.sesion !== s.id) { R.sesion = s.id; R.paso = 1; R.visitados = new Set([1]); R.premarcados = new Set(); R.ganttAbierto = false; R.correoEstado = ""; }
+    // cambios que el backend ya da por buenos (`preaceptado: true`): salen marcados, con su cita; el usuario puede deshacerlos. Sin el campo, todo igual que antes.
+    for (const c of rev.cambios || []) if (c.valido && c.preaceptado === true && !R.premarcados.has(c.id)) { R.premarcados.add(c.id); if (UI.decisiones[c.id] === undefined && !rev.aplicado) UI.decisiones[c.id] = "si"; }
     const pu = rev.pulido || { estado: "ninguno" };
     const elegir = (v) => AP.api("POST", "/api/revision/resumen", { version: v }).catch((e) => AP.avisarError(e));
-    let comparacion = null;
-    const izq = h("div", { class: "rev-izq" });
-    const der = h("div", { class: "rev-der" });
+    const validos = (rev.cambios || []).filter((c) => c.valido);
+    const objs = rev.objetivos || [];
+    const tarj = (cat) => S.tarjetas.filter((t) => t.categoria === cat);
+    const lis = (ts) => h("ul", { class: "rev-lista" }, ts.map((t) => h("li", { class: "t-body" }, h("span", { class: "t-meta soft rev-min" }, t.minuto || "--:--"), " " + t.texto, t.responsable ? h("span", { class: "t-meta soft" }, " (" + t.responsable + ")") : null)));
+    const panel = (n, ...hijos) => h("section", { class: "rev-paso", id: "rev-paso-" + n, "data-paso": String(n), "aria-labelledby": "rev-paso-t-" + n, hidden: R.paso !== n },
+      h("h2", { class: "t-title rev-p-t", id: "rev-paso-t-" + n, tabindex: "-1" }, `${n}. ${PASOS[n - 1][0]}`), ...hijos);
 
-    // ---- columna 1: resumen (56ch), objetivos, publicación e insights
+    // ---- paso 1: decisiones y resumen (con «Pulir» como opción aquí)
+    let comparacion = null;
+    const colResumen = h("div", { class: "rev-col" });
     if ((rev.avisos || []).length) {   // comprobación local del resumen: falta de contenido afirmada o tramos sin cubrir, con sus minutos
-      izq.append(h("section", { class: "sec aviso", id: "v-rev-avisos" }, h("span", { class: "t-label" }, "Aviso sobre el resumen"),
+      colResumen.append(h("section", { class: "sec aviso", id: "v-rev-avisos" }, h("span", { class: "t-label" }, "Aviso sobre el resumen"),
         h("ul", {}, rev.avisos.map((a) => h("li", { class: "t-body" }, a)))));
     }
     if (pu.estado === "listo") {
@@ -176,60 +241,83 @@
       compararResumenes(a, b);
       comparacion = h("section", { class: "sec comparacion" }, h("span", { class: "t-label" }, "Resumen final: dos versiones, las diferencias van marcadas"),
         h("div", { class: "versiones" },
-          h("div", { class: "version" + (pu.elegida === "sonnet" ? " elegida" : "") }, cabVersion("Sonnet", tokensDe("redactor"), pu.elegida === "sonnet", () => elegir("sonnet"), "v-rev-elegir-sonnet"), a),
-          h("div", { class: "version" + (pu.elegida === "opus" ? " elegida" : "") }, cabVersion("Opus", tokensDe("pulidor"), pu.elegida === "opus", () => elegir("opus"), "v-rev-elegir-opus"), b)));
+          h("div", { class: "version" + (pu.elegida === "sonnet" ? " elegida" : "") }, cabVersion("Versión estándar", tokensDe("redactor"), pu.elegida === "sonnet", () => elegir("sonnet"), "v-rev-elegir-sonnet"), a),
+          h("div", { class: "version" + (pu.elegida === "opus" ? " elegida" : "") }, cabVersion("Versión pulida", tokensDe("pulidor"), pu.elegida === "opus", () => elegir("opus"), "v-rev-elegir-opus"), b)));
+      colResumen.append(comparacion);
     } else {
-      izq.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, "Resumen final"), AP.md(rev.resumen || "Sin resumen."),
-        pu.estado === "generando" ? h("p", { class: "t-meta soft" }, "Puliendo con opus…") : h("div", { class: "acciones pulir" },
+      colResumen.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, "Resumen final"), h("div", { class: "rev-resumen" }, AP.md(rev.resumen || "Sin resumen.")),
+        pu.estado === "generando" ? h("p", { class: "t-meta soft" }, "Puliendo el texto…") : h("div", { class: "acciones pulir" },
           h("button", { class: "btn btn-ghost", type: "button", id: "v-rev-pulir", onclick: () => AP.api("POST", "/api/revision/pulir").catch((e) => AP.avisarError(e)) },
             pu.estado === "error" ? "Volver a pulir con Opus" : "Pulir con Opus"),
-          h("span", { class: "t-meta soft" }, "Opcional: gasta bastante más de tu licencia que el resto del análisis. Solo se ejecuta si lo pulsas; se muestran las dos versiones y eliges."),
-          pu.estado === "error" ? h("div", { class: "error", id: "v-rev-pulir-error" }, "No se pudo pulir: " + pu.error + " La revisión sigue con la versión de Sonnet.") : null)));
+          h("span", { class: "t-meta soft" }, "Opcional: gasta bastante más de tu licencia que el resto. Solo se hace si lo pulsas; verás las dos versiones y eliges."),
+          pu.estado === "error" ? h("div", { class: "error", id: "v-rev-pulir-error" }, "No se pudo pulir: " + pu.error + " Sigues con la versión estándar.") : null)));
     }
-    const objs = rev.objetivos || [];
+    const colDec = h("div", { class: "rev-col" });
+    const decs = tarj("decisión"), pens = tarj("pendiente");
+    colDec.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, `Decisiones · ${decs.length}`), decs.length ? lis(decs) : h("p", { class: "t-body soft" }, "No se tomó ninguna decisión cerrada.")));
+    if (pens.length) colDec.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, `Pendientes · ${pens.length}`), lis(pens)));
     if (objs.length) {
       const cub = objs.filter((o) => o.estado === "cubierto"), pen = objs.filter((o) => o.estado !== "cubierto");
       const lista = (t, l) => (l.length ? h("div", { class: "obj-grupo" }, h("div", { class: "t-label" }, `${t} · ${l.length}`), h("ul", {}, l.map((o) => h("li", { class: "t-body" }, o.texto, o.minuto ? h("span", { class: "t-meta soft" }, " " + o.minuto) : null)))) : null);
-      izq.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, `Objetivos · ${cub.length}/${objs.length} cubiertos`), lista("Cumplidos", cub), lista("Pendientes", pen)));
+      colDec.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, `Objetivos · ${cub.length} de ${objs.length} cubiertos`), h("div", { class: "obj-dos" }, lista("Cumplidos", cub), lista("Pendientes", pen))));
     }
-    if (rev.correo) izq.append(seccionCorreo(rev.correo));
-    const pub = AP.seccionPublicacion(rev);
-    if (pub) izq.append(pub);
     if (S.tarjetas.length) {
-      izq.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, "Insights de la reunión"),
-        AP.GRUPOS.map(([cat, titulo]) => { const ts = S.tarjetas.filter((t) => t.categoria === cat); return ts.length
-          ? h("div", { class: "md" }, h("h4", {}, titulo), h("ul", {}, ts.map((t) => h("li", {}, `[${t.minuto || "--:--"}] ${t.texto}${t.responsable ? " (" + t.responsable + ")" : ""}`)))) : null; })));
+      colDec.append(h("details", { class: "sec rev-todo" }, h("summary", { class: "t-label" }, "Todo lo que salió de la reunión"),
+        AP.GRUPOS.map(([cat, titulo]) => { const ts = tarj(cat); return ts.length ? h("div", { class: "md" }, h("h4", {}, titulo), lis(ts)) : null; })));
     }
+    // la línea de tiempo (Gantt de la sesión) va plegada: se monta al abrirla, porque mide su ancho
+    const gantt = h("details", { class: "rev-gantt", id: "rev-gantt", open: R.ganttAbierto ? true : null, ontoggle: (ev) => { R.ganttAbierto = ev.target.open; if (R.ganttAbierto && AP.refrescarSesion) requestAnimationFrame(AP.refrescarSesion); } },
+      h("summary", { class: "t-label" }, "Línea de tiempo de la sesión"));
+    const p1 = panel(1, h("div", { class: "rev-p-cols" + (comparacion ? " ancho" : "") }, colResumen, colDec), gantt);
 
-    // ---- zona 2/3: cambios propuestos, uno por fichero
+    // ---- paso 2: cambios al contexto
     const sec = h("section", { class: "sec cambios" });
-    der.append(sec);
     if (!s.proyecto) {
-      sec.append(h("span", { class: "t-label" }, "Cambios propuestos al contexto"), h("p", { class: "t-body soft" }, "Reunión sin proyecto: no hay ficheros de contexto que actualizar. La transcripción queda en la bandeja."));
+      sec.append(h("p", { class: "t-body soft" }, "Reunión sin proyecto: no hay ficheros de contexto que actualizar. La transcripción queda en la bandeja."));
     } else {
-      const validos = rev.cambios.filter((c) => c.valido);
       const tot = validos.reduce((a, c) => { const [m, n] = contar(c.diff); return [a[0] + m, a[1] + n]; }, [0, 0]);
-      sec.append(h("div", { class: "cambios-h" }, h("span", { class: "t-title" }, "Cambios propuestos al contexto"),
+      sec.append(h("div", { class: "cambios-h" }, h("span", { class: "t-body-m" }, validos.length ? `${validos.length} fichero${validos.length === 1 ? "" : "s"} con cambios propuestos` : "Sin cambios propuestos"),
         validos.length ? h("span", { class: "cuenta t-meta" }, h("b", { class: "mas" }, "+" + tot[0]), " ", h("b", { class: "menos" }, "−" + tot[1])) : null,
         validos.length ? h("span", { class: "cambios-b" },
           h("button", { type: "button", class: "btn btn-mini", id: "v-rev-aceptar-todo", disabled: !!rev.aplicado, onclick: () => fijarTodos("si") }, "Aceptar todo"),
           h("button", { type: "button", class: "btn btn-ghost btn-mini", id: "v-rev-rechazar-todo", disabled: !!rev.aplicado, onclick: () => fijarTodos("no") }, "Rechazar todo")) : null));
       if (rev.compartido) sec.append(h("div", { class: "banner info t-meta", id: "v-rev-compartido" }, h("b", {}, "Se escribirá en una carpeta compartida. "),
-        "Los cambios que aceptes se escribirán en «" + rev.destino_contexto + "», una carpeta compartida de otra persona, y se añadirá una entrada a 10-registro-de-cambios.md. Revisa cada diff antes de aceptar. La transcripción no se copia allí."));
+        "Los cambios que aceptes se escribirán en «" + rev.destino_contexto + "», una carpeta compartida de otra persona, y se añadirá una entrada a 10-registro-de-cambios.md. Revisa cada cambio antes de aceptar. La transcripción no se copia allí."));
       if (rev.carpeta_contexto === false) sec.append(h("div", { class: "banner info t-meta" }, "La carpeta «00. CONTEXTO (IA)» no existe en este proyecto. Si aceptas algún cambio se creará con las plantillas del kit."));
       if (!rev.cambios.length) sec.append(h("p", { class: "t-body soft" }, "Esta reunión no ha generado cambios para el contexto." + (rev.sin_cambios ? " Motivo: " + rev.sin_cambios : "")));
       rev.cambios.forEach((c) => sec.append(bloque(c, !!rev.aplicado)));
     }
+    const p2 = panel(2, sec);
     if (rev.aplicado) {
       const a = rev.aplicado;
-      der.append(h("div", { class: "resultado t-body" }, a.aplicados.length
+      p2.append(h("div", { class: "resultado t-body" }, a.aplicados.length
         ? `Aplicados ${a.aplicados.length} cambio(s) en ${a.ficheros.join(", ")}${a.carpeta_creada ? " (carpeta de contexto creada con las plantillas)" : ""}. Entrada añadida a 10-registro-de-cambios.md.`
         : "No se aplicó ningún cambio.", a.omitidos.length ? " No se pudieron aplicar: " + a.omitidos.map((o) => `${o.id} (${o.motivo})`).join("; ") + "." : ""));
     }
-    if (comparacion) cuerpo.append(comparacion);
-    if (AP.montarSesionRevision) AP.montarSesionRevision(cuerpo);   // el Gantt de la sesión completo
-    cuerpo.append(h("div", { class: "rev-grid" }, izq, der));
+
+    // ---- paso 3: correo de cierre (Copiar y Abrir en Outlook)
+    const p3 = panel(3, rev.correo ? seccionCorreo(rev.correo) : h("p", { class: "t-body soft", id: "v-rev-sin-correo" }, "Esta reunión no deja nada cerrado ni abierto que contar, así que no hay borrador de correo."));
+
+    // ---- paso 4: publicar o guardar
+    const pub = AP.seccionPublicacion(rev);
+    const aceptados = validos.filter((c) => UI.decisiones[c.id] === "si").length;
+    const resumenCierre = h("section", { class: "sec rev-cierre", id: "rev-cierre" }, h("span", { class: "t-label" }, "Lo que queda al cerrar"),
+      h("ul", { class: "rev-lista" },
+        h("li", { class: "t-body" }, `La transcripción y el resumen ya están guardados en ${s.compartido ? "una copia local" : "«" + s.carpeta + "»"}.`),
+        s.proyecto ? h("li", { class: "t-body", id: "rev-cierre-cambios" }, rev.aplicado ? "Los cambios aceptados ya se han aplicado al contexto." : aceptados ? `${aceptados} de ${validos.length} cambios aceptados: se aplicarán al contexto del proyecto al pulsar «Aplicar cambios aceptados».` : "No has aceptado ningún cambio: el contexto del proyecto no se toca.") : h("li", { class: "t-body" }, "Sin proyecto, no hay contexto que actualizar."),
+        rev.correo ? h("li", { class: "t-body" }, "El correo de cierre es un borrador: la app no envía nada.") : null));
+    const p4 = panel(4, resumenCierre, pub);
+
+    const stepper = h("nav", { class: "rev-nav-pasos", "aria-label": "Pasos de la revisión" },
+      h("ol", { class: "rev-stepper", id: "rev-stepper" }, PASOS.map(([t], i) => h("li", { class: R.visitados.has(i + 1) && R.paso !== i + 1 ? "visto" : "" },
+        h("button", { type: "button", class: "rev-st", "data-paso": String(i + 1), "aria-controls": "rev-paso-" + (i + 1), "aria-current": R.paso === i + 1 ? "step" : null, onclick: () => irAPaso(i + 1, true),
+          onkeydown: (ev) => { const d = ev.key === "ArrowRight" ? 1 : ev.key === "ArrowLeft" ? -1 : 0; if (!d) return; const b = $(`#rev-stepper .rev-st[data-paso="${i + 1 + d}"]`); if (b) { ev.preventDefault(); b.focus(); } } },
+        h("span", { class: "rev-num", "aria-hidden": "true" }, String(i + 1)), h("span", { class: "rev-st-t" }, h("span", { class: "rev-st-n t-body-m" }, t), h("span", { class: "rev-st-e t-meta", id: "rev-st-e-" + (i + 1) })))))));
+    cuerpo.append(stepper, h("div", { class: "rev-paneles" }, p1, p2, p3, p4), h("div", { class: "sr", id: "rev-anuncio", role: "status", "aria-live": "polite" }));
+    const nav = $("#rev-nav-b"); if (nav) nav.hidden = false;
+    if (AP.montarSesionRevision) AP.montarSesionRevision(gantt);   // el Gantt de la sesión completo, plegado por defecto
     pieEl.hidden = false;
     pie();
+    irAPaso(R.paso, false);
   };
 })();

@@ -20,7 +20,7 @@
   const hoyMs = (hora) => { const [a, b, c] = String(hora || "").split(":").map(Number); if ([a, b, c].some(Number.isNaN)) return null; const d = new Date(); d.setHours(a, b, c, 0); return d.getTime(); };
 
   // ------------------------------------------------------------ estado propio
-  const O = { tareas: new Map(), traza: [], plegado: true, plegadoRev: false, filtro: null, popover: false, inicioVisto: new Map(), crono: null };
+  const O = { tareas: new Map(), traza: [], plegado: true, plegadoRev: true, filtro: null, popover: false, inicioVisto: new Map(), crono: null };
   try { const v = localStorage.getItem("apuntes_orq_plegado"); if (v === "0" || v === "1") O.plegado = v === "1"; } catch { /* sin almacenamiento: plegada, que es lo normal */ }   // por defecto plegada a una línea
 
   // Nodos: todos existen en la app. `local` = sin modelo de Claude. `discreto` = tarea con inicio y fin (lleva anillo mientras trabaja).
@@ -30,7 +30,7 @@
     { id: "transcriptor", mono: "TR", nombre: "Transcriptor", completo: "Transcriptor (Whisper, local)", col: 1, fila: 0, local: true, discreto: true },
     { id: "contexto", mono: "CX", nombre: "Contexto", completo: "Contexto (resumen de los ficheros del proyecto)", col: 1, fila: 1, discreto: true, tarea: "digest" },
     { id: "monitor", mono: "MO", nombre: "Monitor", completo: "Monitor (asistente local: revisa la conversación cada 30 s, detecta señales y definiciones y decide a quién le toca intervenir; sin modelo)", col: 2, fila: 0, local: true },
-    { id: "equipo", mono: "EQ", nombre: "Equipo", completo: "Equipo (Coordinador, Analista funcional, Constructor, Revisor y Estratega: cada intervención es una llamada al modelo; el asesor responde a las preguntas del cliente)", col: 3, fila: 0.5, discreto: true, tarea: "equipo" },
+    { id: "equipo", mono: "EQ", nombre: "Equipo", completo: "Equipo (Capitán, Lupa, Arquitecto, Auditor y Sherpa: cada intervención es una llamada al modelo; el Asesor responde a las preguntas del cliente)", col: 3, fila: 0.5, discreto: true, tarea: "equipo" },
     { id: "verificador", mono: "VE", nombre: "Verificador", completo: "Verificador de contradicciones", col: 4, fila: 0, discreto: true, tarea: "contradicciones_confirmar" },
     { id: "consultas", mono: "PR", nombre: "Consultas", completo: "Consultas («Pregúntale»: una llamada por pregunta, solo si la lanzas)", col: 4, fila: 1, discreto: true, tarea: "consulta" },
     { id: "redactor", mono: "RE", nombre: "Redactor", completo: "Redactor del resumen final", col: 5, fila: 0.5, discreto: true, tarea: "final" },
@@ -39,12 +39,12 @@
   const ENLACES = [["micro", "transcriptor"], ["reunion", "transcriptor"], ["transcriptor", "monitor"], ["monitor", "equipo"], ["contexto", "equipo"],
     ["equipo", "verificador"], ["equipo", "consultas"], ["verificador", "redactor"], ["redactor", "pulidor"]];
   const AGENTES_EQUIPO = ["coordinador", "funcional", "constructor", "revisor", "analista", "estratega", "asesor"];   // el Estratega y el asesor (respuestas y «Profundizar») también trabajan bajo el nodo «Equipo"   // «analista» = el análisis generalista de las cadencias de 5 y 10 min
-  const NOMBRE_AGENTE = { monitor: "Monitor", "monitor-feed": "Minuto a minuto del Monitor", equipo: "Equipo", coordinador: "Coordinador", funcional: "Analista funcional", constructor: "Constructor", revisor: "Revisor", analista: "Analista", estratega: "Estratega", asesor: "Asesor" };
+  // Nombres, monogramas e iconos: UN solo mapa (nombres.js). Capitán, Lupa, Arquitecto, Auditor y Sherpa son los cinco del equipo; Monitor y Asesor completan la tira.
+  const NOMBRE_AGENTE = { "monitor-feed": "Minuto a minuto del Monitor", equipo: "Equipo" };
+  const MONO_PERFIL = {};
+  for (const k of ["monitor", "coordinador", "funcional", "constructor", "revisor", "analista", "estratega", "asesor"]) { NOMBRE_AGENTE[k] = AP.nombreAgente(k); MONO_PERFIL[k] = AP.agente(k).mono; }
   const ETQ = { espera: "En espera", trabajando: "Trabajando", hecho: "Hecho", error: "Error", omitido: "Omitido" };
-
-  const MONO_PERFIL = { coordinador: "CO", funcional: "AF", constructor: "CT", revisor: "RV", analista: "AN", estratega: "ES", asesor: "AS" };   // monogramas de agente (única iconografía de perfil)
-  const AVATARES = [["monitor", "MO", "Monitor"], ["coordinador", "CO", "Coordinador"], ["funcional", "AF", "Analista funcional"], ["constructor", "CT", "Constructor"],
-    ["revisor", "RV", "Revisor"], ["estratega", "ES", "Estratega"], ["asesor", "AS", "Asesor"]];
+  const AVATARES = ["monitor", "coordinador", "funcional", "constructor", "revisor", "estratega", "asesor"].map((k) => [k, AP.agente(k).mono, AP.agente(k).nombre]);   // el orden de la tira
   const DOM = { avatares: {}, nodos: {}, monos: {}, enlaces: {}, svg: null, linea: {}, haz: null, hazG: null, activos: [] };
 
   // ------------------------------------------------------------ datos reales
@@ -166,7 +166,7 @@
       } }, "Detalle");
     // Tira plegada (36 px): iniciales de los agentes; solo "trabaja" el que tiene una llamada abierta (evento `tarea`). Un clic en la tira despliega el detalle.
     const avatares = h("span", { class: "orq-avatares", role: "group", "aria-label": "Agentes del equipo" },
-      AVATARES.map(([id, mono, nombre]) => { const a = h("span", { class: "av", "data-agente": id, "data-estado": "espera", title: nombre + ": en espera" }, mono); DOM.avatares[id] = a; return a; }));
+      AVATARES.map(([id, mono, nombre]) => { const ag = AP.agente(id); const a = h("span", { class: "av ag-av", "data-agente": id, "data-estado": "espera", title: nombre + ": en espera", style: `--ag: ${ag.color}` }, AP.icono(ag.icono, "av-ic")); DOM.avatares[id] = a; return a; }));
     const linea = h("div", { class: "orq-linea" }, ind, avatares, h("div", { class: "orq-l-txt" }, est, res, h("span", { class: "orq-fila-barra" }, barra, pal, prox), ult),
       h("span", { class: "orq-acc" }, reg, plegar));
     linea.addEventListener("click", (ev) => { if (!ev.target.closest("button, a, input")) plegar.click(); });

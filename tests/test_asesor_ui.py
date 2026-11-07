@@ -20,7 +20,7 @@ HTML = (WEB / "index.html").read_text(encoding="utf-8")
 # ============================================================ estáticos
 def test_el_carril_esta_en_la_pagina_y_carga_despues_del_equipo():
     assert 'id="as-carril"' in HTML and "/static/asesor.css" in HTML and HTML.index("/static/equipo.js") < HTML.index("/static/asesor.js")
-    assert HTML.index('class="reunion-grid"') < HTML.index('id="as-carril"') < HTML.index('id="r-tabs"') < HTML.index('id="as-consejos"')   # columna derecha: «Ahora» fijo arriba y, debajo, las pestañas (Consejos primero)
+    assert HTML.index('class="reunion-grid"') < HTML.index('id="as-carril"') < HTML.index('id="r-tabs"') < HTML.index('id="tab-avisos"')   # zona «Ahora»: respuesta fija arriba y, debajo, las pestañas (Avisos primero: los consejos del Sherpa van en esa lista)
     assert 'aria-label="Asesor' in HTML
 
 
@@ -111,7 +111,7 @@ def test_ahora_muestra_la_respuesta_mas_reciente_grande_y_los_consejos_debajo(ed
       return { hidden: l.hidden, ahora: a.dataset.id, pregunta: a.querySelector('.as-preg').textContent, bullets: g.map(x => x.textContent), tamBullet: g.map(tam),
         maxOtros: Math.max(...todo), conf: a.querySelector('.as-conf').textContent, modelo: a.querySelector('.as-modelo').textContent, nota: (a.querySelector('.as-nota') || {}).textContent,
         fuentes: [...a.querySelectorAll('.as-fuentes .as-fuente, .as-fuentes .min')].map(x => x.textContent), prof: (a.querySelector('.as-prof') || {}).textContent,
-        cons: [...document.querySelectorAll('#as-consejos .as-cons')].map(c => [c.querySelector('.as-etq-c').textContent, c.querySelector('.as-accion').textContent, parseFloat(getComputedStyle(c.querySelector('.as-accion')).fontSize), parseFloat(getComputedStyle(c.querySelector('.as-porque')).fontSize)]),
+        cons: [...document.querySelectorAll('#r-insights .as-cons')].map(c => [c.querySelector('.as-etq-c').textContent, c.querySelector('.as-accion').textContent, parseFloat(getComputedStyle(c.querySelector('.as-accion')).fontSize), parseFloat(getComputedStyle(c.querySelector('.as-porque')).fontSize)]),
         anteriores: (l.querySelector('.as-ant summary') || {}).textContent, caja: l.querySelectorAll("[data-accion='web']").length,
         alto: Math.round(l.getBoundingClientRect().height), top: Math.round(l.getBoundingClientRect().top),
         columnas: [...document.querySelectorAll('.col-izq')].map(c => Math.round(c.getBoundingClientRect().height)) };
@@ -149,7 +149,7 @@ def test_profundizar_sin_marcar_la_web_no_la_pide_y_fijar_y_descartar_llaman_a_l
     arrancar(edge, pagina)
     emitir(edge, [R(1, "¿Cuántos usuarios?", "00:40", 40, ["Tres."])], [C(1, "valor", "Aportación de valor", "Ofrece una demo del informe semanal", "Lo pidió el cliente")], web={"disponible": True, "motivo": ""})
     edge.js("document.querySelector(\"#as-carril .as-ahora [data-accion='profundizar']\").click(); document.querySelector(\"#as-carril .as-ahora [data-accion='fijar']\").click(); "
-            "document.querySelector(\"#as-consejos .as-cons [data-accion='descartar']\").click(); document.querySelector(\"#as-consejos .as-cons [data-accion='profundizar']\").click(); 1")
+            "document.querySelector(\"#r-insights .as-cons [data-accion='descartar']\").click(); document.querySelector(\"#r-insights .as-cons [data-accion='profundizar']\").click(); 1")
     time.sleep(0.3)
     ll = json.loads(edge.js("JSON.stringify(window.__llamadas.filter(x => /asesor/.test(x[0])))"))
     assert ll == [["/api/asesor/r1/profundizar", "POST", '{"web":false}'], ["/api/asesor/r1/fijar", "POST", '{"valor":true}'],
@@ -184,10 +184,10 @@ def test_plegar_recuerda_la_eleccion_y_en_modo_reunion_va_arriba_del_panel_derec
     d = json.loads(edge.js("""JSON.stringify((() => { const l = document.querySelector('#as-carril'), p = l.parentNode;
       return { padre: p.id, primero: p.firstElementChild === l, ancho: Math.round(l.getBoundingClientRect().width), apilado: getComputedStyle(l.querySelector('.as-cuerpo')).display,
         mayor: parseFloat(getComputedStyle(l.querySelector('.as-vin.grande li')).fontSize) }; })())"""))
-    assert d["padre"] == "col-der" and d["primero"] and d["ancho"] <= 1440 * 0.25 + 4 and d["apilado"] == "block" and d["mayor"] == 22
+    assert d["padre"] == "ahora-top" and d["primero"] and d["ancho"] <= 1440 * 0.25 + 4 and d["apilado"] == "block" and d["mayor"] == 22
     edge.js("delete document.body.dataset.modo; delete document.body.dataset.mr; 1")
     time.sleep(0.4)
-    assert edge.js("document.querySelector('#as-carril').parentNode.id") == "col-der"                     # el carril ya no viaja: es la misma columna derecha en la vista completa y en Modo reunión
+    assert edge.js("document.querySelector('#as-carril').parentNode.id") == "ahora-top"                     # el carril ya no viaja: es la misma columna derecha en la vista completa y en Modo reunión
 
 
 def test_en_curso_muestra_el_estado_real_y_el_aviso_de_presupuesto(edge, pagina):

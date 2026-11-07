@@ -26,7 +26,7 @@
       body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined });
     let datos = null;
     try { datos = await r.json(); } catch { /* sin cuerpo */ }
-    if (!r.ok) throw new Error((datos && (datos.detail || datos.error)) || `Error ${r.status}`);
+    if (!r.ok) { const e = new Error((datos && (datos.detail || datos.error)) || `Error ${r.status}`); e.status = r.status; throw e; }
     return datos;
   }
 
@@ -875,6 +875,13 @@
   });
 
   // ------------------------------------------------------------ AJUSTES
+  // Los modelos se eligen con un selector (Ligero = haiku, Potente = sonnet: los valores de siempre). Si la configuración trae otro valor (p. ej. opus), se conserva como opción.
+  AP.fijarModelo = (sel, valor) => {
+    if (!sel) return;
+    const v = String(valor || "haiku");
+    if (![...sel.options].some((o) => o.value === v)) sel.append(h("option", { value: v }, "Otro: " + v));
+    sel.value = v;
+  };
   const dlg = $("#d-ajustes");
   $("#b-ajustes").addEventListener("click", async () => {
     $("#s-error").hidden = true;
@@ -885,7 +892,8 @@
       f.raiz_proyectos.value = c.raiz_proyectos; f.whisper_modelo.value = c.whisper_modelo;
       f.min_palabras_analisis.value = c.min_palabras_analisis; f.esfuerzo.value = c.esfuerzo;
       f.excluir_captura.checked = c.excluir_captura; f.detectar_llamadas.checked = c.detectar_llamadas; f.filtrar_eco.checked = c.filtrar_eco !== false;
-      ["digest", "periodico", "contradicciones_confirmar", "final"].forEach((k) => (f["m_" + k].value = c.modelos[k]));
+      ["digest", "periodico", "contradicciones_confirmar", "final"].forEach((k) => AP.fijarModelo(f["m_" + k], c.modelos[k]));
+      if (AP.hooks.ajustesAbrir) AP.hooks.ajustesAbrir(info, f);   // ajustes.js: secciones, solo local y registro de envíos
       const llenar = (sel, lista, actual, defecto) => {
         sel.replaceChildren(h("option", { value: "" }, "Predeterminado del sistema"));
         lista.forEach((d) => sel.append(h("option", { value: d.indice }, d.nombre + (d.indice === defecto ? " (predeterminado)" : ""))));
@@ -906,6 +914,7 @@
       min_palabras_analisis: Number(f.min_palabras_analisis.value), excluir_captura: f.excluir_captura.checked,
       detectar_llamadas: f.detectar_llamadas.checked, filtrar_eco: f.filtrar_eco.checked, dispositivo_mic: idx(f.dispositivo_mic.value), dispositivo_sistema: idx(f.dispositivo_sistema.value),
       modelos: { digest: f.m_digest.value, periodico: f.m_periodico.value, contradicciones_confirmar: f.m_contradicciones_confirmar.value, final: f.m_final.value } };
+    if (AP.hooks.ajustesGuardar) Object.assign(cambios, AP.hooks.ajustesGuardar(f));
     try {
       const r = await api("PUT", "/api/config", cambios);
       pintarCaptura(r.config.excluir_captura);
@@ -940,6 +949,7 @@
     vistaAntes = v;
   }
   function manejar(d) {
+    if (AP.normalizar) AP.normalizar(d);   // nombres de los agentes (nombres.js)
     if (AP.hooks.evento) AP.hooks.evento(d);   // tareas reales, traza y enlaces visuales (agentes.js)
     switch (d.tipo) {
       case "snapshot":

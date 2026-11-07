@@ -1,7 +1,7 @@
 "use strict";
 /* WhisperMeet: inicio = galería de proyectos a todo el ancho (sin llamadas al modelo).
    Dos etapas dentro de la vista de inicio: «galería» (elegir proyecto) y «preparar» (tema, idioma, cadencia, contexto y objetivos con el proyecto ya elegido).
-   - Barra superior: buscador (#i-buscar, Ctrl+K o «/»), filtros (Todos, Favoritos, Con plan, Compartidos, Sin contexto), orden (Recientes, Actividad,
+   - Barra superior: buscador (#i-buscar, «/»), filtros (Todos, Favoritos, Con plan, Compartidos, Sin contexto), orden (Recientes, Actividad,
      Pendientes, Nombre) y rejilla/lista. Orden y vista se recuerdan en localStorage (con try/catch: puede no haber almacenamiento).
    - Secciones: «Continuar» (último proyecto usado, tarjeta ancha con «Empezar aquí»), Favoritos, Proyectos e «Inactivos» (sin sesión en 60 días, plegados).
      «Reunión sin proyecto» (Bandeja) y «Añadir carpeta de proyecto» viven en la fila de Continuar. Con búsqueda o filtro, una sola lista de resultados.
@@ -399,7 +399,7 @@
     const nombre = p ? p.nombre : UI.sel === null ? "Reunión sin proyecto" : "Sin proyecto elegido";
     const desc = p ? datos(p).descripcion || textoUltima(p) : UI.sel === null ? "La transcripción se guarda en apuntes\\bandeja." : "";
     cab.replaceChildren(h("div", { class: "proy-top" }, h("h1", { class: "t-display" }, "Nueva reunión"),
-        h("button", { type: "button", class: "btn btn-ghost", id: "i-cambiar", title: "Volver a la galería de proyectos (Ctrl+K)", onclick: () => cambiarProyecto() }, "Cambiar proyecto")),
+        h("button", { type: "button", class: "btn btn-ghost", id: "i-cambiar", title: "Volver a la galería de proyectos", onclick: () => cambiarProyecto() }, "Cambiar proyecto")),
       h("div", { class: "proy-ficha " + (p ? "cp" + colorDe(p.nombre) : "cp" + colorDe("bandeja")), "data-proyecto": nombre },
         p ? monograma(nombre, true) : h("span", { class: "mono grande bandeja", "aria-hidden": "true" }, AP.icono("respuesta")),
         h("div", { class: "proy-txt" }, h("div", { class: "proy-nom", id: "i-proy-nombre", title: nombre }, nombre), desc ? h("div", { class: "t-meta soft proy-desc", title: desc }, desc) : null,
@@ -465,12 +465,8 @@
   document.addEventListener("keydown", (ev) => {
     if (!enVistaInicio() || document.body.dataset.backlog) return;
     const t = ev.target, escribiendo = t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k") {
-      ev.preventDefault();
-      if (P.panel) cerrarPanel(false);
-      if (P.etapa !== "galeria") etapa("galeria");
-      $("#i-buscar").focus(); $("#i-buscar").select();
-    } else if (ev.key === "/" && !escribiendo && !ev.ctrlKey && !ev.metaKey && !ev.altKey && P.etapa === "galeria" && !P.panel) { ev.preventDefault(); $("#i-buscar").focus(); $("#i-buscar").select(); }
+    // Ctrl+K ya no enfoca el buscador: abre la paleta de comandos (paleta.js), que también lista los proyectos. «/» sigue llevando al buscador.
+    if (ev.key === "/" && !escribiendo && !ev.ctrlKey && !ev.metaKey && !ev.altKey && P.etapa === "galeria" && !P.panel) { ev.preventDefault(); $("#i-buscar").focus(); $("#i-buscar").select(); }
   });
 
   // ------------------------------------------------------------ ficha del proyecto (panel lateral)

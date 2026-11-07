@@ -1,6 +1,6 @@
 "use strict";
-/* Apuntes: disposición de la pantalla de reunión (DESIGN-visual.md §9). La columna derecha lleva el carril «Ahora» fijo arriba y, debajo, pestañas: lo importante
-   primero (Consejos, Insights) y lo secundario detrás (Objetivos, Equipo, Pregúntale, Sesión). Aquí vive el control de pestañas con teclado (flechas, Inicio y Fin),
+/* Apuntes: disposición de la pantalla de reunión (DESIGN-visual.md §9, ola 2). Tres zonas: Transcripción | Ahora | Objetivos. «Ahora» lleva la respuesta, el siguiente paso y, debajo,
+   TRES pestañas: Avisos (consejos e insights juntos), Pregúntale y Sesión; Objetivos es una zona fija y el Equipo vive en el «Detalle» de la tira de Orquestación. Aquí vive el control de pestañas con teclado (flechas, Inicio y Fin),
    los recuentos (solo datos reales) y la preferencia de plegado de las Notas. No toca la sesión ni el análisis: solo muestra u oculta paneles que ya existen. */
 (() => {
   const AP = window.AP;
@@ -8,10 +8,10 @@
   const { S, $, $$ } = AP;
   const vista = $("#v-reunion"), barra = $("#r-tabs");
   if (!vista || !barra) return;
-  const ORDEN = ["consejos", "insights", "objetivos", "equipo", "pregunta", "sesion"];
+  const ORDEN = ["avisos", "pregunta", "sesion"];
   const leer = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } };
   const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
-  let elegida = ORDEN.includes(leer("apuntes_pestana", "")) ? leer("apuntes_pestana", "") : null;   // la que eligió el usuario; sin elección, la principal según haya consejos o no
+  let elegida = ORDEN.includes(leer("apuntes_pestana", "")) ? leer("apuntes_pestana", "") : null;   // la que eligió el usuario; sin elección, Avisos (las antiguas Consejos e Insights se leen como Avisos)
   let actual = null;
   const vistos = {};
 
@@ -25,17 +25,14 @@
     vistos[nombre] = cuentas()[nombre];
     pintarCuentas();
     if (nombre === "sesion" && AP.refrescarSesion) requestAnimationFrame(AP.refrescarSesion);   // la línea de tiempo mide su ancho: solo puede hacerlo con la pestaña a la vista
-    if (nombre === "insights" && AP.hooks.pintarInsights) { /* ya pintado: las tarjetas existen aunque la pestaña estuviera oculta */ }
   }
   AP.pestana = (nombre) => activar(nombre, { fijar: true });
 
   // recuentos: solo lo que ya existe en el estado real
   function cuentas() {
     const a = AP.asesor && AP.asesor.estado ? AP.asesor.estado() : null;
-    const consejos = a ? (a.consejos || []).filter((c) => !c.descartado).length : 0;
-    const os = S.objetivos || [];
-    return { consejos, insights: (S.tarjetas || []).length, objetivos: os.length ? os.filter((o) => o.estado === "cubierto").length + "/" + os.length : 0,
-      equipo: S.equipo && S.equipo.turnos ? S.equipo.turnos : 0, pregunta: (S.consultas || []).length, sesion: 0 };
+    const consejos = a && S.sesion && S.estado !== "inactivo" ? (a.consejos || []).filter((c) => !c.descartado).length : 0;
+    return { avisos: (S.tarjetas || []).length + consejos, pregunta: (S.consultas || []).length, sesion: 0 };
   }
   function pintarCuentas() {
     const c = cuentas();
@@ -43,12 +40,11 @@
       const n = $("#tab-n-" + k); if (!n) continue;
       const v = c[k] ? String(c[k]) : "";
       if (n.textContent !== v) n.textContent = v;
-      // «nuevo»: la pestaña no está a la vista y hay más que la última vez que se miró
-      const sinVer = (k === "consejos" || k === "insights") && actual !== k && typeof c[k] === "number" && c[k] > (typeof vistos[k] === "number" ? vistos[k] : 0);
+      // «nuevo»: la pestaña no está a la vista y hay más avisos que la última vez que se miró
+      const sinVer = k === "avisos" && actual !== k && c[k] > (typeof vistos[k] === "number" ? vistos[k] : 0);
       n.classList.toggle("nuevo", !!sinVer);
     }
-    // sin elección del usuario: Consejos si los hay (lo que hay que hacer ahora); si no, Insights (lo que se ha captado)
-    if (!elegida) { const auto = c.consejos ? "consejos" : "insights"; if (actual !== auto) activar(auto); }
+    if (!elegida && actual !== "avisos") activar("avisos");
   }
 
   barra.addEventListener("click", (ev) => { const b = ev.target.closest(".r-tab"); if (b) activar(b.dataset.tab, { usuario: true }); });
@@ -78,8 +74,8 @@
   };
   const reiniciar = AP.hooks.reiniciar;
   AP.hooks.reiniciar = () => { if (reiniciar) reiniciar(); for (const k of ORDEN) delete vistos[k]; pintarCuentas(); };
-  pintarCuentas();   // sin elección del usuario decide la primera pasada: Insights hasta que haya consejos
-  if (!actual) activar(elegida || "insights");
+  pintarCuentas();
+  if (!actual) activar(elegida || "avisos");
 
   // ------------------------------------------------------------ cabecera: en pantallas de menos de 1620 px los ajustes poco usados (Efectos, Modo, Ajustes) pasan a «Más»
   // Son los MISMOS botones (mismos ids y mismos manejadores): solo cambian de sitio, así la cabecera sigue siendo de una sola fila.

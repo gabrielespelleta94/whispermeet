@@ -263,11 +263,17 @@ def test_orden_y_vista_se_recuerdan(edge, pagina):
     assert edge.js("AP.proyectos.estado().modo") == "lista" and edge.js("AP.proyectos.estado().orden") == "actividad"
 
 
-def test_teclado_flechas_ctrl_k_barra_e_intro(edge, pagina):
+def test_teclado_flechas_paleta_barra_e_intro(edge, pagina):
     abrir(edge, pagina)
     edge.js("document.body.dataset.vista = 'inicio'; document.activeElement.blur(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true })); 1")
     assert edge.js("document.activeElement.id") == "i-buscar"
+    # ola 2: Ctrl+K abre la paleta de comandos (que incluye los proyectos) y ya no enfoca el buscador; «/» sí
     edge.js("document.activeElement.blur(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })); 1")
+    assert edge.js("document.querySelector('#paleta').open") is True and edge.js("document.activeElement.id") == "paleta-q"
+    assert edge.js("AP.paleta.comandos().some((c) => c.titulo === 'Abrir el proyecto Beta Demo')") is True
+    edge.js("document.querySelector('#paleta').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); 1")
+    assert edge.js("document.querySelector('#paleta').open") is False
+    edge.js("document.activeElement.blur(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true })); 1")
     assert edge.js("document.activeElement.id") == "i-buscar"
     tecla(edge, "#i-buscar", "ArrowDown")
     assert "item" in edge.js("document.activeElement.className")
