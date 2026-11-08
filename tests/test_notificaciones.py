@@ -31,7 +31,7 @@ def test_contenedor_y_tokens():
     assert 'id="r-bandeja-btn"' in html and 'id="r-bandeja"' in html and 'id="r-bandeja-lista"' in html
     equipo = _texto("equipo.css")
     notif = re.search(r"^\.notif \{(.*?)\}", equipo, re.S | re.M).group(1)
-    assert "border-radius: 10px" in notif and "background: var(--elev-solido)" in notif and "backdrop-filter" not in notif   # revisión 2026-11-06: fondo OPACO, sin vidrio ni desenfoque (nada se lee a través de un aviso)
+    assert "border-radius: var(--r-l)" in notif and "background: var(--elev-solido)" in notif and "backdrop-filter" not in notif   # revisión 2026-11-06: fondo OPACO, sin vidrio ni desenfoque (nada se lee a través de un aviso)
     assert "position: fixed" not in re.search(r"^#r-notifs \{(.*?)\}", equipo, re.S | re.M).group(1)   # el carril va en el flujo de la columna derecha: nunca flota sobre «Ahora», las pestañas o los consejos
     html = _texto("index.html")
     assert "Hallazgos" in re.search(r'<aside id="r-bandeja"[^>]*>', html).group(0) and ">Hallazgos 0<" in html     # renombrado: ids iguales, texto visible nuevo
@@ -97,7 +97,7 @@ AP.S.monitor = { definiciones: [], feed: [] };
   res.cuentaPendiente = document.getElementById("r-bandeja-btn").textContent;           // pregunta, idea y pendiente no avisan: están en Hallazgos desde el primer momento; decisión y riesgo, en cola o en pantalla
   await esp(4300);
   res.visibles1 = visibles().length;
-  res.monos = visibles().map((n) => n.querySelector(".n-mono").textContent);
+  res.monos = visibles().map((n) => n.querySelector(".n-nombre").textContent);   // §0: el agente se reconoce por su icono y su nombre en su color, sin iniciales
   res.metaDecision = (visibles()[0].querySelector(".n-meta") || {}).textContent;
   res.acciones = visibles().map((n) => [...n.querySelectorAll(".n-acc button")].map((b) => b.textContent));
   res.sombraClaro = getComputedStyle(visibles()[0]).boxShadow !== "none"; res.radio = getComputedStyle(visibles()[0]).borderRadius;
@@ -211,10 +211,10 @@ def test_cola_escalonada_pausa_y_vaciado(tmp_path):
     assert r["visibles1"] == 2                                                 # solo decisión y riesgo avisan (y nunca más de 2 a la vez)
     huecos = [b - a for a, b in zip(r["aparicion"], r["aparicion"][1:])]
     assert all(g >= 880 for g in huecos[:4]), huecos                           # escalonado de 900 ms
-    assert r["monos"][:2] == ["CA", "AR"], r["monos"]                            # perfil → monograma
+    assert r["monos"][:2] == ["Capitán", "Arquitecto"], r["monos"]               # perfil → nombre del agente
     assert r["metaDecision"] == "Responsable: Ana · Fecha: viernes · Sistema: SAP · contra: 03-alcance.md"
     assert r["acciones"][:2] == [["Ver"], ["Ver", "Pregúntale"]]                     # Pregúntale solo en riesgo y contradicción
-    assert r["sombraClaro"] and r["radio"] == "10px"
+    assert r["sombraClaro"] and r["radio"] == "12px"   # §0: radio de capa flotante (--r-l)
     assert r["opaco"][0].startswith("rgb(") and r["opaco"][1] == "none" and r["opaco"][2] != "fixed", r["opaco"]   # fondo opaco, sin desenfoque y en el flujo (no flotante)
     assert r["sinSolape"], r
     assert r["grupo"]["n"] == 2 and r["grupo"]["mas"] == "+10 hallazgos" and r["grupo"]["sinSolape"], r["grupo"]   # 12 de golpe: 2 visibles y el resto agrupado

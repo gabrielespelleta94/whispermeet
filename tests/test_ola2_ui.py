@@ -65,10 +65,10 @@ def _hex(h):
 def test_los_colores_de_agente_son_tokens_y_cumplen_aa(tema):
     if tema == "oscuro":
         bloque = APP[APP.index(':root[data-theme="dark"]'):APP.index("@media (prefers-color-scheme: dark)")]
-        fondos = [_hex(x) for x in ("#1E1F26", "#18191F", "#121317", "#26231F")]
+        fondos = [_hex(x) for x in ("#201F1B", "#1B1A17", "#151412", "#24211C")]
     else:
         bloque = APP[APP.index(":root {"):APP.index(':root[data-theme="dark"]')]
-        fondos = [_hex(x) for x in ("#FFFFFF", "#F7F2EA", "#EEF0F4")]
+        fondos = [_hex(x) for x in ("#FFFDF8", "#FAF3E2", "#F3F0E8", "#FFFFFF")]
     tokens = dict(re.findall(r"--(ag-[a-z]+): (#[0-9A-Fa-f]{6})", bloque))
     assert {"ag-capitan", "ag-lupa", "ag-arquitecto", "ag-auditor", "ag-sherpa", "ag-monitor", "ag-asesor"} <= set(tokens)
     for nombre, valor in tokens.items():
@@ -77,7 +77,7 @@ def test_los_colores_de_agente_son_tokens_y_cumplen_aa(tema):
     assert len({tokens[k] for k in ("ag-capitan", "ag-lupa", "ag-arquitecto", "ag-auditor", "ag-sherpa", "ag-asesor")}) == 6   # cada agente, su color
     # y también en el esquema oscuro automático
     auto = APP[APP.index("@media (prefers-color-scheme: dark)"):]
-    assert "--ag-capitan: #7EB4FF" in auto
+    assert "--ag-capitan: #9DB7E0" in auto
 
 
 def test_escala_tipografica_de_ola2_y_sin_glifos():

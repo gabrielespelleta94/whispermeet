@@ -2,7 +2,7 @@ r"""Genera el icono de WhisperMeet: web/marca/apuntes.ico (PNG en 9 tamaños), a
 
     .venv\Scripts\python.exe marca\generar_logo.py
 
-Cuadrado redondeado azul #007AFF (radio 0,22 del lado) con barras verticales blancas de extremos redondeados. Solo numpy y stdlib.
+Cuadrado redondeado bermellón #CD432C (el rojo de grabación de la app; radio 0,22 del lado) con barras verticales color papel de extremos redondeados. Solo numpy y stdlib.
 Hasta 48 px la geometría es exacta en píxeles enteros (tabla PEQUENOS); desde 64 es proporcional al lado.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 SALIDA = Path(__file__).resolve().parent.parent / "web" / "marca"
-AZUL, BLANCO = (0, 122, 255), (255, 255, 255)
+FONDO, BARRA = (205, 67, 44), (250, 246, 238)   # bermellón de grabación y papel (DESIGN-visual.md §0)
 TAMANOS = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 RADIO = 0.22                 # del lado del cuadrado
 MARGEN = 0.03                # a cada lado, desde 32 px (hasta 24 el cuadrado llena el lienzo)
@@ -34,7 +34,7 @@ MARGEN_PEQUENO = {16: 0, 20: 0, 24: 0, 32: 1, 40: 1, 48: 1}
 
 
 def _cuadrado(n: int):
-    """(x0, y0, lado, radio) del cuadrado azul en píxeles."""
+    """(x0, y0, lado, radio) del cuadrado en píxeles."""
     m = MARGEN_PEQUENO[n] if n in MARGEN_PEQUENO else (MARGEN * n if n >= 32 else 0)
     lado = n - 2 * m
     return m, m, lado, RADIO * lado
@@ -61,7 +61,7 @@ def _cobertura_rrect(X, Y, x0, y0, w, h, r):
 
 
 def pintar(n: int) -> np.ndarray:
-    """RGBA uint8 (n, n, 4): alfa = cobertura del cuadrado; color = azul mezclado con blanco según la cobertura de barra."""
+    """RGBA uint8 (n, n, 4): alfa = cobertura del cuadrado; color = fondo mezclado con el de la barra según su cobertura."""
     Y, X = np.mgrid[0:n, 0:n]
     X, Y = X + 0.5, Y + 0.5
     x0, y0, lado, radio = _cuadrado(n)
@@ -70,7 +70,7 @@ def pintar(n: int) -> np.ndarray:
     for bx, by, bw, bh in _barras(n):
         barra = np.maximum(barra, _cobertura_rrect(X, Y, bx, by, bw, bh, bw / 2))
     barra = np.minimum(barra, alfa)
-    rgb = np.array(AZUL, float) * (1 - barra[..., None]) + np.array(BLANCO, float) * barra[..., None]
+    rgb = np.array(FONDO, float) * (1 - barra[..., None]) + np.array(BARRA, float) * barra[..., None]
     return np.dstack([np.rint(rgb), np.rint(alfa * 255)]).astype(np.uint8)
 
 
@@ -109,8 +109,8 @@ def svg_texto() -> str:
     barras = "\n".join(
         f'  <rect x="{_f(bx)}" y="{_f(by)}" width="{_f(bw)}" height="{_f(bh)}" rx="{_f(bw / 2)}"/>' for bx, by, bw, bh in _barras(n))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">\n'
-            f'  <rect x="{_f(x0)}" y="{_f(y0)}" width="{_f(lado)}" height="{_f(lado)}" rx="{_f(radio)}" fill="#007AFF"/>\n'
-            f'<g fill="#FFFFFF">\n{barras}\n</g>\n</svg>\n')
+            f'  <rect x="{_f(x0)}" y="{_f(y0)}" width="{_f(lado)}" height="{_f(lado)}" rx="{_f(radio)}" fill="#CD432C"/>\n'
+            f'<g fill="#FAF6EE">\n{barras}\n</g>\n</svg>\n')
 
 
 def main() -> None:

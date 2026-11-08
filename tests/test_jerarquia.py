@@ -59,10 +59,10 @@ def _mezcla(frente, alfa, fondo):
 def test_los_colores_por_tipo_cumplen_aa_sobre_tarjeta_aviso_y_papel(tema):
     if tema == "oscuro":
         bloque = APP[APP.index(':root[data-theme="dark"]'):APP.index("@media (prefers-color-scheme: dark)")]
-        fondos = [_hex("#1E1F26"), _hex("#18191F"), _hex("#26231F"), _mezcla((255, 255, 255), .045, _mezcla((46, 124, 246), .20, _hex("#121317")))]
+        fondos = [_hex("#201F1B"), _hex("#1B1A17"), _hex("#24211C"), _mezcla((255, 248, 232), .035, _mezcla((255, 236, 200), .055, _hex("#151412")))]
     else:
         bloque = APP[APP.index(":root {"):APP.index(':root[data-theme="dark"]')]
-        fondos = [_hex("#FFFFFF"), _hex("#F7F2EA"), _hex("#EEF0F4"), _mezcla((255, 255, 255), .60, _mezcla((46, 124, 246), .16, _hex("#EEF0F4")))]   # aviso, papel, fondo y vidrio fino sobre la luz ambiente
+        fondos = [_hex("#FFFDF8"), _hex("#FAF3E2"), _hex("#F3F0E8"), _mezcla((255, 253, 248), .62, _mezcla((255, 253, 244), .85, _hex("#F3F0E8")))]   # aviso, papel, fondo y vidrio fino sobre la luz ambiente
     tokens = dict(re.findall(r"--(t-[a-z]+): (#[0-9A-Fa-f]{6})", bloque))
     assert len(tokens) >= 10, tokens
     for nombre, valor in tokens.items():
@@ -229,12 +229,14 @@ def test_cada_tipo_tiene_su_icono_su_color_y_lo_importante_destaca(tmp_path, pag
         time.sleep(0.4)
         r = e.js("""(() => { const out = {}; for (const t of document.querySelectorAll('#r-insights .tarj')) { const k = [...t.classList].find((c) => ['decision','pendiente','riesgo','contradiccion','pregunta','idea','regla','definicion'].includes(c));
           const svg = t.querySelector('svg.ic'); const cs = getComputedStyle(svg), cx = getComputedStyle(t.querySelector('.tx')), cb = getComputedStyle(t);
-          out[k] = { icono: [...svg.classList].find((c) => c.startsWith('ic-')), color: cs.color, w: svg.getBoundingClientRect().width, txt: cx.color, barra: cb.borderLeftWidth }; } return out; })()""")
+          out[k] = { icono: [...svg.classList].find((c) => c.startsWith('ic-')), color: cs.color, w: svg.getBoundingClientRect().width, txt: cx.color, peso: cx.fontWeight, barra: cb.borderLeftWidth }; } return out; })()""")
         assert set(r) == {k for _, k in cats}, r
         assert all(v["icono"] == "ic-" + k and v["w"] == 16 for k, v in r.items()), r
         assert len({v["color"] for v in r.values()}) == 8, r                                      # ocho colores distintos
-        assert all(r[k]["barra"] == "3px" for k in ("decision", "pendiente", "riesgo", "contradiccion")), r   # lo importante: barra de color
-        assert all(r[k]["barra"] == "1px" and r[k]["txt"] != r["decision"]["txt"] for k in ("pregunta", "idea", "regla", "definicion")), r   # lo secundario: sin barra y atenuado
+        # DESIGN-visual.md §0 deroga la barra de color en las tarjetas importantes: ninguna lleva borde izquierdo; lo importante se distingue por el peso (600) y la tinta plena
+        assert all(v["barra"] == "0px" for v in r.values()), r
+        assert all(r[k]["peso"] == "600" for k in ("decision", "pendiente", "riesgo", "contradiccion")), r
+        assert all(r[k]["peso"] == "400" and r[k]["txt"] != r["decision"]["txt"] for k in ("pregunta", "idea", "regla", "definicion")), r   # lo secundario: peso normal y atenuado
     finally:
         e.cerrar()
 

@@ -12,28 +12,26 @@
 .as-ic { width: 16px; height: 16px; flex: none; color: var(--t-respuesta); }
 
 /* ---------- la tarjeta «Ahora» ---------- */
-.as-ahora { position: relative; padding: 10px 14px 8px 16px; background: var(--elev-solido); border: 1px solid var(--hair2); border-radius: 10px; }
-.as-ahora::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--t-respuesta); }
-.as-ahora.error::before { background: var(--err); }
+/* §0: la respuesta del asesor es texto sobre el papel, sin caja ni barra de color; el titular de 22 y un icono pequeño la distinguen */
+.as-ahora { position: relative; padding: 4px 0 8px; background: transparent; border: 0; border-radius: 0; }
 .as-ahora.error .as-ic { color: var(--err); }
 .as-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: 24px; }
-.as-etq { color: var(--t-respuesta); }
+.as-etq { color: var(--ink); font-weight: 600; }
 .as-cab-der { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
-.as-conf { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 4px; font-size: var(--f-12); line-height: 16px; font-weight: 600; }
-.as-conf-alta { background: var(--ok-bg); color: var(--ok); }
-.as-conf-media { background: var(--acc-soft); color: var(--acc-t); }
-.as-conf-baja { background: var(--warn-bg); color: var(--warn); }
+.as-conf { display: inline-flex; align-items: center; height: 20px; padding: 0; font-size: var(--f-12); line-height: 16px; font-weight: 600; }
+.as-conf-alta { color: var(--ok); }
+.as-conf-media { color: var(--soft); }
+.as-conf-baja { color: var(--warn); }
 .as-modelo { text-transform: none; }
 .as-preg { margin: 4px 0 2px; font-size: var(--f-15); line-height: 20px; font-weight: 500; color: var(--body); overflow-wrap: anywhere; }
 .as-vin { margin: 2px 0 4px; padding: 0; list-style: none; }
 .as-vin li { position: relative; padding: 2px 0 2px 18px; overflow-wrap: anywhere; color: var(--ink); font-size: var(--f-14); line-height: 20px; font-weight: 400; }
 .as-vin li::before { content: ""; position: absolute; left: 4px; top: 10px; width: 5px; height: 5px; border-radius: 50%; background: var(--soft); }
 /* la respuesta (la primera viñeta) es el titular de la escala: 22; lo que la acompaña, a 14 */
-.as-vin.grande li:first-child { padding-left: 0; font-size: var(--f-22); line-height: 28px; font-weight: 500; letter-spacing: -.005em; }
+.as-vin.grande li:first-child { padding-left: 0; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-22); line-height: 28px; font-weight: 400; letter-spacing: -.005em; }
 .as-vin.grande li:first-child::before { display: none; }
 /* una no-respuesta («No hay base en tus fuentes…») va atenuada y compacta: ni titular, ni acento, ni carril grande */
-.as-ahora.sin-base { background: transparent; border-style: dashed; padding: 8px 12px; }
-.as-ahora.sin-base::before { display: none; }
+.as-ahora.sin-base { background: transparent; padding: 4px 0 8px; }
 .as-ahora.sin-base .as-ic, .as-ahora.sin-base .as-etq { color: var(--soft); }
 .as-ahora.sin-base .as-preg { font-size: var(--f-14); color: var(--body); margin: 2px 0 0; }
 .as-vin.sin-base { margin: 0 0 2px; }
@@ -51,8 +49,8 @@
 
 /* fuentes y web: texto entero, el minuto lleva a la transcripción */
 .as-fuentes, .as-web { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 2px 0 4px; }
-.as-fuentes-t { font-size: var(--f-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
-.as-fuente, .as-url { padding: 1px 6px; border: 1px solid var(--hair2); border-radius: 4px; color: var(--body); overflow-wrap: anywhere; }
+.as-fuentes-t { font-size: var(--f-12); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--soft); }
+.as-fuente, .as-url { padding: 1px 0; border: 0; color: var(--body); text-decoration: underline; text-decoration-color: var(--hair2); text-underline-offset: 3px; overflow-wrap: anywhere; }
 .as-url { user-select: text; }
 .as-prof { margin: 6px 0 2px; padding: 6px 0 0; border-top: 1px solid var(--hair); }
 
@@ -61,7 +59,7 @@
 .as-pie .as-fuentes { margin: 0; flex: 1 1 auto; min-width: 0; }
 .as-pie .as-acc { margin-top: 0; margin-left: auto; }
 /* acciones: una fila de 24 px */
-.as-acc { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; }
+.as-acc { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 2px; }
 .as-acc-der { margin-left: auto; display: inline-flex; gap: 2px; }
 .as-web-caja { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .as-web-caja input { width: 16px; height: 16px; margin: 0; accent-color: var(--acc); cursor: pointer; }
@@ -71,8 +69,8 @@
 .as-grupo { margin-top: 8px; }
 .as-grupo .grupo-h { display: flex; align-items: baseline; gap: 8px; padding-bottom: 4px; }
 .as-fila { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-items: start; }
-.as-comp { padding: 8px 12px 6px; background: var(--vidrio); border: 1px solid var(--canto); border-radius: 10px; box-shadow: var(--brillo); min-width: 0; }
-.as-comp.fijada { border-color: var(--acc-t); }
+.as-comp { padding: 12px 0 8px; background: transparent; border: 0; border-top: 1px solid var(--hair); border-radius: 0; box-shadow: none; min-width: 0; }
+.as-comp.fijada { border-top-color: var(--ink); }
 .as-comp .as-preg { margin: 2px 0 2px; font-size: var(--f-14); }
 .as-comp-v { margin: 0 0 2px; color: var(--ink); overflow-wrap: anywhere; }
 .as-ant { margin-top: 6px; }
@@ -83,11 +81,11 @@
 .as-ant[open] > summary { color: var(--ink); margin-bottom: 4px; }
 
 /* ---------- pestaña «Consejos»: tarjetas compactas con el color del tipo «consejo» ---------- */
-.as-cons { --tc: var(--t-consejo); position: relative; margin: 0 0 8px; padding: 10px 12px 8px 14px; background: var(--vidrio); border: 1px solid var(--canto); border-left: 3px solid var(--tc); border-radius: 10px; box-shadow: var(--brillo); min-width: 0; }
-.as-cons.fijada { border-color: var(--acc-t); border-left-color: var(--tc); }
+.as-cons { --tc: var(--t-consejo); position: relative; margin: 0; padding: 8px 0 4px; background: transparent; border: 0; border-top: 1px solid var(--hair); border-radius: 0; box-shadow: none; min-width: 0; }
+.as-cons.fijada { border-top-color: var(--ink); }
 .as-cons .as-ic { color: var(--tc); }
-.as-etq-c { color: var(--tc); }
-.as-accion { margin: 4px 0 2px; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.as-etq-c { color: var(--ink); }
+.as-accion { margin: 2px 0 0; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .as-porque { margin: 0 0 2px; font-size: var(--f-14); line-height: 20px; color: var(--body); overflow-wrap: anywhere; }
 .as-porque-t { color: var(--soft); font-weight: 500; }
 .as-vacio { color: var(--soft); padding: 16px 0; }

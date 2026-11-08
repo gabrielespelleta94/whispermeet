@@ -2,11 +2,15 @@
    superficie sólida del nivel 2 (nunca translúcida: debajo hay lo que haya), DM Sans local, un solo acento, radios 8 y 14, foco en doble anillo.
    Sin textos cortados: el título y los textos largos se parten; el alto de la ventana lo ajusta aviso.js a lo que mide el contenido. */
 html, body.av-body { height: auto; background: var(--elev-solido); overflow: hidden; }
-.av { width: 100%; padding: 14px 16px 18px; position: relative; background: var(--elev-solido); border: 1px solid var(--canto); box-shadow: var(--brillo); }
+/* `.av` también es el monograma de la tira de Orquestación en app.css (inline-flex de 24 px): aquí se anula con más especificidad */
+main.av { display: block; width: 100%; height: auto; flex: none; padding: 16px 20px 20px; position: relative; background: var(--elev-solido); border: 1px solid var(--canto); border-radius: 0; box-shadow: none; color: var(--body); }
 .av-cab { display: flex; align-items: flex-start; gap: 12px; }
 .av-logo { flex: none; width: 32px; height: 32px; border-radius: 8px; display: block; margin-top: 2px; }
 .av-id { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.av-tema { display: block; overflow-wrap: anywhere; text-wrap: pretty; }
+.av-tema { display: block; overflow-wrap: anywhere; text-wrap: pretty; font-family: var(--serif-d); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
+.av-cab .t-label { color: var(--soft); }
+.av-logo { border-radius: var(--r-m); }
+.av-detalle .input { background: transparent; }
 .av-no { flex: none; margin-top: -2px; }
 .av-check { margin-top: 12px; }
 .av-check input { flex: none; }

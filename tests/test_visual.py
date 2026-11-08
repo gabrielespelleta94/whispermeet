@@ -31,17 +31,17 @@ def test_tokens_del_diseno():
     claro = app[app.index(":root {"):app.index(':root[data-theme="dark"]')]
     oscuro = app[app.index(':root[data-theme="dark"]'):app.index("@media (prefers-color-scheme: dark)")]
     sistema = app[app.index("@media (prefers-color-scheme: dark)"):app.index("body { --blur-n")]
-    esperado_oscuro = {"--bg0": "#121317", "--ink": "#F4F4F6", "--body": "#BDBDC7", "--soft": "#A6A6B2", "--acc-t": "#7EB4FF", "--papel": "#26231F", "--elev-solido": "#1E1F26",
-                       "--grafito-op": "#18191F", "--ok": "#5ED38B", "--err": "#F28B82", "--warn": "#F0A94E"}
-    esperado_claro = {"--bg0": "#EEF0F4", "--ink": "#17181C", "--body": "#363842", "--soft": "#565868", "--acc-t": "#1D5FC4", "--papel": "#F7F2EA", "--elev-solido": "#FFFFFF",
-                      "--grafito-op": "#FFFFFF", "--ok": "#1E8A4C", "--err": "#B3261E", "--warn": "#B25E09", "--acc": "#2E7CF6"}
+    esperado_oscuro = {"--bg0": "#151412", "--ink": "#EFEBE3", "--body": "#C6C1B6", "--soft": "#A19B8F", "--acc-t": "#F6F2EA", "--papel": "#24211C", "--elev-solido": "#201F1B",
+                       "--grafito-op": "#1B1A17", "--ok": "#7CCB98", "--err": "#F0907F", "--warn": "#E9B266", "--acc": "#EFEBE3", "--acc-on": "#151412", "--rec": "#FF6A52"}
+    esperado_claro = {"--bg0": "#F3F0E8", "--ink": "#1C1A16", "--body": "#3B3832", "--soft": "#68635A", "--acc-t": "#1C1A16", "--papel": "#FAF3E2", "--elev-solido": "#FFFDF8",
+                      "--grafito-op": "#FAF8F2", "--ok": "#2D7A4B", "--err": "#B23A2B", "--warn": "#9C5A0E", "--acc": "#1C1A16", "--acc-on": "#FAF8F2", "--rec": "#D2402A"}
     for tokens, bloque in ((esperado_oscuro, oscuro), (esperado_oscuro, sistema), (esperado_claro, claro)):
         for k, v in tokens.items():
             assert re.search(rf"{re.escape(k)}: {re.escape(v)}[;\s]", bloque), (k, v)
     for k in ("--luz-1", "--luz-2", "--vineta", "--grafito", "--vidrio", "--canto", "--brillo", "--vidrio-f", "--vidrio-fl", "--vidrio-blur", "--sombra-f", "--sombra", "--papel-canto",
               "--hover", "--sel", "--hair", "--hair2", "--acc-soft", "--luz", "--halo"):
         assert f"{k}:" in oscuro and f"{k}:" in claro and f"{k}:" in sistema, k
-    assert "--acc: #2E7CF6" in claro
+    assert "--acc: #1C1A16" in claro   # acciones en tinta: sin azul de marca (§0)
     assert "blur(16px) saturate(140%)" in oscuro and "blur(16px) saturate(120%)" in claro   # §4: desenfoque del nivel 2
     for n in ("22", "15", "14", "12", "11"):
         assert f"--f-{n}: {n}px" in claro                                                    # escala única de CINCO tamaños por variable (revisión 2026-11-06: sin 28 ni 13)
@@ -54,7 +54,7 @@ def test_sin_el_azul_antiguo_ni_radios_derogados():
         assert "#007AFF" not in js.upper(), n
     css = _quita_comentarios(TODO_CSS)
     radios = set(re.findall(r"border-radius: (\d+)px", css))
-    assert radios <= {"0", "1", "2", "4", "6", "8", "10", "14"}, radios                       # los de §4 (más 1, 2 y 6 en trazos y pulgares internos); nunca 3
+    assert radios <= {"0", "1", "2", "4", "6", "8", "10", "12", "14"}, radios   # §0: radios 4 · 8 · 12 (el 12 es el de las capas)                      # los de §4 (más 1, 2 y 6 en trazos y pulgares internos); nunca 3
     assert not re.search(r"border-radius: 3px", css)
     # la escala tipográfica va por variable: ningún tamaño suelto fuera de :root
     sueltos = [m for m in re.findall(r"font-size: (\d+(?:\.\d+)?px)", css) if m not in ("22px", "15px", "14px", "12px", "11px")]
@@ -142,9 +142,9 @@ def _mezcla(frente, alfa, fondo):
 def test_contraste_sobre_el_vidrio_flotante_en_su_punto_mas_iluminado(tema):
     """§14.4: --body ≥ 7:1; --soft, --acc-t y las etiquetas ≥ 4,5:1, sobre el color efectivo del vidrio flotante en el punto donde más lo ilumina el ambiente."""
     if tema == "oscuro":
-        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#121317"), (0.20, (46, 124, 246)), (0.90, (28, 29, 36)), (0.92, (24, 25, 31)), "#BDBDC7", "#A6A6B2", "#7EB4FF", "#F4F4F6", "#F4F4F6"
+        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#151412"), (0.055, (255, 236, 200)), (0.94, (32, 31, 27)), (0.95, (28, 27, 24)), "#C6C1B6", "#A19B8F", "#F6F2EA", "#EFEBE3", "#EFEBE3"
     else:
-        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#EEF0F4"), (0.16, (46, 124, 246)), (0.90, (255, 255, 255)), (0.90, (255, 255, 255)), "#363842", "#565868", "#1D5FC4", "#17181C", "#17181C"
+        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#F3F0E8"), (0.85, (255, 253, 244)), (0.94, (253, 251, 246)), (0.95, (253, 251, 246)), "#3B3832", "#68635A", "#1C1A16", "#1C1A16", "#1C1A16"
     iluminado = _mezcla(ambiente[1], ambiente[0], bg0)
     for alfa_rgb in (vf, vfl):
         fondo = _mezcla(alfa_rgb[1], alfa_rgb[0], iluminado)
@@ -158,7 +158,7 @@ def test_contraste_sobre_el_vidrio_flotante_en_su_punto_mas_iluminado(tema):
         assert _contraste(_hex(soft), peor) >= 4.5, (tema, "soft con texto debajo", _contraste(_hex(soft), peor))
         assert _contraste(_hex(acc_t), peor) >= 4.5, (tema, "acc-t con texto debajo", _contraste(_hex(acc_t), peor))
     # el papel (lo que escribe el usuario) también cumple con su tinta
-    papel = _hex("#26231F" if tema == "oscuro" else "#F7F2EA")
+    papel = _hex("#24211C" if tema == "oscuro" else "#FAF3E2")
     assert _contraste(_hex(ink), papel) >= 7 and _contraste(_hex(soft), papel) >= 4.5
 
 
@@ -285,7 +285,7 @@ def test_efecto_apagado_sin_filtros_ni_ambiente_ni_anillo_y_estados_distinguible
       return { filtros: con.map(e => e.id || e.className), ambiente: !amb || getComputedStyle(amb).display, grafito: getComputedStyle(document.querySelector('.top')).backgroundColor };
     })()""")
     assert r["filtros"] == [] and r["ambiente"] == "none", r
-    assert r["grafito"] == "rgb(24, 25, 31)", r                                          # sin Efectos, el grafito es opaco (#18191F)
+    assert r["grafito"] == "rgb(27, 26, 23)", r                                          # sin Efectos, el grafito es opaco (#1B1A17, grafito cálido de §0)
     tarea(edge, "inicio", agente="funcional", nombre="Analista funcional")
     time.sleep(0.6)
     assert edge.js("[...document.getAnimations()].filter(a => a.animationName === 'gira').length") == 0   # sin anillo cónico
@@ -293,7 +293,7 @@ def test_efecto_apagado_sin_filtros_ni_ambiente_ni_anillo_y_estados_distinguible
       const c = document.querySelector('.eq-tarj[data-perfil=revisor]'), out = {};
       for (const e of ['espera', 'turno', 'trabajando', 'error', 'sin_presupuesto', 'hecho']) {
         c.dataset.estado = e; const s = getComputedStyle(c), m = getComputedStyle(c.querySelector('.eq-marca')), i = getComputedStyle(c.querySelector('.ind-p')), b = getComputedStyle(c, '::before');
-        out[e] = [s.borderTopColor, s.boxShadow !== 'none' && s.boxShadow.includes('28px'), m.display, i.backgroundColor, b.opacity].join('|');
+        out[e] = [s.borderTopColor, s.boxShadow !== 'none' && s.boxShadow.includes('26px'), m.display, i.backgroundColor, b.opacity].join('|');
       }
       c.dataset.estado = 'espera'; return out; })()""")
     assert len(set(est.values())) == 6, est                                              # seis estados, seis aspectos (canto, halo, marca, punto y barra), sin anillo
@@ -413,7 +413,7 @@ def test_modo_reunion_paneles_opacos_y_vidrio_solo_dentro_del_derecho(edge, pagi
         barraConFiltro: getComputedStyle(document.querySelector('#mr-barra')).backdropFilter, fuera: f.filter(e => { const b = e.getBoundingClientRect(); return b.left < inRect.left - 1; }).length };
     })()""")
     for k in ("izq", "der", "barra", "orq"):
-        assert r[k] == "rgb(24, 25, 31)", (k, r)                                        # alfa 1: la opacidad la pone la ventana, no el CSS
+        assert r[k] == "rgb(27, 26, 23)", (k, r)                                      # alfa 1: la opacidad la pone la ventana, no el CSS
     assert r["barraConFiltro"] == "none" and r["fuera"] == 0, r                         # ni la barra ni nada fuera del panel derecho lleva desenfoque
     assert "r-bandeja" in r["filtros"], r
     edge.js("delete document.body.dataset.modo; delete document.body.dataset.mr; 1")
@@ -454,9 +454,9 @@ def test_hover_pulsacion_y_foco_de_los_materiales(edge, pagina):
     assert "0.16s" in r["tarj"][0] and "translate" in r["tarj"][1] and "scale" in r["tarj"][1], r
     assert "translate" in r["btn"][1] and "scale" in r["btn"][1] and "0.16s" in r["btn"][0], r
     assert r["fila"][1].startswith("background-color") and "translate" not in r["fila"][1], r   # las filas de lista solo cambian el fondo
-    assert r["radio"] == ["10px", "8px", "8px", "10px", "4px", "8px"], r
+    assert r["radio"] == ["0px", "8px", "8px", "10px", "4px", "8px"], r   # §0: la tarjeta de perfil del Detalle es una fila con filete (radio 0), no una caja
     css = _quita_comentarios(CSS["app.css"])
-    assert ".btn:active:not(:disabled) { scale: .985" in css and ".min:active { scale: .96" in css
+    assert ".btn:active:not(:disabled) { scale: .98" in css and ".min:active { scale: .96" in css   # §0: al pulsar, scale(.98)
 
 
 def test_movimiento_reducido_deja_solo_estado_fijo(tmp_path, pagina):
@@ -471,7 +471,7 @@ def test_movimiento_reducido_deja_solo_estado_fijo(tmp_path, pagina):
         time.sleep(1.2)
         r = e.js("""(() => ({ notif: document.querySelectorAll('.notif').length, anims: document.getAnimations().length,
           blur: [...document.querySelectorAll('*')].filter(x => /blur/.test(getComputedStyle(x).filter)).length,
-          halo: getComputedStyle(document.querySelector('.eq-tarj[data-perfil=constructor]')).boxShadow.includes('28px'),
+          halo: getComputedStyle(document.querySelector('.eq-tarj[data-perfil=constructor]')).boxShadow.includes('26px'),
           anillo: getComputedStyle(document.querySelector('.eq-tarj[data-perfil=constructor]'), '::after').animationName }))()""")
         assert r["notif"] == 1 and r["anims"] == 0 and r["blur"] == 0 and r["halo"] and r["anillo"] == "none", r
     finally:
@@ -485,7 +485,7 @@ def test_inicio_y_revision_cargan_con_el_nuevo_acabado(edge, pagina):
     time.sleep(0.2)
     r = edge.js("""(() => { const l = document.querySelector('.ini-izq'); const c = getComputedStyle(l);
       return { vista: document.body.dataset.vista, radio: c.borderRadius, filtro: c.backdropFilter, ancho: Math.round(l.getBoundingClientRect().width), btn: getComputedStyle(document.querySelector('#i-empezar')).height }; })()""")
-    assert r["vista"] == "inicio" and r["radio"] == "14px" and r["filtro"] != "none" and 380 <= r["ancho"] <= 620 and r["btn"] == "40px", r   # lámina de vidrio flotante única (la columna izquierda de «preparar», de dos columnas desde la ola 1)
+    assert r["vista"] == "inicio" and r["radio"] == "0px" and 380 <= r["ancho"] <= 620 and r["btn"] == "40px", r   # §0 (un solo nivel de caja): la columna izquierda de «preparar» ya no es una lámina de vidrio, es columna con filete
     arrancar(edge, pagina, snapshot=foto(estado="revision", revision={"estado": "generando"}))
     time.sleep(0.6)
     assert edge.js("document.body.dataset.vista") == "revision" and edge.js("document.querySelector('#orq').dataset.plegado") == "true"   # ola 2: la revisión llega con la banda plegada (el stepper necesita la altura); «Detalle» la despliega
@@ -499,7 +499,7 @@ def test_en_modo_reunion_los_avisos_son_siempre_solidos(edge, pagina, nivel):
       AP.efectos.elegir('%s'); for (let i = 0; i < 2; i++) AP.notificar({ id: 's' + i, analisis: 1, categoria: 'riesgo', texto: 'Aviso ' + i, minuto: '05:4' + i, t_seg: 340, estado: 'confirmada' }); return 1; })()""" % nivel)
     time.sleep(2.2)
     r = edge.js("""(() => [...document.querySelectorAll('.notif')].map(x => { const c = getComputedStyle(x); return [c.backgroundColor, c.backdropFilter]; }))()""")
-    assert len(r) == 2 and all(f == ["rgb(30, 31, 38)", "none"] for f in r), r         # --elev-solido (#1E1F26): alfa 1 y sin desenfoque
+    assert len(r) == 2 and all(f == ["rgb(32, 31, 27)", "none"] for f in r), r         # --elev-solido (#201F1B): alfa 1 y sin desenfoque
     edge.js("delete document.body.dataset.modo; delete document.body.dataset.mr; 1")
 
 
@@ -647,5 +647,5 @@ def test_inicio_ruta_cadencia_papel_y_boton_empezar(edge, pagina):
       return { filas: new Set(bs.map((x) => Math.round(x.top))).size, cols: new Set(bs.map((x) => Math.round(x.left))).size, anchos: bs.map((x) => Math.round(x.width)), alturas: new Set(bs.map((x) => Math.round(x.height))).size,
         papelPad: [papel.paddingTop, papel.paddingLeft, papel.marginTop], botonVisible: b.top >= m.top && b.bottom <= m.bottom + 0.5 }; })()""")
     assert r["filas"] == 2 and r["cols"] == 2 and r["alturas"] == 1 and max(r["anchos"]) - min(r["anchos"]) <= 1, r   # cadencia: rejilla 2×2 sin huecos
-    assert all(float(x[:-2]) >= 12 for x in r["papelPad"]), r                               # el bloque de papel con aire
+    # §0 (un solo nivel de caja): los objetivos de la reunión ya no van en un bloque de papel con relleno, sino con encabezado y filete
     assert r["botonVisible"], r                                                             # «Empezar reunión» se alcanza en el scroll a 900 px de alto

@@ -9,9 +9,9 @@
 .panel-h-ins .filtro-ideas { margin-left: auto; }
 .nuevos-barra { position: sticky; top: 0; z-index: 4; height: 0; overflow: visible; display: flex; justify-content: flex-end; gap: 8px; pointer-events: none; }
 .nuevos-barra .nuevos { position: relative; top: 8px; pointer-events: auto; }
-.filtro-ideas { height: 24px; padding: 0 8px; font-size: var(--f-12); line-height: 16px; border: 1px solid var(--hair2); border-radius: 4px; color: var(--body); background: transparent; cursor: pointer; }
-.filtro-ideas:hover { background: var(--vidrio); }
-.filtro-ideas[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc-t); border-color: transparent; }
+.filtro-ideas { height: 24px; padding: 0 8px; font-size: var(--f-12); line-height: 16px; border: 1px solid var(--hair2); border-radius: var(--r-s); color: var(--soft); background: transparent; cursor: pointer; }
+.filtro-ideas:hover { background: var(--hover); color: var(--ink); }
+.filtro-ideas[aria-pressed="true"] { background: var(--acc-soft); color: var(--ink); border-color: transparent; }
 .notas { overflow: hidden; }
 .notas.desborda { overflow-y: auto; }
 .pregunta-caja { margin: 8px 8px 16px 0; padding: 10px 12px 12px; }
@@ -38,8 +38,6 @@
 
 /* ---------- tarjetas de perfil: div[role=button] (un <button> con chips dentro rompe el árbol HTML) ---------- */
 .eq-tarj { position: relative; display: block; width: 100%; min-height: 76px; margin: 8px 0 0; padding: 12px; color: var(--body); text-align: left; cursor: pointer; }
-.eq-tarj::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 1px; background: var(--acc); opacity: 0; transition: opacity 180ms var(--salida); }
-.eq-tarj[data-estado="trabajando"]::before { opacity: 1; }
 .eq-tarj[data-estado="turno"] { border-color: var(--acc-t); }
 .eq-tarj[data-estado="error"] { border-color: var(--err); }
 .eq-l1 { display: flex; align-items: center; gap: 10px; min-height: 32px; }
@@ -50,7 +48,7 @@
 .eq-tarj[data-estado="sin_presupuesto"] .ind-p { background: var(--warn); border-color: var(--warn); }
 .eq-estado { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .eq-tarj[data-estado="trabajando"] .eq-estado, .eq-tarj[data-estado="turno"] .eq-estado { color: var(--acc-t); }
-.eq-tarj[data-estado="trabajando"] .mono { background: var(--acc); color: #FFFFFF; }
+.eq-tarj[data-estado="trabajando"] .mono { background: var(--acc); color: var(--acc-on); }
 .eq-tarj[data-estado="error"] .eq-estado { color: var(--err); }
 .eq-tarj[data-estado="sin_presupuesto"] .eq-estado { color: var(--ink); }   /* el ámbar solo en el punto: como texto sobre el panel claro no llega a 4,5:1 */
 .eq-tarj[data-estado="hecho"] .eq-estado { color: var(--ink); }
@@ -118,14 +116,15 @@ body[data-modo="reunion"] .obj:has(.obj-sug) .etq-sug { margin-left: 18px; }
 body:not([data-vista="reunion"]) #r-notifs { display: none; }
 body[data-hallazgos="abierto"] #r-notifs { display: none; }   /* con Hallazgos abierto (una lámina lateral que ya lista todo) el carril se aparta: nada se tapa, y lo que caduca sigue en la lista */
 .notif { pointer-events: auto; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; margin: 0; padding: 8px 12px 8px 10px;
-  background: var(--elev-solido); border: 1px solid var(--hair2); border-radius: 10px; box-shadow: var(--sombra); transition: border-color 160ms var(--salida); }
+  background: var(--elev-solido); border: 1px solid var(--hair2); border-radius: var(--r-l); box-shadow: var(--sombra-f); transition: border-color 160ms var(--salida); }
 .notif:hover { border-color: rgba(var(--acc-rgb), .45); }
 .notif-mas { align-self: flex-start; }
 /* notificación: baldosa con el icono del tipo (su color), monograma del agente como chip junto al nombre; lo importante lleva barra de color a la izquierda */
-.n-ico { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in srgb, var(--tc, var(--acc-t)) 16%, transparent); color: var(--tc, var(--acc-t)); }
+.n-ico { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-m); background: transparent; color: var(--tc, var(--acc-t)); }
 .n-ico .ic { width: 16px; height: 16px; }
-.n-mono { display: inline-flex; align-items: center; justify-content: center; flex: none; height: 18px; padding: 0 5px; border-radius: 4px; background: var(--hair); color: var(--body); letter-spacing: .04em; }
-.notif:is([data-k="decision"], [data-k="pendiente"], [data-k="riesgo"], [data-k="contradiccion"], [data-k="posible"]) { border-left: 3px solid var(--tc); }
+.n-mono { display: inline-flex; align-items: center; justify-content: center; flex: none; height: 18px; padding: 0; border-radius: 0; background: transparent; color: var(--ag, var(--body)); letter-spacing: 0; }
+/* §0: lo importante se distingue por el peso y el icono, no por una barra de color */
+.notif:is([data-k="decision"], [data-k="pendiente"], [data-k="riesgo"], [data-k="contradiccion"], [data-k="posible"]) .n-tx { font-weight: 600; }
 .notif:is([data-k="pregunta"], [data-k="idea"], [data-k="regla"], [data-k="definicion"], [data-k="objetivo"]) .n-tx { color: var(--body); }
 .n-cuerpo { min-width: 0; }
 .n-l1 { display: flex; align-items: center; gap: 8px; min-height: 24px; }
@@ -136,8 +135,9 @@ body[data-hallazgos="abierto"] #r-notifs { display: none; }   /* con Hallazgos a
 .n-x .ic { width: 14px; height: 14px; }
 .n-x::after { content: ""; position: absolute; inset: -4px; }   /* área de pulsación de 32 px */
 .n-x:hover { background: var(--hover); color: var(--ink); }
-.n-cat { display: inline-flex; flex: none; align-items: center; gap: 6px; margin-top: 0; color: var(--tc, var(--soft)); font-weight: 700; }
-.n-tx { margin-top: 2px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.n-cat { display: inline-flex; flex: none; align-items: center; gap: 6px; margin-top: 0; color: var(--soft); font-weight: 600; }
+.n-cat .ic { color: var(--tc, var(--soft)); }
+.n-tx { margin-top: 2px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; }
 .n-meta { margin-top: 4px; overflow-wrap: anywhere; }
 .n-acc { display: flex; gap: 4px; margin: 4px 0 0 -8px; }
 body[data-modo="reunion"] .notif [data-accion="preguntale"] { display: none; }
@@ -156,22 +156,23 @@ body[data-modo="reunion"] #r-bandeja { top: var(--mr-barra, 84px); bottom: 0; wi
 .bj-cab { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; background: var(--grafito-op); }
 .bj-cab .btn { margin-left: auto; }
 .bj-filtros { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 16px 10px; border-bottom: 1px solid var(--hair); background: var(--grafito-op); }
-.bj-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 2px 8px; border: 1px solid var(--hair2); border-radius: 4px; background: transparent; color: var(--body); cursor: pointer;
-  transition: translate 160ms var(--salida), background-color 160ms var(--salida), color 160ms var(--salida), scale 160ms var(--salida); }
-.bj-chip:hover { background: var(--vidrio); translate: 0 -1px; color: var(--ink); }
-.bj-chip:active { scale: .985; }
-.bj-chip[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc-t); border-color: transparent; }
+.bj-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 2px 8px; border: 1px solid var(--hair2); border-radius: var(--r-s); background: transparent; color: var(--body); cursor: pointer;
+  transition: background-color 160ms var(--salida), color 160ms var(--salida), scale 160ms var(--salida); }
+.bj-chip:hover { background: var(--hover); color: var(--ink); }
+.bj-chip:active { scale: .98; }
+.bj-chip[aria-pressed="true"] { background: var(--acc-soft); color: var(--ink); border-color: transparent; }
 .bj-chip .bj-n { color: var(--soft); }
-.bj-chip[aria-pressed="true"] .bj-n { color: var(--acc-t); }
+.bj-chip[aria-pressed="true"] .bj-n { color: var(--ink); }
 .bj-f { padding: 12px 16px; border-bottom: 1px solid var(--hair); transition: background-color 160ms var(--salida); }
 .bj-f:hover { background: var(--hover); }
 .bj-l1 { display: flex; align-items: center; gap: 6px; min-height: 20px; }
 .bj-cat { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
 .bj-der { flex: none; }
-.bj-cat { color: var(--tc, var(--soft)); font-weight: 700; }
-.bj-f:is([data-k="decision"], [data-k="pendiente"], [data-k="riesgo"], [data-k="contradiccion"], [data-k="posible"]) { border-left: 3px solid var(--tc); padding-left: 13px; }
+.bj-cat { color: var(--soft); font-weight: 600; }
+.bj-cat .ic, .bj-cat .bj-g { color: var(--tc, var(--soft)); }
+.bj-f:is([data-k="decision"], [data-k="pendiente"], [data-k="riesgo"], [data-k="contradiccion"], [data-k="posible"]) .bj-tx { font-weight: 600; }
 .bj-f:is([data-k="pregunta"], [data-k="idea"], [data-k="regla"], [data-k="definicion"], [data-k="objetivo"]) .bj-tx { color: var(--body); }
-.bj-tx { margin-top: 4px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.bj-tx { margin-top: 4px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; }
 .bj-meta { margin-top: 4px; overflow-wrap: anywhere; }
 .bj-f .n-acc { margin-top: 4px; }
 .bj-vacio { padding: 16px; color: var(--soft); }
@@ -185,3 +186,14 @@ body[data-modo="reunion"] #r-bandeja { top: var(--mr-barra, 84px); bottom: 0; wi
 /* ---------- banda de orquestación desplegada: el estado del Monitor y la última llamada se leen enteros ---------- */
 .orq[data-plegado="false"] .orq-estado, .orq[data-plegado="false"] .orq-ult { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .orq[data-plegado="false"] .orq-linea { align-content: start; padding-top: 12px; }
+
+/* ---------- cuaderno (DESIGN-visual.md §0): el Detalle del equipo sin cajas dentro de la caja ---------- */
+/* las tarjetas de perfil y la línea del Monitor son filas con filete; solo el que trabaja se enciende (halo cálido, tenue) */
+.eq-tarj, .eq-monitor { background: transparent; border: 0; border-top: 1px solid var(--hair); border-radius: 0; box-shadow: none; }
+.eq-tarj:hover, .eq-monitor:hover { translate: none; background: var(--hover); border-color: var(--hair); box-shadow: none; }
+.eq-tarj:active, .eq-monitor:active { scale: .98; }
+.eq-tarj[data-estado="trabajando"] { border-radius: var(--r-m); background: var(--hover); border-top-color: transparent; }
+.oe-cab .eq-monitor { border-top: 0; border-radius: var(--r-m); }
+.ins-ag, .eq-tarj[data-estado="trabajando"] .ins-ag { background: transparent; color: var(--ag, var(--acc-t)); }
+.eq-tarj[data-estado="trabajando"] .mono { background: var(--acc-soft); color: var(--ink); }
+.eq-def-fila { border-radius: var(--r-s); }

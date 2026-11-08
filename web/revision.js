@@ -174,12 +174,12 @@
   function seccionCorreo(texto) {
     const estado = h("span", { class: "t-meta soft", id: "v-rev-correo-estado", role: "status" });
     let reloj;
-    const boton = h("button", { type: "button", class: "btn btn-mini", id: "v-rev-correo-copiar", onclick: async () => {
+    const boton = h("button", { type: "button", class: "btn", id: "v-rev-correo-copiar", onclick: async () => {
       const ok = await copiarTexto(texto);
       estado.textContent = ok ? "Copiado" : "No se pudo copiar; selecciona el texto a mano.";
       clearTimeout(reloj); reloj = setTimeout(() => { estado.textContent = ""; }, 2500);
     } }, "Copiar");
-    const outlook = h("button", { type: "button", class: "btn btn-mini", id: "v-rev-correo-outlook", hidden: R.outlook === false ? true : null, title: "Abre el borrador en Outlook. No se envía nada: lo revisas y lo mandas tú", onclick: async () => {
+    const outlook = h("button", { type: "button", class: "btn", id: "v-rev-correo-outlook", hidden: R.outlook === false ? true : null, title: "Abre el borrador en Outlook. No se envía nada: lo revisas y lo mandas tú", onclick: async () => {
       const { asunto, cuerpo } = partirCorreo(texto);
       outlook.disabled = true; estado.textContent = "Abriendo Outlook…";
       try {
@@ -248,7 +248,9 @@
           h("div", { class: "version" + (pu.elegida === "opus" ? " elegida" : "") }, cabVersion("Versión pulida", tokensDe("pulidor"), pu.elegida === "opus", () => elegir("opus"), "v-rev-elegir-opus"), b)));
       colResumen.append(comparacion);
     } else {
-      colResumen.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, "Resumen final"), h("div", { class: "rev-resumen" }, AP.md(rev.resumen || "Sin resumen.")),
+      const mdRes = AP.md(rev.resumen || "Sin resumen."), primero = mdRes.firstElementChild;
+      if (primero && /^H[1-4]$/.test(primero.tagName) && /^resumen\b/i.test(primero.textContent.trim())) primero.remove();   // «Resumen final» ya lo titula: sin «Resumen» repetido debajo
+      colResumen.append(h("section", { class: "sec" }, h("span", { class: "t-label" }, "Resumen final"), h("div", { class: "rev-resumen" }, mdRes),
         pu.estado === "generando" ? h("p", { class: "t-meta soft" }, "Puliendo el texto…") : h("div", { class: "acciones pulir" },
           h("button", { class: "btn btn-ghost", type: "button", id: "v-rev-pulir", onclick: () => AP.api("POST", "/api/revision/pulir").catch((e) => AP.avisarError(e)) },
             pu.estado === "error" ? "Volver a pulir con Opus" : "Pulir con Opus"),

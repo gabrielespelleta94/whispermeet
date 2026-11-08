@@ -1,5 +1,5 @@
-/* WhisperMeet: pantalla «Sesiones» (backlog). Usa los tokens de app.css (DESIGN-visual.md): grafito para la cabecera, vidrio por alfa sobre la capa
-   ambiente, un solo acento. Sin desenfoque de fondo, degradados ni sombras en listas (§6): en las filas solo cambia el color de fondo en hover. */
+/* WhisperMeet: pantalla «Sesiones» (backlog), dirección «cuaderno» (DESIGN-visual.md §0): filas con filete, la seleccionada con --acc-soft (nunca un borde
+   de color), el resumen y las frases en serif y los minutos como texto. Sin sombras en listas: en las filas solo cambia el color de fondo en hover. */
 
 /* La pantalla es una capa sobre las vistas, que siguen vivas por debajo (la reunión no se entera); solo se ocultan a la vista y a los lectores */
 body[data-backlog="1"]:not([data-modo="reunion"]) .vista { visibility: hidden; }
@@ -28,10 +28,12 @@ body[data-modo="reunion"] #v-backlog, body[data-modo="reunion"] #b-sesiones { di
 .bl-barra select { flex: 0 0 190px; min-width: 0; }
 .bl-cuenta { flex: none; padding: 0 16px 8px; min-height: 24px; border-bottom: 1px solid var(--hair); }
 .bl-lista { flex: 1; min-height: 0; overflow: auto; }
-.bl-ses { display: block; width: 100%; text-align: left; padding: 10px 16px 10px 14px; border: 0; border-left: 2px solid transparent; border-bottom: 1px solid var(--hair); background: transparent; color: inherit; cursor: pointer;
-  transition: background-color 160ms var(--salida), border-color 160ms var(--salida); }
+.bl-ses { display: block; width: 100%; text-align: left; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--hair); background: transparent; color: inherit; cursor: pointer;
+  transition: background-color 160ms var(--salida); }
+.bl-ses:active { scale: .98; }
 .bl-ses:hover { background: var(--hover); }
-.bl-ses[aria-current="true"] { background: var(--sel); border-left-color: var(--acc); }
+.bl-ses[aria-current="true"] { background: var(--acc-soft); }
+.bl-ses-tema { font-family: var(--serif-d); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
 .bl-ses:focus-visible { outline-offset: -2px; box-shadow: none !important; }
 .bl-ses-l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .bl-ses-tema { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -56,31 +58,31 @@ body[data-modo="reunion"] #v-backlog, body[data-modo="reunion"] #b-sesiones { di
 .bl-avisos-s { margin-top: 8px; }
 .bl-der > .seg { flex: none; align-self: flex-start; margin: 12px 0 0; }
 .bl-det-cuerpo { flex: 1; min-height: 0; overflow: auto; padding: 12px 0 24px; }
-.bl-resumen { max-width: 78ch; }
-.bl-md h3, .bl-md h4, .bl-h { font-size: var(--f-14); line-height: 20px; font-weight: 600; color: var(--ink); margin: 14px 0 2px; }
+.bl-resumen { max-width: 70ch; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 23px; color: var(--body); }
+.bl-md h3, .bl-md h4, .bl-h { font-family: var(--serif-d); font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); margin: 20px 0 4px; padding-bottom: 4px; border-bottom: 1px solid var(--hair); }
 .bl-md h3:first-child { margin-top: 0; }
 .bl-md p { margin: 4px 0; overflow-wrap: anywhere; text-wrap: pretty; }
 .bl-md ul, .bl-md ol, .bl-defs { margin: 4px 0 8px 22px; }
 .bl-md li { margin: 2px 0; overflow-wrap: anywhere; }
 .bl-md blockquote { margin: 6px 0; padding: 2px 12px; border-left: 2px solid var(--hair2); color: var(--soft); }
-.bl-md pre { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: var(--vidrio); border: 1px solid var(--canto); font-size: var(--f-12); line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bl-md pre { margin: 6px 0; padding: 8px 12px; border-radius: 8px; background: var(--hover); border: 0; font-size: var(--f-12); line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .bl-md code { font-family: ui-monospace, Consolas, monospace; font-size: var(--f-12); padding: 0 4px; border-radius: 4px; background: var(--vidrio); }
 .bl-md hr { border: 0; border-top: 1px solid var(--hair); margin: 12px 0; }
-.bl-min { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 0; border-radius: 4px; background: var(--acc-soft); color: var(--acc-t); cursor: pointer;
-  font-size: var(--f-12); line-height: 16px; font-weight: 600; white-space: nowrap; transition: background-color 160ms var(--salida), translate 160ms var(--salida); }
-.bl-min:hover { background: color-mix(in srgb, var(--acc-soft), var(--acc) 12%); translate: 0 -1px; }
+.bl-min { display: inline-flex; align-items: center; height: 20px; padding: 0 4px; border: 0; border-radius: 4px; background: transparent; color: var(--soft); cursor: pointer;
+  font-size: var(--f-12); line-height: 16px; font-weight: 500; white-space: nowrap; transition: background-color 160ms var(--salida), color 160ms var(--salida); }
+.bl-min:hover { background: var(--hover); color: var(--ink); }
 
 /* ---------- transcripción ---------- */
 .bl-tr { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .bl-tr-barra { display: flex; align-items: center; gap: 12px; flex: none; padding-bottom: 8px; }
 .bl-tr-barra .input { height: 32px; max-width: 360px; }
 .bl-trans { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--hair); padding: 4px 0; }
-.bl-lin { display: grid; grid-template-columns: 52px 64px minmax(0, 1fr); gap: 8px; padding: 4px 8px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; transition: background-color 160ms var(--salida), border-color 160ms var(--salida); }
+.bl-lin { display: grid; grid-template-columns: 52px 64px minmax(0, 1fr); gap: 8px; padding: 4px 8px; border-radius: 4px; transition: background-color 160ms var(--salida); }
 .bl-lin:hover { background: var(--hover); }
-.bl-lin.destino { background: var(--sel); border-left-color: var(--acc); }
+.bl-lin.destino { background: var(--acc-soft); }
 .bl-lin-f { font-weight: 600; }
 .bl-lin.micro .bl-lin-f { color: var(--acc-t); }
-.bl-lin-x { overflow-wrap: anywhere; }
+.bl-lin-x { font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; line-height: 21px; overflow-wrap: anywhere; }
 .bl-m { background: var(--warn-bg); color: var(--ink); border-radius: 2px; }
 
 /* ---------- elementos (insights y lista conjunta) ---------- */
@@ -88,7 +90,7 @@ body[data-modo="reunion"] #v-backlog, body[data-modo="reunion"] #b-sesiones { di
 .bl-it { display: grid; grid-template-columns: 140px minmax(0, 1fr) auto; align-items: start; gap: 4px 16px; padding: 10px 8px; border-bottom: 1px solid var(--hair); transition: background-color 160ms var(--salida); }
 .bl-it:hover { background: var(--hover); }
 .bl-it-tipo { display: inline-flex; align-items: center; gap: 6px; padding-top: 1px; }
-.bl-it-tx { color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+.bl-it-tx { font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; line-height: 21px; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
 .bl-it-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; }
 .bl-it-ctx { margin-top: 2px; overflow-wrap: anywhere; }
 .bl-it[data-estado="hecho"] .bl-it-tx, .bl-it[data-estado="aprovechada"] .bl-it-tx { color: var(--soft); text-decoration: line-through; text-decoration-color: var(--hair2); }
@@ -101,15 +103,18 @@ body[data-modo="reunion"] #v-backlog, body[data-modo="reunion"] #b-sesiones { di
 
 /* ---------- Pendientes e ideas ---------- */
 .bl-pbarra { flex: none; padding: 12px 24px 8px; border-bottom: 1px solid var(--hair); }
-.bl-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.bl-chip { height: 28px; }
+/* tipos: texto con subrayado de 2 px en tinta cuando están activos, sin pastillas */
+.bl-chips { display: flex; flex-wrap: wrap; gap: 0 20px; }
+.bl-chip.bj-chip { height: 32px; padding: 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--soft); transition: color 160ms var(--salida), border-color 160ms var(--salida); }
+.bl-chip.bj-chip:hover { background: transparent; color: var(--ink); translate: none; }
+.bl-chip.bj-chip[aria-pressed="true"] { background: transparent; border-bottom-color: var(--ink); color: var(--ink); font-weight: 600; }
 .bl-pfiltros { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; }
 .bl-pfiltros .input { height: 32px; width: auto; min-width: 150px; }
 .bl-pfiltros #bl-f-q { flex: 1; min-width: 180px; max-width: 360px; }
 .bl-plista { flex: 1; min-height: 0; overflow: auto; padding: 4px 24px 32px; }
 .bl-grupo { max-width: 980px; margin-top: 16px; }
 .bl-grupo-h { display: flex; align-items: baseline; gap: 12px; padding: 6px 8px; border-bottom: 1px solid var(--hair2); }
-.bl-grupo-t { padding: 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.bl-grupo-t { padding: 0; border: 0; background: transparent; font-family: var(--serif-d); font-size: var(--f-15); font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
 .bl-grupo-t:hover { color: var(--acc-t); text-decoration: underline; }
 
 /* aviso breve (deshacer): sólido, sin desenfoque */

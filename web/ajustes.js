@@ -25,6 +25,21 @@
       ir(tabs[j].dataset.aj, true);
     });
   });
+  // Ligero / Potente como control segmentado: el selector sigue siendo el que se guarda (oculto) y los botones lo espejan
+  const segmentados = new Map();
+  $$("select.sel-modelo", dlg).forEach((sel) => {
+    const op = [...sel.options].slice(0, 2);
+    const grupo = h("div", { class: "seg-mod", role: "radiogroup", "aria-label": (sel.closest("label") && sel.closest("label").firstChild.textContent.trim()) || "Modelo" },
+      op.map((o) => h("button", { type: "button", role: "radio", "data-v": o.value, "aria-checked": "false", onclick: () => { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); sync(sel); } }, o.textContent)));
+    sel.hidden = true;
+    sel.after(grupo);
+    segmentados.set(sel, grupo);
+  });
+  function sync(sel) { const g = segmentados.get(sel); if (g) [...g.children].forEach((b) => b.setAttribute("aria-checked", String(b.dataset.v === sel.value))); }
+  const fijar0 = AP.fijarModelo;
+  if (fijar0) AP.fijarModelo = (sel, v) => { fijar0(sel, v); sync(sel); };
+  dlg.addEventListener("close", () => segmentados.forEach((_, s) => sync(s)));
+  segmentados.forEach((_, s) => sync(s));
   AP.ajustes = { ir, seccion: () => actual, secciones: () => tabs.map((t) => t.dataset.aj) };
 
   // «Modo solo local» y «Registro de envíos»: los pinta olas34.js con /api/modo-local y /api/envios. Aquí solo se vuelve a la primera sección al abrir.

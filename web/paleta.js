@@ -131,15 +131,19 @@
   }
   function filtrar() {
     const q = P.q.value.trim();
-    if (!q) return P.todos.map((c) => ({ c, marcas: null }));
+    if (!q) { const orden = [...new Set(P.todos.map((c) => c.grupo))]; return P.todos.map((c, i) => ({ c, i })).sort((a, b) => orden.indexOf(a.c.grupo) - orden.indexOf(b.c.grupo) || a.i - b.i).map(({ c }) => ({ c, marcas: null })); }   // sin búsqueda, agrupado: cada grupo con su etiqueta
     return P.todos.map((c, i) => ({ c, i, r: puntuar(q, c) })).filter((x) => x.r).sort((a, b) => b.r.total - a.r.total || a.i - b.i).map((x) => ({ c: x.c, marcas: x.r.marcas }));
   }
   function pintar() {
     P.items = filtrar().slice(0, 60);
     P.sel = Math.min(P.sel, Math.max(0, P.items.length - 1));
-    P.lista.replaceChildren(...(P.items.length ? P.items.map(({ c, marcas }, i) =>
+    const sinConsulta = !P.q.value.trim();
+    let grupoPrevio = null;
+    P.lista.replaceChildren(...(P.items.length ? P.items.flatMap(({ c, marcas }, i) => [
+      sinConsulta && c.grupo !== grupoPrevio ? (grupoPrevio = c.grupo, h("li", { class: "pal-grupo", role: "presentation" }, c.grupo)) : null,
       h("li", { role: "option", id: "pal-o-" + i, class: "pal-op", "data-i": String(i), "data-id": c.id, "aria-selected": String(i === P.sel) },
-        AP.icono(c.icono || "info", "pal-ic"), h("span", { class: "pal-t" }, ...resaltar(c.titulo, marcas)), h("span", { class: "pal-g t-meta" }, c.grupo)))
+        AP.icono(c.icono || "info", "pal-ic"), h("span", { class: "pal-t" }, ...resaltar(c.titulo, marcas)), sinConsulta ? null : h("span", { class: "pal-g t-meta" }, c.grupo)),
+    ].filter(Boolean))
       : [h("li", { class: "pal-vacio t-body", role: "presentation" }, "Nada coincide con lo que has escrito.")]));
     P.estado.textContent = P.items.length ? `${P.items.length} resultado${P.items.length === 1 ? "" : "s"}. Flechas para moverte, Intro para ejecutar, Esc para cerrar.` : "Sin resultados.";
     marcar();

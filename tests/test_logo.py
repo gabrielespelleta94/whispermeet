@@ -57,7 +57,7 @@ def test_ico_tiene_nueve_entradas_png_validas():
 def test_a_16_px_hay_tres_columnas_con_barras():
     png = next(e[4] for e in _entradas() if e[0] == 16)
     img = _decodificar(png)
-    blanca = (img[..., 0] > 200) & (img[..., 3] == 255)
+    blanca = (img[..., 1] > 200) & (img[..., 3] == 255)   # barra color papel (verde alto); el fondo bermellón (#CD432C) tiene el verde en 67
     con_barra = blanca.any(axis=0)
     grupos = [i for i in range(16) if con_barra[i] and (i == 0 or not con_barra[i - 1])]
     assert len(grupos) == 3

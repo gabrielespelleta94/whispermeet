@@ -486,7 +486,7 @@ const glifo = (tipo, posible) => AP.icono(posible ? "contradiccion" : tipo, "bj-
       return h("article", { class: "notif", "data-k": d.k },
         h("span", { class: "n-ico", "aria-hidden": "true" }, glifo(d.tipo, d.k === "posible")),
         h("div", { class: "n-cuerpo" },
-          h("div", { class: "n-l1" }, h("span", { class: "n-cat t-label" }, h("span", {}, d.cat)), h("span", { class: "n-mono t-label", "aria-hidden": "true", style: `--ag: ${AP.agente(d.perfil).color}` }, AP.icono(AP.agente(d.perfil).icono, "ag-ic"), d.mono), h("span", { class: "n-nombre t-meta" }, d.nombre),
+          h("div", { class: "n-l1" }, h("span", { class: "n-cat t-label" }, h("span", {}, d.cat)), h("span", { class: "n-mono t-label", "aria-hidden": "true", style: `--ag: ${AP.agente(d.perfil).color}` }, AP.icono(AP.agente(d.perfil).icono, "ag-ic")), h("span", { class: "n-nombre t-meta", style: `color: ${AP.agente(d.perfil).color}; font-weight: 600` }, d.nombre),
             h("span", { class: "n-der" }, chipMin(d.minuto, d.t), h("button", { type: "button", class: "n-x", "aria-label": "Descartar", title: "Descartar", onclick: () => descartar(n) }, AP.icono("cerrar")))),
           h("div", { class: "n-tx t-body" }, d.texto),
           d.meta ? h("div", { class: "n-meta t-meta" }, d.meta) : null,
