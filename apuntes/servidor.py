@@ -34,9 +34,12 @@ HOST = "127.0.0.1"
 
 
 class Difusor:
+    MAX_COLA = 2000   # eventos pendientes de un cliente por encima de los cuales se le da por atascado
+
     def __init__(self):
         self.loop: asyncio.AbstractEventLoop | None = None
         self.colas: set[asyncio.Queue] = set()
+        self.cierres: dict[asyncio.Queue, object] = {}   # cola -> función que cierra el socket de ese cliente (la registra /ws)
 
     def emitir(self, ev: dict) -> None:
         """Seguro desde cualquier hilo."""
@@ -49,8 +52,11 @@ class Difusor:
 
     def _publicar(self, ev: dict) -> None:
         for q in list(self.colas):
-            if q.qsize() > 2000:  # cliente atascado: se descarta
+            if q.qsize() > self.MAX_COLA:  # cliente atascado: se descarta y se cierra su socket (el cliente reconecta y recibe el snapshot)
                 self.colas.discard(q)
+                cerrar = self.cierres.pop(q, None)
+                if cerrar is not None:
+                    cerrar()
                 continue
             q.put_nowait(ev)
 
@@ -793,13 +799,21 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
                 await sock.send_text(json.dumps(ev, ensure_ascii=False))
 
         tarea = asyncio.create_task(enviar())
+
+        async def cerrar_atascado():
+            tarea.cancel()
+            with contextlib.suppress(Exception):
+                await sock.close(code=1013)   # «inténtalo de nuevo»: el cliente ya sabe reconectar
+
+        difusor.cierres[q] = lambda: asyncio.ensure_future(cerrar_atascado())
         try:
             while True:
                 await sock.receive_text()  # solo para detectar la desconexión
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
             tarea.cancel()
             difusor.colas.discard(q)
+            difusor.cierres.pop(q, None)
 
     return app

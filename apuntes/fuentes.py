@@ -20,6 +20,7 @@ import os
 import re
 import threading
 import time
+from functools import lru_cache
 from dataclasses import dataclass, field
 
 from . import documentos as DOC
@@ -56,6 +57,25 @@ def raiz(w: str) -> str:
 def tokenizar(texto: str) -> list[str]:
     t = sin_acentos(texto or "").lower()
     return [raiz(w) for w in _RE_TOKEN.findall(t) if w not in _STOP]
+
+
+@lru_cache(maxsize=MAX_TROZOS_TOTAL + 2048)
+def _terminos_trozo(texto: str) -> tuple[str, ...]:
+    """Términos de un trozo, memorizados por su texto: reconstruir el índice no vuelve a tokenizar lo que ya estaba indexado y no ha cambiado
+    (un trozo cambiado es otro texto, así que se tokeniza de nuevo). Tupla: inmutable."""
+    return tuple(tokenizar(texto))
+
+
+def _prioridad_baja() -> None:
+    """Los hilos de indexado van por debajo de lo normal para no competir con Whisper por la CPU. Solo en Windows; si falla, no hace nada."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.SetThreadPriority(k.GetCurrentThread(), -1)   # THREAD_PRIORITY_BELOW_NORMAL
+    except Exception:  # noqa: BLE001 — una ayuda: si no se puede, el hilo sigue con su prioridad
+        pass
 
 
 # ------------------------------------------------------------------ trocear
@@ -170,7 +190,7 @@ class Indice:
     def construir(self) -> None:
         self._post, self._long = {}, []
         for i, t in enumerate(self.trozos):
-            toks = tokenizar(t.texto)
+            toks = _terminos_trozo(t.texto)
             self._long.append(max(1, len(toks)))
             tf: dict[str, int] = {}
             for w in toks:
@@ -463,12 +483,14 @@ class ServicioFuentes:
         self._hilo_p: threading.Thread | None = None
         self.listo_knowledge = threading.Event()
         self.listo_proyecto = threading.Event()
+        self.reconstrucciones = 0        # cuántas veces se ha rehecho el índice combinado (diagnóstico y pruebas)
 
     # ---- cola de reconstrucción del índice combinado
     def _reconstruir(self) -> None:
         with self._lock:
             docs = list(self._reunion) + list(self._proyecto) + list(self._knowledge)
         self._indice = Indice(docs)   # se construye fuera del cerrojo; el cambio de referencia es atómico
+        self.reconstrucciones += 1
 
     # ---- Knowledge: al arrancar
     def _nombre_knowledge(self) -> str:
@@ -488,6 +510,7 @@ class ServicioFuentes:
             self._reconstruir()
 
         def trabajo():
+            _prioridad_baja()
             try:
                 def parcial(f):
                     guardar_cache(self.g, nombre, f)
@@ -496,9 +519,10 @@ class ServicioFuentes:
                 self.informe_knowledge = inf
                 if fuentes and (inf.nuevos or set(fuentes) != set(previo)):
                     guardar_cache(self.g, nombre, fuentes)
-                with self._lock:
-                    self._knowledge = [_doc_de(e) for e in fuentes.values()]
-                self._reconstruir()
+                if fuentes != previo:   # sin cambios (lo habitual: misma fecha y tamaño) el índice de la caché, ya cargado arriba, sigue valiendo
+                    with self._lock:
+                        self._knowledge = [_doc_de(e) for e in fuentes.values()]
+                    self._reconstruir()
             except Exception as e:  # noqa: BLE001 — el índice es una ayuda: un fallo no afecta a la reunión
                 from .registro import registrar_error
                 registrar_error("ServicioFuentes.knowledge", e)
@@ -514,6 +538,7 @@ class ServicioFuentes:
         from . import contexto as CX
         self.g.asegurar_cache()
         with self._lock:
+            habia = bool(self._reunion or self._proyecto)   # solo hay que rehacer el índice si lo de la reunión anterior estaba dentro, o si entra algo nuevo
             self._reunion = []
             if (contexto_reunion or "").strip():
                 trozos = trocear(contexto_reunion, maximo=12)
@@ -523,9 +548,11 @@ class ServicioFuentes:
             self._proyecto_clave = proyecto or ""
         self.listo_proyecto.clear()
         self.informe_proyecto = {}
-        self._reconstruir()
+        if habia or self._reunion:
+            self._reconstruir()   # Knowledge ya está indexado: no se vuelve a tokenizar (caché por texto de trozo)
 
         def trabajo():
+            _prioridad_baja()
             try:
                 if not proyecto:
                     return
@@ -543,7 +570,8 @@ class ServicioFuentes:
                         return   # empezó otra reunión mientras tanto
                     self._proyecto = [_doc_de(e) for e in todo.values()]
                 self.informe_proyecto = {"ficheros": len(docs), "sesiones": len(ses)}
-                self._reconstruir()
+                if todo:   # el proyecto estaba vacío al empezar: sin nada nuevo, el índice ya es el último
+                    self._reconstruir()
             except Exception as e:  # noqa: BLE001
                 from .registro import registrar_error
                 registrar_error("ServicioFuentes.proyecto", e)
@@ -555,8 +583,10 @@ class ServicioFuentes:
 
     def olvidar_reunion(self) -> None:
         with self._lock:
+            habia = bool(self._reunion or self._proyecto)
             self._reunion, self._proyecto, self._proyecto_clave = [], [], ""
-        self._reconstruir()
+        if habia:
+            self._reconstruir()
 
     # ---- búsqueda
     def buscar(self, consulta: str, contexto: str = "", k: int = 6, max_chars: int = 3500) -> list[Resultado]:

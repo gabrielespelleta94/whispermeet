@@ -224,3 +224,46 @@ def test_nunca_se_quita_un_tramo_con_una_cifra_que_reunion_no_tiene():
     r = E.palabras("hemos cerrado un acuerdo para el pago con el cliente")
     assert E._sin_cifras_nuevas([(0, len(m) - 1)], m, r) == []
     assert E._sin_cifras_nuevas([(0, 3)], m, r) == [(0, 3)]
+
+
+# ---------------------------------------------------------------- caché de la tokenización: misma salida que sin caché
+_TEXTOS_CACHE = [
+    "", "   ", "Vale.", "El presupuesto de la fase uno son noventa y cinco euros, cuatro por ciento más.",
+    "Són 1.500 € de pressupost; vint-i-u dies, dos-cents cinquanta euros i 95,5 per cent.",
+    "¿Cuántos pasajeros? Tres mil doscientos cuarenta y uno. ¡Perfecto!", "Hem de tancar la xifra dimarts, per què no demà?",
+    "ÁÉÍÓÚ ñ ç ll qu cu hh vvv zzz", "Cifras: 12, 3.000, 7,5 y 52 en el código ov2 termino3x1.", "un uno una u nou deu set mil",
+    "Quinientos mil euros de inversión en migración; la reunión fue el pasado jueves.",
+]
+
+
+def test_palabras_con_cache_igual_a_sin_cache_incluso_llamando_dos_veces():
+    for t in _TEXTOS_CACHE:
+        esperado = list(E._palabras_sin_cache(t))
+        assert E.palabras(t) == esperado
+        assert E.palabras(t) == esperado   # segunda llamada: ya sale de la caché
+    assert E.palabras(None) == []
+
+
+def test_plegar_con_cache_igual_a_sin_cache():
+    for t in _TEXTOS_CACHE:
+        for w in t.split():
+            assert E._plegar(w) == E._plegar.__wrapped__(w)
+            assert E._plegar(w) == E._plegar.__wrapped__(w)
+
+
+def test_modificar_lo_que_devuelve_palabras_no_corrompe_la_cache():
+    t = "El presupuesto de la fase uno son noventa y cinco euros"
+    limpio = list(E._palabras_sin_cache(t))
+    primera = E.palabras(t)
+    primera.clear()
+    primera.append("basura")
+    assert E.palabras(t) == limpio
+
+
+def test_quitar_eco_con_cache_igual_en_llamadas_repetidas():
+    reunion = [(0.0, "El presupuesto de la fase uno son noventa y cinco euros por pasajero."), (5.0, "Lo cerramos el martes con el cliente.")]
+    micro = "el presupuesto de la fase uno son 95 € por pasajero y además me falta confirmar la fecha"
+    primero = E.quitar_eco(micro, 2.0, reunion)
+    assert E.quitar_eco(micro, 2.0, reunion) == primero
+    E._palabras_cacheada.cache_clear()
+    assert E.quitar_eco(micro, 2.0, reunion) == primero

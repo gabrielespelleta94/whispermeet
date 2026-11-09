@@ -112,7 +112,8 @@
         if (ult.ms != null) res.partes.push(seg(ult.ms));
         if (ult.palabras != null) res.partes.push(`${ult.palabras} palabras`);
       }
-      if (tr && tr.pendiente_s > 3) res.partes.push(`retraso ${Math.round(tr.pendiente_s)} s`);
+      if (tr && AP.retrasoDe(tr) > 3) res.partes.push(`retraso ${Math.round(AP.retrasoDe(tr))} s`);
+      if (tr && tr.rapido) res.partes.push("modo rápido");   // modo alcance: tramos juntos y decodificación voraz hasta vaciar la cola
       return res;
     }
     const curso = enCurso(n.id), ult = ultima(n.id);
@@ -378,7 +379,7 @@
     const a = S.analisis || {}, d = DOM.linea, eq = S.equipo, m = eq.monitor || {}, pr = eq.presupuesto || {};
     const ver = estados.verificador, red = estados.redactor, pul = estados.pulidor;
     const trz = O.traza.filter((x) => x.fila === "analisis");
-    const tr = S.transcripcion, retraso = tr ? tr.pendiente_s : 0;
+    const tr = S.transcripcion, retraso = AP.retrasoDe(tr);
     const perfil = eq.perfiles.map((p) => ({ p, t: enCurso(p.id)[0] })).find((x) => x.t);
     let ind = "espera", txt;
     if (pul.estado === "trabajando") { ind = "confirmando"; txt = "Puliendo con opus…"; }
@@ -403,7 +404,7 @@
     d.ind.dataset.estado = ind; d.est.textContent = txt; d.est.dataset.estado = ind;
     d.barra.hidden = d.pal.hidden = d.prox.hidden = true;
     const retrasado = retraso > 15;
-    d.ult.hidden = !retrasado; d.ult.textContent = retrasado ? `Transcripción con ${Math.round(retraso)} s de retraso` : ""; d.ult.classList.toggle("avisa", retrasado);
+    d.ult.hidden = !retrasado; d.ult.textContent = retrasado ? `Transcripción con ${Math.round(retraso)} s de retraso${tr && tr.rapido ? " · alcanzando el directo" : ""}` : ""; d.ult.classList.toggle("avisa", retrasado);
     void trz;
   }
 
@@ -413,7 +414,7 @@
     if (s && s.cadencia === "equipo" && S.equipo) return lineaEquipo(estados);
     const an = estados.equipo, ver = estados.verificador, red = estados.redactor, pul = estados.pulidor;
     const trz = O.traza.filter((x) => x.fila === "analisis"), ult = trz[trz.length - 1], ultAny = O.traza[O.traza.length - 1];
-    const tr = S.transcripcion, retraso = tr ? tr.pendiente_s : 0;
+    const tr = S.transcripcion, retraso = AP.retrasoDe(tr);
     let ind = "espera", txt;
     const modeloDe = (e, def) => (e.curso && e.curso.modelo) || e.modelo || def;
     if (pul.estado === "trabajando") { ind = "confirmando"; txt = "Puliendo con opus…"; }
@@ -462,7 +463,7 @@
     if (txt.startsWith("Escuchando")) u = "";
     d.ult.hidden = !u; d.ult.textContent = u; d.ult.title = u;
     d.ult.classList.toggle("avisa", retraso > 15);
-    if (retraso > 15) { d.ult.hidden = false; d.ult.textContent = `Transcripción con ${Math.round(retraso)} s de retraso`; }
+    if (retraso > 15) { d.ult.hidden = false; d.ult.textContent = `Transcripción con ${Math.round(retraso)} s de retraso${tr && tr.rapido ? " · alcanzando el directo" : ""}`; }
   }
   AP.aplicarPliegueOrq = () => { if (DOM.raiz) aplicarPliegue(); };   // el Modo reunión fuerza la línea plegada sin tocar la preferencia
   AP.hooks.linea = () => render();
@@ -495,7 +496,7 @@
     if (rec) rec.dataset.estado = S.estado === "grabando" ? "grabando" : "parado";
     const tr = S.transcripcion, r = $("#r-retraso");
     if (r) {
-      const p = tr ? tr.pendiente_s : 0;
+      const p = AP.retrasoDe(tr);
       r.hidden = !(p > 5);
       if (p > 5) r.textContent = `+${Math.round(p)} s`;
       $("#vu-reunion").classList.toggle("retraso", p > 15);

@@ -337,3 +337,74 @@ def test_sin_proyecto_solo_queda_el_contexto_de_la_reunion(proyecto):
     s = FU.ServicioFuentes(g, cfg, BL.Backlog(g, cfg))
     s.preparar_proyecto(None, "", "Queremos hablar del calendario de pagos de la fase 1.").join(10)
     assert [x.etiqueta for x in s.buscar("calendario de pagos")] == ["Contexto de la reunión"]
+
+
+# ================================================================ el indexado en segundo plano no compite con la transcripción
+def _servicio_con_cache(tmp_path, knowledge):
+    """Servicio con Knowledge ya indexado y guardado en la caché (el estado normal al empezar una reunión) y contadores de reconstrucciones y tokenizaciones."""
+    g = Guardian(tmp_path / "raiz", tmp_path / "bandeja", tmp_path / "cache", solo_lectura=[knowledge])
+    cfg = Config(tmp_path / "config.json")
+    cfg.actualizar({"knowledge": str(knowledge), "raiz_proyectos": str(tmp_path / "raiz")}, guardar=False)
+    FU.ServicioFuentes(g, cfg).arrancar().join(20)
+    return g, cfg
+
+
+def test_empezar_la_reunion_no_rehace_ni_retokeniza_lo_ya_indexado(tmp_path, knowledge, monkeypatch):
+    g, cfg = _servicio_con_cache(tmp_path, knowledge)
+    FU._terminos_trozo.cache_clear()
+    llamadas = []
+    original = FU.tokenizar
+    monkeypatch.setattr(FU, "tokenizar", lambda t: llamadas.append(t) or original(t))
+    s = FU.ServicioFuentes(g, cfg)
+    s.arrancar().join(20)
+    # arranque con caché y sin cambios en Knowledge: UNA sola reconstrucción (la de la caché) y el hilo no rehace nada
+    assert s.reconstrucciones == 1
+    assert s.buscar("¿Cuánto dura el piloto de simulación?")[0].etiqueta == "Knowledge/Ofertas/propuesta.docx"
+    base = len(llamadas)   # (buscar tokeniza la consulta; eso no es indexado)
+    # empezar una reunión sin proyecto ni contexto: no se toca el índice y no se tokeniza nada
+    s.preparar_proyecto(None).join(20)
+    assert s.reconstrucciones == 1 and len(llamadas) == base
+    # …y tampoco con una reunión previa en memoria: se rehace una vez al limpiar y NO se retokeniza Knowledge
+    s.preparar_proyecto(None, "", "Contexto de esta reunión sobre el piloto de simulación y su calendario").join(20)
+    assert s.reconstrucciones == 2
+    nuevos = llamadas[base:]
+    assert len(nuevos) == 1 and "Contexto de esta reunión" in nuevos[0]   # solo se tokeniza lo nuevo
+    assert s.buscar("calendario del piloto de simulación")[0].tipo in ("reunion", "knowledge")
+
+
+def test_un_fichero_de_knowledge_cambiado_si_se_vuelve_a_indexar(tmp_path, knowledge):
+    g, cfg = _servicio_con_cache(tmp_path, knowledge)
+    (knowledge / "nota.txt").write_text("Nota nueva sobre la migración del catálogo de tarifas a OneLake.", encoding="utf-8")
+    s = FU.ServicioFuentes(g, cfg)
+    s.arrancar().join(20)
+    assert s.reconstrucciones == 2   # el de la caché y el de la pasada, que sí tiene un cambio
+    assert s.buscar("migración del catálogo de tarifas")[0].etiqueta == "Knowledge/nota.txt"
+
+
+def test_el_proyecto_se_anade_con_una_reconstruccion_y_buscar_usa_el_ultimo_indice(proyecto):
+    g, cfg = proyecto
+    s = FU.ServicioFuentes(g, cfg, BL.Backlog(g, cfg))
+    s.preparar_proyecto("ProyA", "2026-11-05-hoy.md").join(20)
+    assert s.reconstrucciones == 1   # antes eran dos: una al empezar (vacía) y otra al terminar el hilo
+    assert s.buscar("¿Cuántos usuarios por hotel entran?")[0].etiqueta == "02-alcance.md"
+
+
+def test_los_hilos_de_indexado_bajan_su_prioridad(tmp_path, knowledge, proyecto, monkeypatch):
+    llamadas = []
+    monkeypatch.setattr(FU, "_prioridad_baja", lambda: llamadas.append(threading.current_thread().name))
+    g, cfg = proyecto
+    s = FU.ServicioFuentes(g, cfg, BL.Backlog(g, cfg))
+    s.preparar_proyecto("ProyA").join(20)
+    assert llamadas == ["fuentes-proyecto"]
+    cfg.actualizar({"knowledge": str(knowledge)}, guardar=False)
+    s.arrancar().join(20)
+    assert llamadas == ["fuentes-proyecto", "fuentes-knowledge"]
+
+
+def test_prioridad_baja_no_falla_si_la_llamada_del_sistema_falla(monkeypatch):
+    import ctypes
+    monkeypatch.setattr(FU.os, "name", "nt")
+    monkeypatch.setattr(ctypes, "windll", None, raising=False)   # sin windll (o roto): no hace nada y no lanza
+    FU._prioridad_baja()
+    monkeypatch.setattr(FU.os, "name", "posix")
+    FU._prioridad_baja()

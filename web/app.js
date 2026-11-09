@@ -34,6 +34,9 @@
   const S = { estado: "inactivo", sesion: null, segmentos: [], tarjetas: [], notas: "", resumen_acumulado: "", analisis: {}, consumo: null,
     transcripcion: null, digest: {}, avisos: [], revision: null, simulacion: false, t: 0, objetivos: [], checks: [] };
   const AP = (window.AP = { hooks: {} });   // puente con agentes.js, reunion.js y revision.js (rediseño agéntico)
+  // Retraso de la transcripción en segundos de reloj: lo que lleva esperando el tramo más antiguo (`retraso_s`). Un servidor anterior solo
+  // manda `pendiente_s` (audio en cola, suma de los dos canales), que queda de respaldo.
+  AP.retrasoDe = (tr) => (!tr ? 0 : tr.retraso_s != null ? tr.retraso_s : tr.pendiente_s || 0);
   const UI = { proyectos: [], sel: undefined, proy: null, sesionPlan: undefined, temaAuto: "", cad: 5, decisiones: {}, info: null, ultimoSeg: 0, seguir: true };
 
   // Movimiento reducido: las animaciones hechas con la Web Animations API (avisos que vuelan, trazos…) duran 0 ms; el CSS ya las desactiva por su lado.
@@ -639,7 +642,8 @@
     let t = "";
     if (S.simulacion) t = "Simulación sin audio";
     else if (tr) t = tr.estado === "cargando" ? "Cargando el modelo de transcripción…" : tr.estado === "error" ? tr.error
-      : tr.pendiente_s > 3 ? `Transcripción con ${Math.round(tr.pendiente_s)} s de retraso` : "";
+      : S.estado === "terminando" && tr.pendiente_s > 1 ? `Transcribiendo lo que queda: ${Math.round(tr.pendiente_s)} s de audio…`
+      : AP.retrasoDe(tr) > 3 ? `Transcripción con ${Math.round(AP.retrasoDe(tr))} s de retraso${tr.rapido ? " · alcanzando el directo" : ""}` : "";
     $("#r-estado-trans").textContent = t;
     pie();
   }

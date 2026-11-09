@@ -37,6 +37,19 @@ def test_la_repeticion_en_bucle_sigue_colapsando():
     assert filtrar_texto("vale vale vale vale vale") == "vale"
 
 
+def test_una_frase_entera_repetida_seguida_queda_una_sola_vez():
+    # el tic de Whisper cuando el tramo acaba cortado: la misma frase dos o tres veces
+    assert filtrar_texto("¿Alguien tiene alguna duda sobre? ¿Alguien tiene alguna duda sobre? ¿Alguien tiene alguna duda sobre?") == "¿Alguien tiene alguna duda sobre?"
+    assert filtrar_texto("Lo vemos el lunes. Lo vemos el lunes. Y después cerramos el acta.") == "Lo vemos el lunes. Y después cerramos el acta."
+    # lo que NO se toca: repeticiones cortas del habla normal, frases distintas y la misma frase si no va seguida
+    assert filtrar_texto("Sí. Sí. Vale, vale.") == "Sí. Sí. Vale, vale."
+    assert filtrar_texto("De acuerdo. De acuerdo.") == "De acuerdo. De acuerdo."
+    assert filtrar_texto("Lo vemos el lunes. Lo vemos el martes.") == "Lo vemos el lunes. Lo vemos el martes."
+    assert filtrar_texto("Lo vemos el lunes. Vale. Lo vemos el lunes.") == "Lo vemos el lunes. Vale. Lo vemos el lunes."
+    # una pregunta y la respuesta que la repite son dos frases distintas (cambia el signo): la respuesta no se borra
+    assert filtrar_texto("¿Lo tenemos para el lunes? Lo tenemos para el lunes. Perfecto.") == "¿Lo tenemos para el lunes? Lo tenemos para el lunes. Perfecto."
+
+
 # ------------------------------------------------------------------ prompt
 BASE = "Reunión de trabajo: Seguimiento del piloto."
 

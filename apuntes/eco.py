@@ -55,6 +55,7 @@ vale bueno claro exacto perfecto correcto cierto vaya hombre mira oye escucha es
 """.split())
 
 
+@lru_cache(maxsize=4096)   # el mismo vocabulario se pliega una y otra vez (cada segmento de Reunión recalcula el eco de ±45 s de Micro)
 def _plegar(palabra: str) -> str:
     """Forma comparable de una palabra: minúsculas, sin acentos y con las grafías que Whisper confunde en español y en catalán
     (b/v, s/z/ç, c/qu/k, h muda, ll, doble consonante)."""
@@ -173,7 +174,8 @@ def _clave_cifra(t: str) -> str:
     return t.replace(",", ".")
 
 
-def palabras(texto: str) -> list[Palabra]:
+def _palabras_sin_cache(texto: str) -> tuple[Palabra, ...]:
+    """Tokenización de verdad (la que `palabras` memoriza). Se conserva accesible para comparar con la versión con caché."""
     crudas = []
     for m in _RE_PALABRA.finditer(texto or ""):
         g = m.group()
@@ -183,7 +185,16 @@ def palabras(texto: str) -> list[Palabra]:
         k = _clave_cifra(g) if g[:1].isdigit() and not g.isalpha() and re.fullmatch(r"\d[\d.,]*", g) else _plegar(g)
         if k:
             out.append(Palabra(k, ini, fin, _peso(k)))
-    return out
+    return tuple(out)
+
+
+# Caché de la tokenización: `quitar_eco` vuelve a tokenizar cada texto de Reunión en cada segmento nuevo. Va en una TUPLA (inmutable, y `Palabra`
+# es frozen) para que ningún llamador pueda corromper la caché; `palabras` devuelve una lista nueva con el mismo contrato de siempre.
+_palabras_cacheada = lru_cache(maxsize=4096)(_palabras_sin_cache)
+
+
+def palabras(texto: str) -> list[Palabra]:
+    return list(_palabras_cacheada(texto or ""))
 
 
 @lru_cache(maxsize=300_000)
@@ -297,7 +308,7 @@ def quitar_eco(texto: str, t: float, reunion: list[tuple[float, str]],
     `reunion`: [(t, texto)] de los fragmentos de Reunión (se usan los de la ventana, ordenados por marca; el orden de llegada no importa).
     Devuelve el texto tal cual si no hay eco, el resto (trozos que no coinciden, unidos con «…») o «» si TODO era eco."""
     texto = texto or ""
-    m = palabras(texto)[:MAX_TOKENS_MICRO]
+    m = list(_palabras_cacheada(texto)[:MAX_TOKENS_MICRO])
     if len(m) < MIN_PARES:
         return texto
     pool = sorted((x for x in reunion if x[1] and t - antes <= x[0] <= t + despues), key=lambda x: (abs(x[0] - t), x[0]))
@@ -305,7 +316,7 @@ def quitar_eco(texto: str, t: float, reunion: list[tuple[float, str]],
     tope = 0
     elegidos = []
     for x in pool:   # los más cercanos primero hasta el tope de cálculo; luego, en orden de tiempo
-        p = palabras(x[1])
+        p = _palabras_cacheada(x[1])
         if tope + len(p) > MAX_TOKENS_REUNION and elegidos:
             break
         tope += len(p)

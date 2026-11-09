@@ -117,6 +117,11 @@ def interpretar_salida(stdout: str, stderr: str, codigo: int, modelo: str) -> Re
     return Respuesta(texto=resultado, uso=extraer_uso(d, modelo), ms=int(d.get("duration_ms") or 0))
 
 
+def _flags_creacion() -> int:
+    """Sin ventana y, en Windows, con prioridad por debajo de lo normal: `claude -p` cede CPU a Whisper (fuera de Windows, 0)."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+
+
 class ClaudeCLI(ModeloLLM):
     def __init__(self, exe: str | None = None):
         self.exe = exe or shutil.which("claude") or "claude"
@@ -129,7 +134,7 @@ class ClaudeCLI(ModeloLLM):
         try:
             p = subprocess.run(cmd, input=usuario, capture_output=True, text=True, encoding="utf-8",
                                timeout=timeout_s, cwd=str(CLAUDE_CWD), env=entorno_limpio(sin_razonamiento=sin_razonamiento),
-                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                               creationflags=_flags_creacion())
         except subprocess.TimeoutExpired:
             raise ErrorAnalisis("tiempo", f"Claude Code no respondió en {timeout_s} s.", transitorio=True)
         except FileNotFoundError:

@@ -38,3 +38,15 @@ def registrar_error(donde: str, exc: BaseException, ruta: Path | None = None) ->
         return True
     except Exception:  # noqa: BLE001 — registrar nunca debe romper a quien registra
         return False
+
+
+def registrar_linea(texto: str, ruta: Path | None = None) -> bool:
+    """Anota una línea de diagnóstico (medidas, nunca contenido de la reunión). Nunca lanza. Quien llama decide la frecuencia."""
+    try:
+        destino = Path(ruta) if ruta else RUTA_LOG
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        with open(destino, "a", encoding="utf-8", errors="replace") as f:
+            f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {texto}\n")
+        return True
+    except Exception:  # noqa: BLE001
+        return False

@@ -88,3 +88,23 @@ def test_sin_razonamiento_solo_cuando_se_pide_y_sigue_sin_claves():
     assert "MAX_THINKING_TOKENS" not in C.entorno_limpio(base)
     e = C.entorno_limpio(base, sin_razonamiento=True)
     assert e["MAX_THINKING_TOKENS"] == "0" and "ANTHROPIC_API_KEY" not in e
+
+
+def test_el_subproceso_arranca_sin_ventana_y_con_prioridad_baja(monkeypatch):
+    """`claude -p` no compite con Whisper: sin ventana y, en Windows, por debajo de lo normal (en otro sistema, flags 0). No se ejecuta `claude`."""
+    capturado = {}
+
+    def falso(cmd, **kw):
+        capturado.update(kw)
+        raise FileNotFoundError
+
+    monkeypatch.setattr(C.subprocess, "run", falso)
+    try:
+        C.ClaudeCLI(exe="claude").completar("s", "u", "haiku")
+    except Exception:
+        pass
+    esperado = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+    assert capturado["creationflags"] == esperado
+    if sys.platform == "win32":
+        assert capturado["creationflags"] & subprocess.CREATE_NO_WINDOW
+        assert capturado["creationflags"] & subprocess.BELOW_NORMAL_PRIORITY_CLASS

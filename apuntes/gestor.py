@@ -36,7 +36,7 @@ from .consumo import Consumo
 from .equipo.director import MODOS_CON_EQUIPO, Director
 from .fuentes import ServicioFuentes
 from .orquesta import Sonda
-from .registro import registrar_error
+from .registro import registrar_error, registrar_linea
 from .rutas import CARPETA_CONTEXTO, CARPETA_SESIONES, Guardian, RutaProhibida, slug
 from .sesion import Sesion
 from .transcripcion import prompt_tema
@@ -78,6 +78,11 @@ def acumular_resumen(previo: str, nuevo: str, tope: int) -> str:
 
 FALLOS_SEGUIDOS_GRAVE = 10      # pasadas seguidas fallando de un mismo tipo: el aviso pasa a decirlo claramente
 AVISO_FALLO_CADA_S = 300.0      # como máximo un aviso por tipo de fallo cada 5 min
+RETRASO_A_REGISTRAR_S = 15.0    # retraso de la transcripción a partir del cual se deja una línea de diagnóstico en datos\apuntes.log…
+REGISTRO_RETRASO_CADA_S = 30.0  # …como mucho cada tanto
+TEXTO_AUDIO_PERDIDO = "No se ha podido transcribir parte del audio. La grabación sigue."
+ESPERA_COLA_MAX_S = 600.0       # al terminar: tope absoluto de espera a que el transcriptor vacíe su cola…
+ESPERA_COLA_SIN_AVANCE_S = 60.0  # …y se deja de esperar si en este tiempo la cola no baja (antes: 180 s fijos y descarte sin aviso)
 TEXTO_FALLO = "El análisis automático ha fallado. La grabación sigue."
 TEXTO_FALLO_GRAVE = ("El análisis automático lleva varias pasadas seguidas fallando. La grabación sigue y se sigue intentando; "
                      "usa «Analizar ahora» y revisa datos\\apuntes.log.")
@@ -100,6 +105,9 @@ class Gestor:
         self.reloj = Reloj()
         self.analista: Analista | None = None
         self.transcriptor = None
+        self._perdidos_avisados = 0.0     # segundos de audio perdidos por el transcriptor de los que ya se avisó
+        self._perdida_avisada_en = None   # cuándo (monotónico) se avisó por última vez de audio perdido (None = nunca en esta reunión)
+        self._retraso_registrado = 0.0    # última vez (monotónico) que se anotó el retraso de la transcripción en el registro
         self._vocabulario_contexto: list[str] = []
         self.captura = None
         self.digest = ""
@@ -199,8 +207,11 @@ class Gestor:
             "digest": {"origen": self.digest_origen, "chars": len(self.digest), "ficheros": list(self.digest_ficheros),
                        "solo_lectura": self.digest_solo_lectura},
             "transcripcion": None if tr is None else {"estado": tr.estado, "error": tr.error,
-                                                      "pendiente_s": round(tr.pendiente_s, 1),
-                                                      "velocidad_x": None if tr.velocidad_x is None else round(tr.velocidad_x, 2)},
+                                                      "pendiente_s": round(tr.pendiente_s, 1),   # audio en cola (suma de los dos canales)
+                                                      "retraso_s": round(float(getattr(tr, "retraso_s", 0.0) or 0.0), 1),   # tiempo de reloj que lleva esperando el tramo más antiguo: lo que va por detrás del directo
+                                                      "velocidad_x": None if tr.velocidad_x is None else round(tr.velocidad_x, 2),
+                                                      "rapido": bool(getattr(tr, "alcance", False)),   # modo rápido: hay cola y se decodifica más barato hasta vaciarla
+                                                      "perdidos_s": round(float(getattr(tr, "perdidos_s", 0.0) or 0.0), 1)},
             "captura": None if self.captura is None else {"errores": {k: str(v) for k, v in dict(self.captura.errores).items()}},
             "avisos": list(self.avisos), "consumo": self.consumo.resumen(),
             "revision": self.revision_publica(),
@@ -344,6 +355,7 @@ class Gestor:
         from .audio import Captura
         from .transcripcion import Transcriptor
         self.transcriptor = Transcriptor(self.cfg, self._on_texto)
+        self._perdidos_avisados, self._retraso_registrado, self._perdida_avisada_en = 0.0, 0.0, None
         self.transcriptor.idioma = self.idioma
         self.transcriptor.prompt = prompt_tema(recortar(tema, 80), "es")       # initial_prompt coherente con el idioma de cada tramo
         self.transcriptor.prompt_ca = prompt_tema(recortar(tema, 80), "ca")
@@ -354,7 +366,8 @@ class Gestor:
         self.transcriptor.entrega_palabras = True   # ola 4: word_timestamps (si `whisper_palabras`) y `on_texto(..., palabras=)`
         self.transcriptor.iniciar()
         self.captura = Captura(self.reloj.ahora, self._on_enunciado, self._on_nivel,
-                               self.cfg["dispositivo_mic"], self.cfg["dispositivo_sistema"])
+                               self.cfg["dispositivo_mic"], self.cfg["dispositivo_sistema"],
+                               vaciar_al_parar=True)   # al terminar, la frase a medias se transcribe en vez de perderse (hasta 25 s de reunión)
         try:
             await asyncio.to_thread(self.captura.iniciar)
         except Exception as e:  # noqa: BLE001
@@ -395,15 +408,15 @@ class Gestor:
             return
         seg = s.agregar_segmento(t, fuente, texto, palabras)   # ola 4: `palabras` = [{w, p, d}] con la confianza de Whisper (solo con audio real)
         s.duracion_s = max(s.duracion_s, self.reloj.ahora())
-        try:
-            s.guardar()  # guardado incremental: sobrevive a un cierre inesperado
-        except Exception as e:  # noqa: BLE001
-            self.avisos.append(f"No se pudo guardar la transcripción: {e}")
-        if seg.texto.strip():   # un Micro que era todo eco de Reunión no se muestra
+        if seg.texto.strip():   # un Micro que era todo eco de Reunión no se muestra. Primero a la pantalla, después al disco
             self.emitir("segmento", **seg.publico())
         cambios = s.recoger_cambios_eco()   # Micro anteriores a los que la llegada de este fragmento les quita (más) eco
         if cambios:
             self.emitir("segmento_eco", cambios=cambios)
+        try:
+            s.guardar()  # guardado incremental: sobrevive a un cierre inesperado
+        except Exception as e:  # noqa: BLE001
+            self.avisos.append(f"No se pudo guardar la transcripción: {e}")
 
     # ------------------------------------------------------------------ simulación
     async def _sim_bucle(self) -> None:
@@ -481,10 +494,44 @@ class Gestor:
                 await self._vigilar()
                 await self._protegida("asesor", self._asesor_paso)
                 await self._protegida("analisis", self._disparar_periodico)
+            if self.sesion:
+                await self._protegida("transcripcion", self._vigilar_transcripcion)
             await self._protegida("tick", self._emitir_tick)
 
     def _actualizar_duracion(self) -> None:
         self.sesion.duracion_s = self.reloj.ahora()
+
+    def _vigilar_transcripcion(self, forzar: bool = False) -> bool:
+        """Una vez por pasada (local, sin modelo). Si el transcriptor ha perdido audio (un tramo que falló también en su reintento, o el modelo
+        sin cargar) lo dice: incidencia en el .md con los segundos acumulados, aviso en la interfaz y línea en datos\\apuntes.log. La primera
+        pérdida se dice al momento; las siguientes, como mucho cada `AVISO_FALLO_CADA_S` (con el modelo caído se pierde audio en cada pasada: sin
+        ese límite serían cientos de avisos) y, con `forzar` (al terminar), lo que quede por decir. Si va con retraso, deja una línea de
+        diagnóstico como mucho cada `REGISTRO_RETRASO_CADA_S`. Solo medidas: nunca contenido de la reunión."""
+        tr = self.transcriptor
+        if tr is None:
+            return False
+        hecho = False
+        perdidos = float(getattr(tr, "perdidos_s", 0.0) or 0.0)
+        toca = forzar or self._perdida_avisada_en is None or time.monotonic() - self._perdida_avisada_en >= AVISO_FALLO_CADA_S
+        if perdidos > self._perdidos_avisados + 0.5 and toca:
+            nuevo, self._perdidos_avisados = perdidos - self._perdidos_avisados, perdidos
+            self._perdida_avisada_en = time.monotonic()
+            tipo = getattr(tr, "ultimo_fallo", "") or "sin modelo"
+            self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] transcripción: {int(round(nuevo))} s de audio sin transcribir ({tipo})")
+            if TEXTO_AUDIO_PERDIDO not in self.avisos:
+                self.avisos.append(TEXTO_AUDIO_PERDIDO)
+            self.emitir("aviso", mensaje=TEXTO_AUDIO_PERDIDO, componente="transcripcion", grave=False, prioridad="normal")
+            registrar_linea(f"transcripcion audio_perdido={nuevo:.1f}s total={perdidos:.1f}s tipo={tipo}")
+            hecho = True
+        retraso = float(getattr(tr, "retraso_s", 0.0) or 0.0)
+        ahora = time.monotonic()
+        if retraso >= RETRASO_A_REGISTRAR_S and ahora - self._retraso_registrado >= REGISTRO_RETRASO_CADA_S:
+            self._retraso_registrado = ahora
+            vel = getattr(tr, "velocidad_x", None)
+            registrar_linea(f"transcripcion retraso={retraso:.0f}s cola={tr.pendiente_s:.0f}s vel={'-' if vel is None else f'{vel:.1f}x'} "
+                            f"rapido={bool(getattr(tr, 'alcance', False))} reintentos={getattr(tr, 'reintentos', 0)} perdidos={perdidos:.0f}s")
+            hecho = True
+        return hecho
 
     def _emitir_tick(self) -> None:
         self.emitir("tick", **{k: v for k, v in self.estado_ligero().items() if k in ("t", "analisis", "transcripcion", "consumo", "avisos", "equipo", "asesor")})
@@ -1117,9 +1164,7 @@ class Gestor:
         if self.captura:
             await asyncio.to_thread(self.captura.detener)
         if self.transcriptor:
-            fin = time.time() + 180
-            while not self.transcriptor.vacio() and time.time() < fin and self.transcriptor.estado != "error":
-                await asyncio.sleep(0.3)
+            await self._esperar_transcripcion()
             self.transcriptor.detener()
         for t in self._tareas:
             if t is not asyncio.current_task() and t is not self._digest_tarea:
@@ -1138,6 +1183,34 @@ class Gestor:
         self._emitir_estado()
         asyncio.get_running_loop().create_task(self._generar_revision())
         return {"ok": True}
+
+    async def _esperar_transcripcion(self) -> None:
+        """Al terminar, espera a que el transcriptor vacíe su cola MIENTRAS avance (antes eran 180 s fijos y lo que quedaba se descartaba sin
+        dejar rastro). La interfaz ve cuánto falta (`transcripcion.pendiente_s` en el estado, cada 2 s). Si se deja de esperar (tope absoluto o
+        cola parada), el .md lleva una incidencia con los segundos de audio que quedaron sin transcribir y la interfaz un aviso."""
+        tr = self.transcriptor
+        ini = ultimo_avance = ultimo_estado = time.monotonic()
+        menor = tr.pendiente_s
+        while not tr.vacio() and tr.estado != "error":
+            ahora = time.monotonic()
+            p = tr.pendiente_s
+            if p < menor - 0.05:
+                menor, ultimo_avance = p, ahora
+            if ahora - ini > ESPERA_COLA_MAX_S or ahora - ultimo_avance > ESPERA_COLA_SIN_AVANCE_S:
+                break
+            if ahora - ultimo_estado >= 2.0:
+                ultimo_estado = ahora
+                self._emitir_estado()
+            await asyncio.sleep(0.3)
+        if self.sesion:   # el bucle de la reunión ya no corre: lo perdido durante el vaciado final (o justo antes) se dice aquí
+            with contextlib.suppress(Exception):
+                self._vigilar_transcripcion(forzar=True)
+        resto = tr.pendiente_s
+        if resto > 1.0 and self.sesion:
+            self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] transcripción incompleta: {int(round(resto))} s de audio sin transcribir al terminar")
+            texto = f"La transcripción está incompleta: quedaron {int(round(resto))} s de audio sin transcribir al terminar."
+            self.avisos.append(texto)
+            self.emitir("aviso", mensaje=texto, componente="transcripcion", grave=True, prioridad="fijo")
 
     async def lanzar_agentes_cierre(self) -> dict:
         """ola 4: el usuario confirma, en la revisión de una reunión en modo solo local, que SÍ se lancen los agentes del cierre (resumen final y cambios de contexto).
