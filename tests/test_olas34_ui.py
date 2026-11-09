@@ -265,7 +265,7 @@ def test_esto_esta_mal_en_el_monitor_y_en_las_tarjetas_con_deshacer(edge, pagina
     feed = f["monitor"]["feed"]
     feed[0].update(regla_tipo="senal:sistema", regla_texto="señal: sistema")
     abrir(edge, pagina, "grabando", monitor=dict(f["monitor"], feed=feed), tarjetas=[dict(t, id=f"t9-{i:04d}") for i, t in enumerate(f["tarjetas"])])
-    edge.js("localStorage.setItem('apuntes_orq_plegado', '0'); document.querySelector('#orq-plegar').click(); 1")
+    edge.js("document.querySelector('.nodo[data-nodo=equipo]').click(); 1")             # §0 Estéreo · flujo (2026-11-09): el detalle del equipo lo abre el nodo «Equipo», no desplegar la banda
     time.sleep(0.6)
     botones = json.loads(edge.js("JSON.stringify([...document.querySelectorAll('#eq-feed-lista > *')].map((x) => [x.className, !!x.querySelector('[data-accion=mal]')]))"))
     assert sum(1 for b in botones if b[1]) == 1, botones                                                                    # solo el que trae `regla_tipo` se puede silenciar
@@ -278,7 +278,7 @@ def test_esto_esta_mal_en_el_monitor_y_en_las_tarjetas_con_deshacer(edge, pagina
     time.sleep(0.5)
     assert llamadas(edge, r"^DELETE /api/reglas-silencio/")
     # tarjetas de agente (Avisos)
-    edge.js("document.querySelector('#orq-plegar').click(); 1")
+    edge.js("document.querySelector('.nodo[data-nodo=equipo]').click(); 1")             # cierra el detalle
     edge.js("document.querySelector('#r-insights .tarj[data-id=\"t9-0000\"] [data-accion=mal]').click(); 1")
     time.sleep(0.5)
     assert any(re.fullmatch(r"/api/avisos/t9-0000/mal", l[1]) for l in llamadas(edge, r"/mal$"))

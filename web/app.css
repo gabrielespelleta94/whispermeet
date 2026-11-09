@@ -277,8 +277,10 @@ main { flex: 1; min-height: 0; position: relative; }
 
 /* ---------- orquestación ---------- */
 :root { interpolate-size: allow-keywords; }
-.orq { position: relative; flex: none; display: grid; grid-template-columns: 408px minmax(0, 1fr); height: 122px; background: var(--grafito); border-bottom: 1px solid var(--hair);
+/* §0 Estéreo · flujo (2026-11-09): la banda es el centro visual de la reunión y llega desplegada: 176 px = rótulos de etapa (16) + dos filas de nodos de 56 (gap 10) entre 14 + 14 */
+.orq { position: relative; flex: none; display: grid; grid-template-columns: 320px minmax(0, 1fr); height: 176px; background: var(--grafito); border-bottom: 1px solid var(--hair);
   transition: height 260ms var(--salida); }
+@media (max-width: 1399px) { .orq { grid-template-columns: 288px minmax(0, 1fr); } }
 .orq.anima { overflow: hidden; }   /* el recorte solo dura el pliegue: el Registro se posa dentro de la banda y debe poder salir de ella */
 .orq[data-plegado="true"] { height: auto; min-height: 32px; }
 .orq-linea { position: relative; grid-column: 1; grid-row: 1; display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; column-gap: 8px; align-content: center; padding: 8px 16px; min-width: 0; }
@@ -289,6 +291,7 @@ main { flex: 1; min-height: 0; position: relative; }
 .ind[data-estado="pausa"] { border-color: var(--hair2); }
 .orq-l-txt { display: contents; }
 .orq-linea .orq-estado { grid-column: 2 / -1; grid-row: 1; }
+.orq[data-plegado="false"] .orq-linea .orq-estado:not([data-estado="error"]) { font-size: var(--f-14); line-height: 20px; font-weight: 600; color: var(--ink); }   /* la primera línea de estado, la que manda */
 .orq-linea .orq-fila-barra { grid-column: 2 / -1; grid-row: 2; }
 .orq-linea .orq-ult { grid-column: 2; grid-row: 3; }
 .orq-linea .orq-acc { grid-column: 3; grid-row: 3; align-self: center; }
@@ -301,9 +304,13 @@ main { flex: 1; min-height: 0; position: relative; }
 .orq-ult { overflow-wrap: anywhere; }
 .orq-ult.avisa { color: var(--warn); }
 .orq-acc { display: flex; gap: 0; align-items: center; }
-.orq-cuerpo { position: relative; grid-column: 2; grid-row: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 48px 48px; column-gap: 12px; row-gap: 6px; padding: 10px 16px 10px 0; height: 122px; min-width: 0;
+/* 7 columnas de nodos separadas por huecos de ancho propio (--g): en cada hueco cabe el rótulo de su conector (audio, texto, señales… ) cuando la ventana da de sí; si no, el rótulo se oculta */
+.orq-cuerpo { --g: clamp(22px, calc(7.8vw - 74px), 62px); position: relative; grid-column: 2; grid-row: 1; display: grid; grid-template-rows: 16px 56px 56px; row-gap: 10px; column-gap: 0; padding: 14px 16px 14px 0; height: 176px; min-width: 0;
+  grid-template-columns: minmax(0, 1fr) calc(var(--g) * 1.3) minmax(0, 1fr) calc(var(--g) * 1.55) minmax(0, 1fr) calc(var(--g) * 1.6) minmax(0, 1.5fr) calc(var(--g) * 2.7) minmax(0, 1fr) calc(var(--g) * 2) minmax(0, 1fr) calc(var(--g) * 1.3) minmax(0, 1fr);
   transition: opacity 200ms var(--salida); }
-.orq[data-plegado="true"] .orq-cuerpo { position: absolute; left: 408px; right: 0; top: 0; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 160ms var(--entrada), visibility 0s linear 160ms; }
+.orq-etapa { grid-row: 1; align-self: center; font-family: var(--mono); font-size: var(--f-11); line-height: 16px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--soft); white-space: nowrap; min-width: 0; }
+@media (max-width: 1440px) { .orq-etapa { letter-spacing: .05em; } }   /* hasta 1440 «Transcribe y lee» rozaba «Vigila» con el interletrado de marca (medido a 1280: 5 px) */
+.orq[data-plegado="true"] .orq-cuerpo { position: absolute; left: 320px; right: 0; top: 0; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 160ms var(--entrada), visibility 0s linear 160ms; }
 .orq[data-plegado="true"] .orq-linea { grid-column: 1 / -1; display: flex; align-items: center; min-height: 32px; padding: 6px 16px; gap: 8px; }
 .orq[data-plegado="true"] .ind { margin-top: 0; flex: none; }
 .orq[data-plegado="true"] .orq-l-txt { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; flex: 1; gap: 0; min-width: 0; }
@@ -322,19 +329,41 @@ main { flex: 1; min-height: 0; position: relative; }
 .orq[data-plegado="true"] .orq-acc { margin-left: auto; align-items: center; }
 
 .orq-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.enlace { stroke: var(--hair2); stroke-width: 1; fill: none; }
+.enlace { stroke: var(--hair2); stroke-width: 1.5; fill: none; opacity: .8; }   /* el degradado sala→micro de cada conector lo pone agentes.js como `stroke: url(#…)` */
+.enlace.de-sala { stroke: var(--sala); opacity: .75; }   /* lo que sale de «Reunión» es la voz de la sala; lo que sale de «Micro», la tuya */
+.enlace.de-micro { stroke: var(--micro); opacity: .75; }
+.gs-sala { stop-color: var(--sala); } .gs-micro { stop-color: var(--micro); }   /* los extremos de cada degradado, leídos de los tokens: siguen al tema sin recalcular */
+.enlace-etq { font-family: var(--mono); font-size: var(--f-11); font-weight: 500; fill: var(--soft); stroke: var(--grafito-op); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }   /* halo del color de la banda para leerse sobre la línea */
+.enlace-etq.sin-sitio { display: none; }
 /* haz de trabajo: UN solo trazo animado con los conectores que ENTRAN al nodo que trabaja (lo que está leyendo) y su estela estática de 6 px */
 .haz-g { stroke: var(--luz); stroke-width: 6; fill: none; opacity: 0; stroke-linecap: round; }
-.haz { stroke: var(--luz); stroke-width: 2; fill: none; stroke-dasharray: 10 14; opacity: 0; stroke-linecap: round; }
+.haz { stroke: var(--luz); stroke-width: 2; fill: none; stroke-dasharray: 10 14; opacity: 0; stroke-linecap: round; }   /* con el degradado del propio conector (inline) */
 .haz.on { opacity: 1; animation: haz 600ms linear infinite; }
 .haz-g.on { opacity: .25; }
 @keyframes haz { to { stroke-dashoffset: -24; } }
 .enlace-pulso { stroke: var(--acc); stroke-width: 2; fill: none; stroke-dasharray: 14 200; stroke-dashoffset: 14; stroke-linecap: round; opacity: 0; }
 
-.nodo { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0 6px 0 5px; text-align: left; cursor: pointer; color: var(--body); border-radius: var(--r-m); background: transparent; border: 1px solid var(--hair); box-shadow: none; }
+.nodo { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 5px 6px; text-align: left; cursor: pointer; color: var(--body); border-radius: var(--r-p); background: var(--grafito-op); border: 1px solid var(--hair); box-shadow: none; }   /* fondo opaco: el conector llega al canto y no atraviesa el texto */
 .nodo:hover { translate: none; background: var(--hover); border-color: var(--hair2); box-shadow: none; }   /* cuaderno: nodos de filete, sin vidrio ni elevación */
 .nodo-t { min-width: 0; flex: 1; display: flex; flex-direction: column; }
-.nodo-l1 { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; }
+.nodo-l1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nodo-l1 { padding-right: 0; }
+.nodo-l1 .nodo-marca { position: absolute; top: 7px; right: 6px; }   /* la marca de «hecho» no ocupa sitio en la línea del nombre: así «Transcriptor» o «Verificador» caben enteros */
+.nodo-canal .nodo-marca { display: none; }   /* los canales dicen su estado en el dato y llevan el medidor en esa esquina */
+/* canales: punto de 8 px de su color y medidor de 5 barras con el nivel real del audio (mismos umbrales que los de la cabecera) */
+.nodo-canal .nodo-l1 { gap: 4px; }
+.canal-dot { display: block; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--sala); }
+.nodo[data-nodo="micro"] .canal-dot { background: var(--micro); }
+.nodo-vu { position: absolute; top: 8px; right: 6px; display: flex; gap: 1px; align-items: center; height: 12px; }
+.nodo-vu i { display: block; width: 2px; height: 12px; background: var(--hair2); border-radius: 1px; transition: background-color 90ms linear; }
+.nodo[data-nodo="reunion"] .nodo-vu i.on { background: var(--sala); }
+.nodo[data-nodo="micro"] .nodo-vu i.on { background: var(--micro); }
+@media (max-width: 1279px) { .nodo-vu { display: none; } }
+/* «Equipo»: los cinco agentes con su icono y color; solo el que tiene una llamada abierta lleva el anillo */
+.nodo-av { display: flex; align-items: center; gap: 3px; margin: 4px 0 3px; }
+.nodo-av .av { width: 20px; height: 20px; border-radius: var(--r-m); }
+.nodo-av .av.ag-av .av-ic { width: 12px; height: 12px; }
+@media (max-width: 1279px) { .nodo-av .av { width: 18px; height: 18px; } }
 .nodo-nombre { font-size: var(--f-12); line-height: 15px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .nodo-l2 { font-size: var(--f-11); line-height: 13px; font-weight: 500; color: var(--soft); overflow-wrap: anywhere; }
 .nodo[data-estado="hecho"] .nodo-l2 { color: var(--body); }
@@ -353,8 +382,7 @@ main { flex: 1; min-height: 0; position: relative; }
 .mono { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: none; border-radius: var(--r-p); background: var(--acc-soft); color: var(--acc-t);
   font-size: var(--f-12); line-height: 16px; font-weight: 600; letter-spacing: 0; }
 .mono.local { background: transparent; border: 1px solid var(--hair2); color: var(--soft); }
-.nodo .mono { width: 24px; height: 24px; border-radius: 6px; font-size: var(--f-11); }
-@media (max-width: 1400px) { .nodo .mono { display: none; } .nodo { padding: 0 8px; } }   /* a 1280 px el nombre del agente se lee entero: el monograma cede (DESIGN-visual.md §0, sin textos cortados) */
+.nodo .mono { display: none; }   /* §0 Estéreo · flujo: el nodo se reconoce por su nombre, su punto de canal o los avatares del equipo; el monograma (que sigue en el DOM) ya no ocupa sitio */
 
 /* LUZ DE TRABAJO: solo existe con un evento `tarea` abierto. Halo fijo + anillo cónico en la propia lámina (una sola capa animada por elemento que trabaja) */
 .eq-tarj::after, .nodo::after { content: ""; display: none; opacity: 0; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
@@ -400,6 +428,7 @@ body[data-efectos="apagado"] .eq-tarj::after, body[data-efectos="apagado"] .nodo
 /* encabezado de zona (§0): --serif-d 15 en tinta y tipo frase; el contador, una cifra suelta en --soft */
 .panel-h .t-label, .checks-r summary .t-label, .panel-notas > summary .t-label { font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
 .panel-h .t-meta, .zona-h .n, .checks-r summary .n { font-size: var(--f-12); line-height: 16px; font-weight: 500; color: var(--soft); font-variant-numeric: tabular-nums; }
+.panel-trans > .panel-h .t-label { font-family: var(--mono); text-transform: uppercase; letter-spacing: .1em; font-size: var(--f-11); line-height: 16px; font-weight: 500; color: var(--soft); }   /* rótulo, no titular */
 .panel-h-ins .t-label { font-family: var(--sans); font-size: var(--f-12); line-height: 16px; font-weight: 600; color: var(--soft); }
 .tab-panel { display: none; flex: 1; }
 #v-reunion[data-tab="avisos"] #tab-avisos, #v-reunion[data-tab="pregunta"] #tab-pregunta, #v-reunion[data-tab="sesion"] #tab-sesion { display: flex; }   /* tres pestañas: Avisos, Pregúntale y Sesión */
@@ -427,7 +456,8 @@ body[data-efectos="apagado"] .eq-tarj::after, body[data-efectos="apagado"] .nodo
 .lin.yo .q { color: var(--micro-t); }
 .lin.yo .q::before { background: var(--micro); }   /* lista larga: punto plano, sin halo (§6) */
 .lin + .lin:not(.cambia) .q { gap: 0; max-width: 6px; overflow: hidden; color: transparent; }   /* misma voz que la línea anterior: queda el punto del canal y se calla el nombre (sigue en el DOM para lectores de pantalla) */
-.lin .x { overflow-wrap: anywhere; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 24px; font-weight: 400; color: var(--body); }
+.lin .x { overflow-wrap: anywhere; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-14); line-height: 21px; font-weight: 400; color: var(--soft); }
+.lin:nth-last-child(-n+3) .x, .lin:nth-last-child(4):has(~ .sep-analizado:last-child) .x { color: var(--body); }   /* §0 Estéreo · flujo: la transcripción es el telón de fondo; solo las tres últimas líneas se leen en primer plano */
 .lin.nueva { animation: aparece 180ms var(--salida) backwards; }
 @keyframes aparece { from { opacity: 0; } to { opacity: 1; } }
 .lin.destino { background: var(--hover); }

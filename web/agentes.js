@@ -20,24 +20,39 @@
   const hoyMs = (hora) => { const [a, b, c] = String(hora || "").split(":").map(Number); if ([a, b, c].some(Number.isNaN)) return null; const d = new Date(); d.setHours(a, b, c, 0); return d.getTime(); };
 
   // ------------------------------------------------------------ estado propio
-  const O = { tareas: new Map(), traza: [], plegado: true, plegadoRev: true, filtro: null, popover: false, inicioVisto: new Map(), crono: null };
-  try { const v = localStorage.getItem("apuntes_orq_plegado"); if (v === "0" || v === "1") O.plegado = v === "1"; } catch { /* sin almacenamiento: plegada, que es lo normal */ }   // por defecto plegada a una línea
+  const O = { tareas: new Map(), traza: [], plegado: false, plegadoRev: true, filtro: null, popover: false, inicioVisto: new Map(), crono: null };
+  // §0 Estéreo · flujo (2026-11-09): el flujo de agentes es el centro de la vista de reunión y llega DESPLEGADO. La preferencia «plegada» del diseño anterior era el valor por defecto de entonces y no una elección:
+  // una sola vez (`apuntes_orq_v` = «2») se descarta; a partir de ahí lo que el usuario pliegue se recuerda.
+  try {
+    if (localStorage.getItem("apuntes_orq_v") !== "2") { localStorage.removeItem("apuntes_orq_plegado"); localStorage.setItem("apuntes_orq_v", "2"); }
+    const v = localStorage.getItem("apuntes_orq_plegado"); if (v === "0" || v === "1") O.plegado = v === "1";
+  } catch { /* sin almacenamiento: desplegada */ }
 
   // Nodos: todos existen en la app. `local` = sin modelo de Claude. `discreto` = tarea con inicio y fin (lleva anillo mientras trabaja).
+  // La sala va primero (arriba) y el micro después, como en la cabecera. `canal` = nodo de captura con su punto y su medidor.
   const NODOS = [
-    { id: "micro", mono: "M", nombre: "Micro", completo: "Escucha del micrófono (captura)", col: 0, fila: 0, local: true },
-    { id: "reunion", mono: "R", nombre: "Reunión", completo: "Escucha del audio de la reunión (captura)", col: 0, fila: 1, local: true },
+    { id: "reunion", mono: "R", nombre: "Reunión", completo: "Escucha del audio de la reunión (captura)", col: 0, fila: 0, local: true, canal: "reunion" },
+    { id: "micro", mono: "M", nombre: "Micro", completo: "Escucha del micrófono (captura)", col: 0, fila: 1, local: true, canal: "yo" },
     { id: "transcriptor", mono: "TR", nombre: "Transcriptor", completo: "Transcriptor (Whisper, local)", col: 1, fila: 0, local: true, discreto: true },
     { id: "contexto", mono: "CX", nombre: "Contexto", completo: "Contexto (resumen de los ficheros del proyecto)", col: 1, fila: 1, discreto: true, tarea: "digest" },
     { id: "monitor", mono: "MO", nombre: "Monitor", completo: "Monitor (asistente local: revisa la conversación cada 30 s, detecta señales y definiciones y decide a quién le toca intervenir; sin modelo)", col: 2, fila: 0, local: true },
-    { id: "equipo", mono: "EQ", nombre: "Equipo", completo: "Equipo (Capitán, Lupa, Arquitecto, Auditor y Sherpa: cada intervención es una llamada al modelo; el Asesor responde a las preguntas del cliente)", col: 3, fila: 0.5, discreto: true, tarea: "equipo" },
+    { id: "equipo", mono: "EQ", nombre: "Equipo", completo: "Equipo (Capitán, Lupa, Arquitecto, Auditor y Sherpa: cada intervención es una llamada al modelo; el Asesor responde a las preguntas del cliente). Un clic abre u oculta su detalle", col: 3, fila: 0.5, discreto: true, tarea: "equipo" },
     { id: "verificador", mono: "VE", nombre: "Verificador", completo: "Verificador de contradicciones", col: 4, fila: 0, discreto: true, tarea: "contradicciones_confirmar" },
     { id: "consultas", mono: "PR", nombre: "Consultas", completo: "Consultas («Pregúntale»: una llamada por pregunta, solo si la lanzas)", col: 4, fila: 1, discreto: true, tarea: "consulta" },
     { id: "redactor", mono: "RE", nombre: "Redactor", completo: "Redactor del resumen final", col: 5, fila: 0.5, discreto: true, tarea: "final" },
     { id: "pulidor", mono: "PU", nombre: "Pulidor", completo: "Pulidor (solo si se pulsa «Pulir con Opus»)", col: 6, fila: 0.5, discreto: true, tarea: "pulido" },
   ];
-  const ENLACES = [["micro", "transcriptor"], ["reunion", "transcriptor"], ["transcriptor", "monitor"], ["monitor", "equipo"], ["contexto", "equipo"],
-    ["equipo", "verificador"], ["equipo", "consultas"], ["verificador", "redactor"], ["redactor", "pulidor"]];
+  // Rótulo de cada columna (texto fijo y explicativo: qué hace esa etapa). `ancho` = pistas que ocupa (la segunda es el hueco hasta la columna siguiente)
+  const ETAPAS = [["Escucha", 1], ["Transcribe y lee", 2], ["Vigila", 1], ["Analiza", 1], ["Comprueba", 1], ["Redacta", 1], ["Pule", 1]];
+  // `jog`: dónde hace el quiebro cuando los dos extremos no están a la misma altura. «destino» = junto al nodo que recibe (las entradas de un mismo nodo llegan por tramos largos y distintos);
+  // «origen» = junto al nodo que emite (las salidas de un mismo nodo salen por tramos largos y distintos). `col`: color de la voz que sale (solo de los canales); el resto, degradado sala→micro.
+  const ENLACES = [
+    { a: "reunion", b: "transcriptor", etq: "audio", col: "sala" }, { a: "micro", b: "transcriptor", etq: "audio", col: "micro", jog: "destino" },
+    { a: "transcriptor", b: "monitor", etq: "texto" }, { a: "monitor", b: "equipo", etq: "señales", jog: "destino" }, { a: "contexto", b: "equipo", etq: "contexto", jog: "destino" },
+    { a: "equipo", b: "verificador", etq: "contradicciones", jog: "origen" }, { a: "equipo", b: "consultas", etq: "preguntas", jog: "origen" },
+    { a: "verificador", b: "redactor", etq: "confirmado", jog: "destino" }, { a: "redactor", b: "pulidor", etq: "resumen" },
+  ];
+  const JOG = 10;   // px del quiebro respecto al nodo
   const AGENTES_EQUIPO = ["coordinador", "funcional", "constructor", "revisor", "analista", "estratega", "asesor"];   // el Estratega y el asesor (respuestas y «Profundizar») también trabajan bajo el nodo «Equipo"   // «analista» = el análisis generalista de las cadencias de 5 y 10 min
   // Nombres, monogramas e iconos: UN solo mapa (nombres.js). Capitán, Lupa, Arquitecto, Auditor y Sherpa son los cinco del equipo; Monitor y Asesor completan la tira.
   const NOMBRE_AGENTE = { "monitor-feed": "Minuto a minuto del Monitor", equipo: "Equipo" };
@@ -45,7 +60,8 @@
   for (const k of ["monitor", "coordinador", "funcional", "constructor", "revisor", "analista", "estratega", "asesor"]) { NOMBRE_AGENTE[k] = AP.nombreAgente(k); MONO_PERFIL[k] = AP.agente(k).mono; }
   const ETQ = { espera: "En espera", trabajando: "Trabajando", hecho: "Hecho", error: "Error", omitido: "Omitido" };
   const AVATARES = ["monitor", "coordinador", "funcional", "constructor", "revisor", "estratega", "asesor"].map((k) => [k, AP.agente(k).mono, AP.agente(k).nombre]);   // el orden de la tira
-  const DOM = { avatares: {}, nodos: {}, monos: {}, enlaces: {}, svg: null, linea: {}, haz: null, hazG: null, activos: [] };
+  const AV_EQUIPO = ["coordinador", "funcional", "constructor", "revisor", "estratega"];   // los cinco del nodo «Equipo»: Capitán, Lupa, Arquitecto, Auditor y Sherpa
+  const DOM = { avatares: {}, avEq: {}, vu: {}, nodos: {}, monos: {}, enlaces: {}, svg: null, defs: null, linea: {}, activos: [] };
 
   // ------------------------------------------------------------ datos reales
   const tareasDe = (agente) => [...O.tareas.values()].filter((t) => (agente === "equipo" ? AGENTES_EQUIPO.includes(t.agente) : t.agente === agente)).sort((a, b) => String(a.id).localeCompare(String(b.id), "es", { numeric: true }));
@@ -159,11 +175,11 @@
     const reg = h("button", { class: "btn btn-ghost btn-mini", type: "button", id: "orq-registro", "aria-haspopup": "dialog", "aria-expanded": "false",
       onclick: (ev) => { ev.stopPropagation(); O.filtro = null; abrirRegistro(); } }, "Registro");
     const plegar = h("button", { class: "btn btn-ghost btn-mini", type: "button", id: "orq-plegar", "aria-expanded": String(!O.plegado), "aria-controls": "orq-cuerpo",
-      title: "Plegar o desplegar el detalle del equipo", onclick: () => {
+      title: "Plegar o desplegar el flujo de agentes", onclick: () => {
         if (document.body.dataset.vista === "revision") O.plegadoRev = !O.plegadoRev;   // en la revisión llega desplegada; plegarla no cambia la preferencia de la reunión
         else { O.plegado = !O.plegado; try { localStorage.setItem("apuntes_orq_plegado", O.plegado ? "1" : "0"); } catch { /* ok */ } }
         aplicarPliegue(true);
-      } }, "Detalle");
+      } }, "Plegar");
     // Tira plegada (36 px): iniciales de los agentes; solo "trabaja" el que tiene una llamada abierta (evento `tarea`). Un clic en la tira despliega el detalle.
     const avatares = h("span", { class: "orq-avatares", role: "group", "aria-label": "Agentes del equipo" },
       AVATARES.map(([id, mono, nombre]) => { const ag = AP.agente(id); const a = h("span", { class: "av ag-av", "data-agente": id, "data-estado": "espera", title: nombre + ": en espera", style: `--ag: ${ag.color}` }, AP.icono(ag.icono, "av-ic")); DOM.avatares[id] = a; return a; }));
@@ -173,27 +189,57 @@
     Object.assign(DOM.linea, { ind, est, res, barra, pal, prox, ult, reg, plegar });
     const cuerpo = h("div", { class: "orq-cuerpo", id: "orq-cuerpo" });
     DOM.svg = sv("svg", { class: "orq-svg", "aria-hidden": "true" });
+    DOM.defs = sv("defs");
+    DOM.svg.append(DOM.defs);
     cuerpo.append(DOM.svg);
+    // rótulos de etapa, uno por columna
+    ETAPAS.forEach(([txt, ancho], i) => cuerpo.append(h("span", { class: "orq-etapa", style: `grid-column: ${2 * i + 1} / span ${ancho}` }, txt)));
     NODOS.forEach((n) => {
       const marca = sv("svg", { class: "nodo-marca", viewBox: "0 0 16 16", "aria-hidden": "true" }, sv("path", { d: "M4 8.4l2.7 2.7L12 5.6", pathLength: "100" }));
       const mono = h("span", { class: "mono" + (n.local ? " local" : ""), "aria-hidden": "true" }, n.mono);
-      const b = h("button", { class: "nodo", type: "button", "data-nodo": n.id, "data-estado": "espera", title: n.completo,
-        onclick: (ev) => { ev.stopPropagation(); O.filtro = n.id; abrirRegistro(); } },
-      mono, h("span", { class: "nodo-t" }, h("span", { class: "nodo-l1" }, h("span", { class: "nodo-nombre" }, n.nombre), marca), h("span", { class: "nodo-l2 t-meta" })));
-      b.style.gridColumn = String(n.col + 1);
-      b.style.gridRow = n.fila === 0.5 ? "1 / span 2" : String(n.fila + 1);
+      const l1 = h("span", { class: "nodo-l1" });
+      if (n.canal) l1.append(h("i", { class: "canal-dot", "aria-hidden": "true" }));
+      l1.append(h("span", { class: "nodo-nombre" }, n.nombre), marca);
+      if (n.canal) {   // medidor del canal: los MISMOS niveles reales que los de la cabecera (AP.hooks.medidor); sin señal, apagado
+        const vu = h("span", { class: "nodo-vu", "aria-hidden": "true" }, h("i"), h("i"), h("i"), h("i"), h("i"));
+        DOM.vu[n.canal] = vu; l1.append(vu);
+      }
+      const partes = [l1];
+      if (n.id === "equipo") {   // los cinco del equipo, con el mismo icono y color que la tira plegada; el que tiene una llamada abierta lleva el anillo
+        partes.push(h("span", { class: "nodo-av", role: "group", "aria-label": "Agentes del equipo" }, AV_EQUIPO.map((id) => {
+          const ag = AP.agente(id), el = h("span", { class: "av ag-av", "data-agente": id, "data-estado": "espera", title: ag.nombre + ": en espera", style: `--ag: ${ag.color}` }, AP.icono(ag.icono, "av-ic"));
+          DOM.avEq[id] = el; return el;
+        })));
+      }
+      partes.push(h("span", { class: "nodo-l2 t-meta" }));
+      const alto = n.fila === 0.5;
+      const b = h("button", { class: "nodo" + (n.canal ? " nodo-canal" : "") + (alto ? " nodo-alto" : ""), type: "button", "data-nodo": n.id, "data-estado": "espera", title: n.completo,
+        ...(n.id === "equipo" ? { "aria-expanded": "false", "aria-controls": "orq-equipo" } : {}),
+        onclick: (ev) => { ev.stopPropagation(); if (n.id === "equipo") detalleEquipo(); else { O.filtro = n.id; abrirRegistro(); } } },
+      mono, h("span", { class: "nodo-t" }, ...partes));
+      b.style.gridColumn = String(n.col * 2 + 1);
+      b.style.gridRow = alto ? "2 / span 2" : String(n.fila + 2);
       DOM.nodos[n.id] = b; DOM.monos[n.id] = mono;
       cuerpo.append(b);
     });
-    ENLACES.forEach(([a, bb]) => {
-      const p = sv("path", { class: "enlace", fill: "none" });
+    // conectores: un degradado sala→micro POR conector (userSpaceOnUse: con un trazo perfectamente horizontal la caja del objeto mide 0 de alto y un degradado relativo no pinta)
+    ENLACES.forEach((en) => {
+      const id = "gr-" + en.a + "-" + en.b;
+      let grad = null;
+      if (!en.col) {
+        grad = sv("linearGradient", { id, gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 1, y2: 0 }, sv("stop", { class: "gs-sala", offset: "0" }), sv("stop", { class: "gs-micro", offset: "1" }));
+        DOM.defs.append(grad);
+      }
+      const p = sv("path", { class: "enlace" + (en.col ? " de-" + en.col : ""), fill: "none" });
       const pulso = sv("path", { class: "enlace-pulso", fill: "none", pathLength: "100" });
+      const haz = sv("path", { class: "haz", fill: "none" }), hazG = sv("path", { class: "haz-g", fill: "none" });
+      const etq = sv("text", { class: "enlace-etq", "text-anchor": "middle", dy: ".35em" }); etq.textContent = en.etq;
+      if (grad) { const u = `url(#${id})`; p.style.stroke = u; haz.style.stroke = u; pulso.style.stroke = u; }
       DOM.svg.append(p);
-      DOM.enlaces[a + ">" + bb] = { p, pulso, a, b: bb, d: "" };
+      DOM.enlaces[en.a + ">" + en.b] = { ...en, p, pulso, haz, hazG, etq, grad, d: "" };
     });
-    // el haz es UN solo trazo (con su estela estática) que recorre a la vez los conectores que entran en el nodo que trabaja; los pulsos de salida van por encima
-    DOM.hazG = sv("path", { class: "haz-g", fill: "none" }); DOM.haz = sv("path", { class: "haz", fill: "none" });
-    DOM.svg.append(DOM.hazG, DOM.haz, ...Object.values(DOM.enlaces).map((e) => e.pulso));
+    // el haz recorre SOLO los conectores que entran en el nodo que trabaja (cada uno con su degradado); los pulsos de fin de tarea van por encima
+    DOM.svg.append(...Object.values(DOM.enlaces).map((e) => e.hazG), ...Object.values(DOM.enlaces).map((e) => e.haz), ...Object.values(DOM.enlaces).map((e) => e.pulso), ...Object.values(DOM.enlaces).map((e) => e.etq));
     orq.replaceChildren(linea, cuerpo);
     aplicarPliegue();
     // alturas que fijan lo de alrededor: la cabecera (puede crecer si el tema envuelve) y la banda (su línea crece con el texto)
@@ -203,7 +249,13 @@
     window.addEventListener("resize", () => aplicarPliegue());
     new MutationObserver(() => aplicarPliegue()).observe(document.body, { attributes: true, attributeFilter: ["data-vista", "data-modo"] });
     document.addEventListener("click", (ev) => { if (O.popover && !ev.target.closest(".registro")) cerrarRegistro(); });
-    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && O.popover) { cerrarRegistro(); DOM.linea.reg.focus(); } });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      if (O.popover) { cerrarRegistro(); DOM.linea.reg.focus(); }
+      else if (detalleAbierto()) { detalleEquipo(false); DOM.nodos.equipo.focus(); }   // Esc cierra el detalle y devuelve el foco al nodo «Equipo»
+    });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => trazarEnlaces());   // el ancho de los rótulos depende de la tipografía
+    new MutationObserver(() => trazarEnlaces()).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
   }
 
   // Plegado: altura interpolada (260 ms). En la revisión llega desplegada; en el Modo reunión y en ventanas estrechas, siempre plegada a su línea
@@ -220,11 +272,28 @@
       DOM.raiz.dataset.plegado = String(pleg);
     }
     DOM.linea.plegar.setAttribute("aria-expanded", String(!usuario));
-    DOM.linea.plegar.textContent = usuario ? "Detalle" : "Plegar";
+    DOM.linea.plegar.textContent = usuario ? "Ver flujo" : "Plegar";
+    if ((pleg || document.body.dataset.vista !== "reunion") && detalleAbierto()) detalleEquipo(false);   // el detalle cuelga de la banda desplegada de la reunión
     requestAnimationFrame(trazarEnlaces);
   }
 
-  // Conectores: ortogonales, entre el borde derecho de un nodo y el izquierdo del siguiente (medidos en el DOM)
+  // Detalle del equipo (#orq-equipo: tarjetas de agente, definiciones y minuto a minuto): se abre y se cierra SOLO con el nodo «Equipo» (o la paleta); desplegar la banda ya no lo abre
+  const detalleAbierto = () => { const p = $("#orq-equipo"); return !!p && p.dataset.abierto === "true"; };
+  function detalleEquipo(abrir) {
+    const p = $("#orq-equipo"); if (!p || !DOM.nodos.equipo) return;
+    const nuevo = abrir == null ? !detalleAbierto() : !!abrir;
+    if (nuevo && DOM.raiz.dataset.plegado === "true") {   // desde la paleta con la banda plegada: se despliega primero (si la ventana o el Modo reunión lo impiden, no hay detalle)
+      if (plegadoEfectivo() && (document.body.dataset.modo === "reunion" || window.innerWidth < 1100 || document.body.dataset.vista === "revision")) return;
+      O.plegado = false; try { localStorage.setItem("apuntes_orq_plegado", "0"); } catch { /* ok */ } aplicarPliegue(true);
+    }
+    p.dataset.abierto = String(nuevo);
+    DOM.nodos.equipo.setAttribute("aria-expanded", String(nuevo));
+    if (nuevo) cerrarRegistro();
+  }
+  AP.detalleEquipo = detalleEquipo;
+
+  // Conectores: ortogonales, entre el borde derecho de un nodo y el izquierdo del siguiente (medidos en el DOM). Cada conector lleva su rótulo en el tramo horizontal
+  // más largo (el que no comparte con otro conector del mismo nodo); si no cabe (rótulo + 12 px) se oculta entero, nunca se corta
   function trazarEnlaces() {
     if (!DOM.svg || DOM.raiz.dataset.plegado === "true") return;
     const base = DOM.svg.parentElement.getBoundingClientRect();
@@ -233,24 +302,34 @@
     for (const e of Object.values(DOM.enlaces)) {
       const A = DOM.nodos[e.a].getBoundingClientRect(), B = DOM.nodos[e.b].getBoundingClientRect();
       const x1 = A.right - base.left, y1 = A.top + A.height / 2 - base.top, x2 = B.left - base.left, y2 = B.top + B.height / 2 - base.top;
-      const xm = x1 + (x2 - x1) / 2;
-      const d = Math.abs(y1 - y2) < 1 ? `M${x1},${y1} H${x2}` : `M${x1},${y1} H${xm} V${y2} H${x2}`;
-      e.p.setAttribute("d", d); e.pulso.setAttribute("d", d); e.d = d;
+      let d, t0, t1, ty;   // tramo del rótulo
+      if (Math.abs(y1 - y2) < 1) { d = `M${x1},${y1} H${x2}`; t0 = x1; t1 = x2; ty = y1; }
+      else if (e.jog === "origen") { const xj = x1 + JOG; d = `M${x1},${y1} H${xj} V${y2} H${x2}`; t0 = xj; t1 = x2; ty = y2; }
+      else { const xj = x2 - JOG; d = `M${x1},${y1} H${xj} V${y2} H${x2}`; t0 = x1; t1 = xj; ty = y1; }
+      for (const p of [e.p, e.pulso]) p.setAttribute("d", d);
+      e.d = d;
+      if (e.grad) { e.grad.setAttribute("x1", x1); e.grad.setAttribute("x2", x2); e.grad.setAttribute("y1", y1); e.grad.setAttribute("y2", y1); }
+      // rótulo: centrado en el tramo, con un halo del color de la banda; si no cabe, fuera (display none) para que no se corte
+      e.etq.classList.remove("sin-sitio");
+      const ancho = e.etq.getComputedTextLength();
+      if (t1 - t0 < ancho + 12) e.etq.classList.add("sin-sitio");
+      else { e.etq.setAttribute("x", (t0 + t1) / 2); e.etq.setAttribute("y", ty); }
     }
     pintarHaz();
   }
   function pintarHaz() {
-    if (!DOM.haz) return;
-    const d = DOM.activos.map((e) => e.d).filter(Boolean).join(" ");
-    DOM.haz.setAttribute("d", d); DOM.hazG.setAttribute("d", d);
-    DOM.haz.classList.toggle("on", !!d); DOM.hazG.classList.toggle("on", !!d);
+    for (const e of Object.values(DOM.enlaces)) {
+      const on = DOM.activos.includes(e);
+      if (on) { e.haz.setAttribute("d", e.d); e.hazG.setAttribute("d", e.d); }
+      e.haz.classList.toggle("on", on); e.hazG.classList.toggle("on", on);
+    }
   }
 
   // ------------------------------------------------------------ render
   let pendiente = false;
   function programar() { if (pendiente) return; pendiente = true; requestAnimationFrame(() => { pendiente = false; render(); }); }
 
-  const corto = (lista) => { const out = []; let n = 0; for (const x of lista) { if (out.length && n + x.length + 3 > 30) break; out.push(x); n += x.length + 3; } return out.join(" · "); };
+  const corto = (lista, tope = 30) => { const out = []; let n = 0; for (const x of lista) { if (out.length && n + x.length + 3 > tope) break; out.push(x); n += x.length + 3; } return out.join(" · "); };
   function render() {
     construir();
     if (!DOM.raiz) return;
@@ -269,7 +348,7 @@
       const lista = e.sinAnillo ? [etq, ...e.partes] : [etq, ...partes];
       const texto = lista.join(" · ");   // completo: va al tooltip y a la etiqueta accesible
       // en el nodo (48 px, dato de 11/13 que envuelve) solo cabe lo esencial: mientras trabaja, quién y cuánto lleva; en reposo, estado y lo primero
-      const visible = corto(e.curso && !e.sinAnillo ? partes : lista);
+      const visible = corto(e.curso && !e.sinAnillo ? partes : lista, b.classList.contains("nodo-alto") ? 60 : 26);   // un nodo de una fila (56 px) tiene sitio para dos líneas de dato; los altos, para cuatro
       if (l2.textContent !== visible) l2.textContent = visible;
       b.setAttribute("aria-label", `${n.completo}: ${texto}`);
       b.title = `${n.completo}: ${texto}`;
@@ -278,10 +357,12 @@
     DOM.activos = Object.values(DOM.enlaces).filter((e) => estados[e.b].estado === "trabajando" && !!estados[e.b].curso && !estados[e.b].sinAnillo);
     pintarHaz();
     for (const [id, , nombre] of AVATARES) {
-      const a = DOM.avatares[id]; if (!a) continue;
       const trabaja = id !== "monitor" && enCurso(id).length > 0;
       const est = trabaja ? "trabajando" : id === "monitor" ? (S.estado === "grabando" ? "escucha" : "espera") : ultima(id) ? "hecho" : "espera";
-      if (a.dataset.estado !== est) { a.dataset.estado = est; a.title = nombre + ": " + ({ trabajando: "trabajando ahora", escucha: "escuchando (local)", hecho: "ya ha intervenido", espera: "en espera" })[est]; }
+      for (const a of [DOM.avatares[id], DOM.avEq[id]]) {   // la tira plegada y los cinco del nodo «Equipo»: el mismo estado real (solo trabaja el que tiene una llamada abierta)
+        if (!a) continue;
+        if (a.dataset.estado !== est) { a.dataset.estado = est; a.title = nombre + ": " + ({ trabajando: "trabajando ahora", escucha: "escuchando (local)", hecho: "ya ha intervenido", espera: "en espera" })[est]; }
+      }
     }
     linea(estados);
     resumenPlegado(estados);
@@ -421,9 +502,8 @@
     }
   }
   AP.hooks.medidor = (f, v) => {
-    const el = $("#vu-" + f); if (!el) return;
-    const n = Math.round(v / 20);
-    [...el.children].forEach((i, k) => i.classList.toggle("on", k < n));
+    const n = Math.round(v / 20);   // mismos umbrales para la cabecera y para los nodos «Reunión» y «Micro» de la banda (nivel real del audio; sin él, apagado)
+    for (const el of [$("#vu-" + f), DOM.vu[f]]) if (el) [...el.children].forEach((i, k) => i.classList.toggle("on", k < n));
   };
 
   // Pie: contexto a la izquierda, tokens a la derecha; cambia en seco
@@ -556,6 +636,7 @@
 
   function abrirRegistro() {
     cerrarRegistro(true);
+    if (detalleAbierto()) detalleEquipo(false);
     O.popover = true;
     DOM.linea.reg.setAttribute("aria-expanded", "true");
     const nodo = O.filtro ? (NODOS.find((n) => n.id === O.filtro) || (NOMBRE_AGENTE[O.filtro] ? { id: O.filtro, nombre: NOMBRE_AGENTE[O.filtro] } : null)) : null;

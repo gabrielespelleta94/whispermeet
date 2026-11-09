@@ -143,7 +143,8 @@ def test_una_fila_en_la_cabecera_sin_scroll_de_pagina_y_solo_la_escala(tmp_path,
         assert 44 <= r["cab"] <= 52, r                                                         # UNA fila (48 + el filete)
         assert r["docAlto"] <= r["alto"] and r["docAncho"] <= r["ancho"], r                      # la página no se desplaza
         assert set(r["tamanos"]) <= ESCALA, r["tamanos"]                                         # solo los cinco tamaños de la escala
-        assert r["orq"] == "true" and r["orqAlto"] <= 40 and r["cron"] == 22.0 and r["notas"] is False, r   # Orquestación y Notas plegadas; cronómetro del titular
+        # §0 Estéreo · flujo (2026-11-09): la banda de flujo llega DESPLEGADA (176 px) y es el centro de la vista; las Notas siguen plegadas
+        assert r["orq"] == "false" and r["orqAlto"] == 176 and r["cron"] == 22.0 and r["notas"] is False, r
         assert re.fullmatch(r"Equipo [^·]+ · Monitor [^·]+ · \d+ (intervención|intervenciones|análisis)( · [\d,.]+k? tokens)?", r["resumen"]), r["resumen"]
     finally:
         e.cerrar()
@@ -153,17 +154,32 @@ def test_la_orquestacion_se_despliega_con_un_clic_y_recuerda_la_preferencia(tmp_
     e = Edge(tmp_path, _puerto())
     try:
         _abrir(e, pagina)
-        assert e.js("document.querySelector('#orq').dataset.plegado") == "true"
+        # §0 Estéreo · flujo (2026-11-09): por defecto desplegada; «Plegar» la deja en la tira de 36 px («Ver flujo») y la preferencia se recuerda;
+        # desplegarla NO abre el detalle del equipo (lo abre el nodo «Equipo»); la preferencia «plegada» del diseño anterior se descarta una sola vez (apuntes_orq_v)
+        assert e.js("document.querySelector('#orq').dataset.plegado") == "false" and e.js("document.querySelector('#orq-plegar').textContent") == "Plegar"
+        assert e.js("document.querySelector('#orq').getBoundingClientRect().height") >= 170
         e.js("document.querySelector('#orq-plegar').click(); 1")
         time.sleep(0.5)
-        assert e.js("document.querySelector('#orq').dataset.plegado") == "false" and e.js("localStorage.getItem('apuntes_orq_plegado')") == "0"
-        assert e.js("document.querySelector('#orq').getBoundingClientRect().height") >= 120
+        assert e.js("document.querySelector('#orq').dataset.plegado") == "true" and e.js("localStorage.getItem('apuntes_orq_plegado')") == "1"
+        assert e.js("document.querySelector('#orq-plegar').textContent") == "Ver flujo" and e.js("document.querySelector('#orq').getBoundingClientRect().height") <= 40
         _abrir(e, pagina)                                                                       # la preferencia sobrevive (sin borrar localStorage)
-        e.js("localStorage.setItem('apuntes_orq_plegado', '0'); 1")
+        e.js("localStorage.setItem('apuntes_orq_plegado', '1'); localStorage.setItem('apuntes_orq_v', '2'); 1")
         e.abrir(pagina.as_uri())
         e.js("window.__emitir(Object.assign({tipo: 'snapshot'}, %s)); 1" % json.dumps(foto()))
         time.sleep(0.8)
-        assert e.js("document.querySelector('#orq').dataset.plegado") == "false"
+        assert e.js("document.querySelector('#orq').dataset.plegado") == "true"
+        e.js("localStorage.removeItem('apuntes_orq_v'); 1")                                     # una preferencia vieja (sin versión) se descarta: vuelve desplegada
+        e.abrir(pagina.as_uri())
+        e.js("window.__emitir(Object.assign({tipo: 'snapshot'}, %s)); 1" % json.dumps(foto()))
+        time.sleep(0.8)
+        assert e.js("document.querySelector('#orq').dataset.plegado") == "false" and e.js("localStorage.getItem('apuntes_orq_v')") == "2"
+        assert e.js("getComputedStyle(document.querySelector('#orq-equipo')).display") == "none"      # desplegar no abre el detalle
+        e.js("document.querySelector('.nodo[data-nodo=equipo]').click(); 1")
+        time.sleep(0.3)
+        assert e.js("getComputedStyle(document.querySelector('#orq-equipo')).display") == "block" and e.js("document.querySelector('.nodo[data-nodo=equipo]').getAttribute('aria-expanded')") == "true"
+        e.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); 1")
+        time.sleep(0.3)
+        assert e.js("getComputedStyle(document.querySelector('#orq-equipo')).display") == "none" and e.js("document.activeElement.dataset.nodo") == "equipo"
     finally:
         e.cerrar()
 
@@ -213,7 +229,8 @@ def test_consejos_compactos_caben_cuatro_a_1080(tmp_path, pagina):
           return { alto_panel: Math.round(p.height), alto_ventana: innerHeight, n: cs.length, caben: cs.filter((c) => { const b = c.getBoundingClientRect(); return b.top >= p.top - 1 && b.bottom <= p.bottom + 1; }).length, alto: Math.round(cs[0].getBoundingClientRect().height),
             titular: parseFloat(getComputedStyle(cs[0].querySelector('.as-accion')).fontSize), peso: getComputedStyle(cs[0].querySelector('.as-accion')).fontWeight, porque: parseFloat(getComputedStyle(cs[0].querySelector('.as-porque')).fontSize) }; })()""")
         assert r["alto_panel"] < r["alto_ventana"], r                                           # la pestaña NO crece con el contenido: hace scroll en sí misma
-        assert r["n"] == 6 and r["caben"] >= 3 and r["titular"] == 15.0 and r["peso"] == "600" and r["porque"] == 14.0, r
+    # §0 Estéreo · flujo (2026-11-09): con la banda de flujo desplegada (176 px) la pestaña mide ~420 px a 1080: caben dos consejos enteros a la vez (antes, con la banda plegada, tres)
+        assert r["n"] == 6 and r["caben"] >= 2 and r["titular"] == 15.0 and r["peso"] == "600" and r["porque"] == 14.0, r
     finally:
         e.cerrar()
 
@@ -259,7 +276,11 @@ def test_modo_reunion_hereda_la_escala_y_las_pestanas(tmp_path, pagina):
 
 # ============================================================ avisos emergentes: nunca tapan nada
 MEDIR_AVISOS = """(() => {
-  const caja = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
+  // §0 Estéreo · flujo (2026-11-09): con la banda desplegada la parte de arriba de «Ahora» cede y hace scroll en sí misma; lo que cuenta es lo VISIBLE (el rectángulo recortado por su contenedor con scroll),
+  // no el contenido desplazado fuera de él
+  const caja = (el) => { const r = el.getBoundingClientRect(); const c = { l: r.left, t: r.top, r: r.right, b: r.bottom };
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p); if (o.overflowY !== 'visible' && o.overflowY !== 'clip' && p.id !== 'r-notifs') { const q = p.getBoundingClientRect(); c.t = Math.max(c.t, q.top); c.b = Math.min(c.b, q.bottom); } }
+    return { l: c.l, t: c.t, r: c.r, b: c.b, w: c.r - c.l, h: Math.max(0, c.b - c.t) }; };
   const cruza = (a, b) => a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
   const avisos = [...document.querySelectorAll('#r-notifs .notif:not(.saliendo)')].filter((n) => n.getBoundingClientRect().height > 0);
   const fijos = { ahora: '#as-carril', paso: '#ahora-paso', pestanas: '#r-tabs', avisos: '#tab-avisos', objetivos: '#zona-obj', pregunta: '#tab-pregunta', sesion: '#tab-sesion' };
@@ -272,7 +293,7 @@ MEDIR_AVISOS = """(() => {
   const mas = document.querySelector('#r-notifs .notif-mas');
   return { n: avisos.length, cruces, tipos: avisos.map((a) => a.dataset.k), opacos: avisos.map((a) => { const c = getComputedStyle(a); const m = c.backgroundColor.match(/[\d.]+/g); return [m.length > 3 ? Number(m[3]) : 1, c.backdropFilter]; }),
     mas: mas && !mas.hidden ? mas.textContent : null, dentro: avisos.every((a) => { const r = a.getBoundingClientRect(); return r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5; }),
-    ahora: document.querySelector('.as-ahora') ? caja(document.querySelector('.as-ahora')).h : 0 };
+    ahora: document.querySelector('.as-ahora') ? document.querySelector('.as-ahora').getBoundingClientRect().height : 0 };
 })()"""
 
 

@@ -140,6 +140,8 @@ def test_el_aviso_se_cierra_y_no_vuelve_en_esa_sesion(edge, pagina):
 
 def test_orquestacion_plegada_es_una_tira_de_36_px_con_avatares(edge, pagina):
     _abrir_reunion(edge, pagina)
+    edge.js("document.querySelector('#orq-plegar').click(); 1")                                # §0 Estéreo · flujo (2026-11-09): la banda llega desplegada; aquí se mide la tira, plegada a mano
+    time.sleep(0.5)
     r = json.loads(edge.js("""JSON.stringify((() => {
       const o = document.querySelector('#orq'), r = o.getBoundingClientRect();
       return { alto: r.height, plegado: o.dataset.plegado, avatares: [...o.querySelectorAll('.av')].map((a) => a.title.split(':')[0]), animados: [...o.querySelectorAll('.av')].filter((a) => a.dataset.estado === 'trabajando').length };

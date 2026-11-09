@@ -23,7 +23,8 @@
 
 /* ---------- reunión en TRES zonas: Transcripción | Ahora | Objetivos (utilizable desde 1024 px) ---------- */
 @media (min-width: 900px) {
-  .reunion-grid { grid-template-columns: minmax(300px, .95fr) minmax(380px, 1.35fr) minmax(244px, .7fr); gap: 0; padding: 8px 24px 12px; }
+  /* §0 Estéreo · flujo (2026-11-09): la transcripción pasa a segundo plano (columna estrecha) y «Ahora» se queda con el ancho liberado; Objetivos, como antes (≈ .7fr) */
+  .reunion-grid { grid-template-columns: clamp(280px, 24vw, 380px) minmax(380px, 1fr) clamp(244px, 22vw, 340px); gap: 0; padding: 8px 24px 12px; }
   .col-izq { padding-right: 20px; }
   .col-der { display: contents; }
   .zona { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding-left: 20px; border-left: 1px solid var(--hair); }
@@ -33,7 +34,7 @@
 /* en ventanas bajas lo que cede es la parte de arriba (respuesta, siguiente paso, acciones), que hace scroll en sí misma: las pestañas conservan su altura */
 .ahora-top { flex: 0 1 auto; min-height: 140px; overflow-x: hidden; overflow-y: auto; padding-right: 2px; }
 .ahora-top > .as-carril { max-height: none; overflow: visible; margin-top: 8px; }
-.zona-ahora > .tab-panel { min-height: 160px; }
+.zona-ahora > .tab-panel { min-height: 140px; }   /* §0 Estéreo · flujo: la banda desplegada (176 px) quita altura a la reunión; con dos avisos emergentes a 1536×880 no cabían con 160 */
 .zona-ahora > .r-tabs { margin-top: 8px; }
 .col-ins .col-scroll { padding-top: 0; }
 .zona-obj .col-scroll { padding: 8px 8px 16px 0; }
@@ -117,7 +118,7 @@
 /* ---------- Detalle del equipo (ex pestaña «Equipo»): cuelga de la tira de Orquestación al desplegar «Detalle» en la reunión ---------- */
 .orq-equipo-ancla { position: relative; flex: none; height: 0; z-index: 14; }
 .orq-equipo { display: none; position: absolute; left: 24px; right: 24px; top: 4px; max-height: min(58vh, 460px); overflow: auto; padding: 8px 16px 12px; background: var(--elev-solido); border: 1px solid var(--hair2); border-radius: var(--r-l); box-shadow: var(--sombra-f); }
-body[data-vista="reunion"]:not([data-modo="reunion"]) #orq[data-plegado="false"] + .orq-equipo-ancla .orq-equipo { display: block; }
+body[data-vista="reunion"]:not([data-modo="reunion"]) #orq[data-plegado="false"] + .orq-equipo-ancla .orq-equipo[data-abierto="true"] { display: block; }   /* se abre con el nodo «Equipo» de la banda, no al desplegarla */
 .oe-cab { display: flex; align-items: center; gap: 8px; min-height: 36px; }
 .oe-cab .eq-monitor { width: auto; margin: 0 0 0 auto; flex: 0 1 auto; }
 .oe-cuerpo { padding: 0; overflow: visible; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0 20px; align-items: start; }

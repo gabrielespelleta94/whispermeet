@@ -236,9 +236,10 @@ def test_los_diez_nodos_de_la_banda_miden_lo_que_dice_el_diseno(edge, pagina):
         dato: (() => { const s = getComputedStyle(nodos[3].querySelector('.nodo-l2')); return [s.fontSize, s.lineHeight]; })(),
         textoFuera: nodos.filter(n => n.querySelector('.nodo-t').scrollHeight > n.clientHeight + 1).map(n => n.dataset.nodo) };
     })()""")
-    assert r["n"] == 10 and r["cols"] == 7 and r["filas"] == "48px 48px", r
-    assert r["alto"] == 122 and set(r["altoNodos"]) <= {48, 102}, r                    # los de «Equipo», «Redactor» y «Pulidor» ocupan las dos filas (48 + 6 + 48)
-    assert all(m == [24, 24] for m in r["mono"]), r["mono"]
+    # §0 Estéreo · flujo (2026-11-09): 7 columnas de nodos con un hueco de ancho propio entre cada par (13 pistas), una fila de rótulos de etapa (16 px) y dos filas de 56 px con 10 px entre filas
+    assert r["n"] == 10 and r["cols"] == 13 and r["filas"] == "16px 56px 56px", r
+    assert r["alto"] == 176 and set(r["altoNodos"]) <= {56, 122}, r                    # los de «Equipo», «Redactor» y «Pulidor» ocupan las dos filas (56 + 10 + 56)
+    assert all(m == [0, 0] for m in r["mono"]), r["mono"]                              # el monograma sigue en el DOM pero ya no ocupa sitio: el nodo se reconoce por nombre, punto de canal o avatares
     assert r["nombre"] == ["12px", "15px", "600"] and r["dato"] == ["11px", "13px"], r
     assert r["desborda"] == [] and r["textoFuera"] == [], r                              # ningún nodo con scrollWidth > clientWidth y el dato cabe
 
@@ -262,7 +263,8 @@ def test_animaciones_en_reposo_y_con_una_tarea(edge, pagina):
     tarea(edge, "inicio")
     time.sleep(0.7)
     n = nombres(edge)
-    assert [x for x in n if x.startswith("haz@")] and len([x for x in n if x.startswith("haz@")]) == 1, n   # un solo haz (el trazo único de los conectores de entrada)
+    # §0 Estéreo · flujo (2026-11-09): un haz por conector de ENTRADA del nodo que trabaja, cada uno con el degradado del propio conector («Equipo» recibe de Monitor y de Contexto)
+    assert len([x for x in n if x.startswith("haz@")]) == 2, n
     anillos = [x for x in n if x.startswith("gira@")]
     assert 1 <= len(anillos) <= 2, n                                                     # la tarjeta del perfil y el nodo «Equipo» (que muestra su monograma); nada más
     assert edge.js("document.querySelector('.nodo[data-nodo=equipo] .mono').textContent") == "AR"
@@ -368,13 +370,17 @@ def test_foco_visible_con_tab_en_todo_lo_interactivo(edge, pagina):
             edge.cmd("Input.dispatchKeyEvent", type=tipo, key="Tab", code="Tab", windowsVirtualKeyCode=9)
         r = edge.js("""(() => { const e = document.activeElement; if (!e || e === document.body) return null; window.__v = window.__v || []; const c = getComputedStyle(e);
         const repetido = window.__v.includes(e); window.__v.push(e);
-        return { id: e.id || String(e.className) || e.tagName, n: window.__v.length, repetido, vis: e.matches(':focus-visible'), ancho: c.outlineWidth, estilo: c.outlineStyle, color: c.outlineColor, sombra: c.boxShadow }; })()""")
+        return { id: e.id || String(e.className) || e.tagName, n: window.__v.length, repetido, vis: e.matches(':focus-visible'), campo: e.matches('input, textarea, select'), ancho: c.outlineWidth, estilo: c.outlineStyle, color: c.outlineColor, sombra: c.boxShadow }; })()""")
         if not r:
             continue
         if r["repetido"]:
             break
         vistos.add(r["n"])
         interior = r["id"] in ("r-trans", "trans") or bool({"lin", "eq-fila", "bj-f"} & set(str(r["id"]).split()))   # filas de lista: anillo interior (outline-offset −2)
+        if r["campo"]:   # §0 Estéreo: los campos llevan el foco «micro» (contorno de 1,5 px + halo); con el detalle del equipo cerrado el recorrido llega hasta «Nuevo objetivo»
+            if not (r["vis"] and r["estilo"] == "solid" and r["sombra"] != "none"):
+                sin_foco.append(r)
+            continue
         if not (r["vis"] and r["estilo"] == "solid" and r["ancho"] == "2px" and (interior or r["sombra"] != "none")):
             sin_foco.append(r)
     assert len(vistos) >= 25, vistos                                                    # se recorrió buena parte de la pantalla (botones, chips, filas, campos…)
@@ -422,7 +428,7 @@ def test_modo_reunion_paneles_opacos_y_vidrio_solo_dentro_del_derecho(edge, pagi
 
 def test_las_clases_de_entrada_se_retiran_al_terminar_la_animacion(edge, pagina):
     arrancar(edge, pagina)
-    edge.js("AP.pestana('equipo'); 1")                                                  # la tarjeta del perfil vive en la pestaña «Equipo»: oculta no anima y no puede terminar
+    edge.js("AP.pestana('equipo'); document.querySelector('.nodo[data-nodo=equipo]').click(); 1")   # la tarjeta del perfil vive en el detalle del equipo: oculta no anima y no puede terminar (§0 Estéreo · flujo: lo abre el nodo «Equipo»)
     edge.js("AP.hooks.anadirSegmento({ id: 9999, t: 625, mmss: '10:25', fuente: 'yo', texto: 'Una línea nueva' }); 1")
     assert edge.js("document.querySelector('#r-trans .lin[data-id=\"9999\"]').classList.contains('nueva')")
     tarea(edge, "inicio", ident=901)
@@ -455,7 +461,7 @@ def test_hover_pulsacion_y_foco_de_los_materiales(edge, pagina):
     assert "0.16s" in r["tarj"][0] and "translate" in r["tarj"][1] and "scale" in r["tarj"][1], r
     assert "translate" in r["btn"][1] and "scale" in r["btn"][1] and "0.16s" in r["btn"][0], r
     assert r["fila"][1].startswith("background-color") and "translate" not in r["fila"][1], r   # las filas de lista solo cambian el fondo
-    assert r["radio"] == ["0px", "4px", "4px", "6px", "2px", "4px"], r   # §0 Estéreo (esquinas vivas 2 · 4 · 6 · 8): la tarjeta de perfil del Detalle es una fila con filete (radio 0), no una caja
+    assert r["radio"] == ["0px", "4px", "4px", "6px", "2px", "6px"], r   # §0 Estéreo · flujo (2026-11-09): el nodo de la banda pasa a radio 6 (--r-p)   # §0 Estéreo (esquinas vivas 2 · 4 · 6 · 8): la tarjeta de perfil del Detalle es una fila con filete (radio 0), no una caja
     css = _quita_comentarios(CSS["app.css"])
     assert ".btn:active:not(:disabled) { scale: .98" in css and ".min:active { scale: .96" in css   # §0: al pulsar, scale(.98)
 
