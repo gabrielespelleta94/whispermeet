@@ -38,7 +38,7 @@
 .brief-lista li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; border-top: 1px solid var(--hair); }
 .brief-lista li:first-child { border-top: 0; }
 .brief-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.brief-aviso { margin: 4px 0; padding: 6px 10px; border-radius: 8px; background: var(--acc-soft); overflow-wrap: anywhere; }
+.brief-aviso { margin: 4px 0; padding: 6px 10px; border-radius: var(--r-p); background: var(--acc-soft); overflow-wrap: anywhere; }
 .brief-det { margin-top: 8px; padding: 0 0 8px; border: 0; border-radius: 0; background: transparent; }
 .brief-det > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .brief-det > summary .t-meta { margin-left: auto; }
@@ -66,12 +66,12 @@
 .seg-t.hecho { text-decoration: line-through; color: var(--soft); }
 .seg-l2 { overflow-wrap: anywhere; }
 .seg-cita { margin: 2px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--hair2); font-family: var(--serif); overflow-wrap: anywhere; }
-.seg-prop { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; padding: 4px 8px; border-radius: 8px; background: var(--acc-soft); }
+.seg-prop { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; padding: 4px 8px; border-radius: var(--r-p); background: var(--acc-soft); }
 .seg-prop span { overflow-wrap: anywhere; }
 .met-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
 .met-t { display: flex; flex-direction: column; gap: 2px; padding: 8px 0 0; border: 0; border-top: 1px solid var(--hair); min-width: 0; }
 .met-t .t-meta { overflow-wrap: anywhere; }
-.met-v { font-family: var(--serif-d); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-22); line-height: 28px; font-weight: 600; color: var(--ink); }
+.met-v { font-family: var(--display); text-transform: none; letter-spacing: -.03em; font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-22); line-height: 28px; font-weight: 400; color: var(--ink); }
 .met-serie { display: flex; align-items: flex-end; gap: 4px; height: 40px; margin-top: 8px; }
 .met-barra { flex: 1; max-width: 28px; height: 100%; display: flex; align-items: flex-end; background: var(--hair); border-radius: 3px; overflow: hidden; }
 .met-barra i { display: block; width: 100%; background: var(--soft); }
@@ -89,7 +89,7 @@
 .pd { position: relative; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; text-decoration: underline wavy var(--warn); text-underline-offset: 3px; text-decoration-thickness: 1.5px; }
 .pd::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 32px); height: 32px; translate: -50% -50%; }
 .pd:hover, .pd:focus-visible { background: var(--warn-bg); }
-.corr { position: fixed; z-index: 60; width: 320px; max-width: calc(100vw - 16px); padding: 10px 12px; background: var(--elev-solido); border: 1px solid var(--hair2); border-radius: 12px; box-shadow: var(--sombra-f); display: flex; flex-direction: column; gap: 8px; }
+.corr { position: fixed; z-index: 60; width: 320px; max-width: calc(100vw - 16px); padding: 10px 12px; background: var(--elev-solido); border: 1px solid var(--hair2); border-radius: var(--r-l); box-shadow: var(--sombra-f); display: flex; flex-direction: column; gap: 8px; }
 .corr-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .corr-f { display: flex; flex-direction: column; gap: 2px; }
 .corr-c { flex-wrap: wrap; gap: 6px; }
@@ -118,7 +118,7 @@
 .cart-critico .cart-nivel { color: var(--ink); } .cart-critico .cart-nivel::before { background: var(--err); }
 .cart-atencion .cart-nivel { color: var(--ink); } .cart-atencion .cart-nivel::before { background: var(--warn); }
 .cart-bien .cart-nivel::before { background: var(--ok); }
-.cart-nom { font-family: var(--serif-d); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); font-weight: 600; color: var(--ink); }
+.cart-nom { font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); font-weight: 600; color: var(--ink); }
 .cart-motivos { margin: 4px 0 2px 18px; padding: 0; }
 .cart-motivos li { overflow-wrap: anywhere; }
 .cart-datos { display: flex; flex-wrap: wrap; gap: 2px 16px; margin-top: 2px; }

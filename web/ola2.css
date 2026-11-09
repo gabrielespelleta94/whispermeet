@@ -163,7 +163,7 @@ body[data-modo="reunion"] .av-chip.av-chip-todos .ag-n { display: inline; }
   transition: background-color 160ms var(--salida), border-color 160ms var(--salida), color 160ms var(--salida); }
 .rev-st:hover { background: var(--hover); color: var(--ink); }
 .rev-st:active { scale: .98; }
-.rev-st[aria-current="step"] { border-bottom-color: var(--acc); color: var(--ink); }
+.rev-st[aria-current="step"] { border-bottom-color: var(--acc); border-image: var(--grad) 1; color: var(--ink); }
 .rev-num { flex: none; min-width: 12px; font-family: var(--sans); font-variant-numeric: tabular-nums; font-size: var(--f-14); line-height: 20px; font-weight: 600; color: inherit; }
 .rev-stepper li.visto .rev-st-n::after { content: ""; display: inline-block; width: 4px; height: 8px; margin-left: 8px; border: solid var(--soft); border-width: 0 1.5px 1.5px 0; rotate: 45deg; translate: 0 -2px; }   /* ✓ discreto dibujado con bordes (nada de glifos) */
 .rev-st-t { display: flex; flex-direction: column; min-width: 0; }
@@ -225,10 +225,10 @@ body[data-modo="reunion"] .av-chip.av-chip-todos .ag-n { display: inline; }
 .pal-q { flex: 1; min-width: 0; height: 36px; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--f-15); line-height: 20px; outline: none; box-shadow: none !important; }
 .pal-q:focus-visible { outline: none; }
 .pal-q::placeholder { color: var(--soft); }
-.pal-cab:focus-within { box-shadow: inset 0 -2px 0 var(--acc); }
+.pal-cab:focus-within { box-shadow: inset 0 -2px 0 var(--micro); }
 .pal-esc { padding: 2px 6px; border: 1px solid var(--hair2); border-radius: 4px; }
 .pal-lista { list-style: none; margin: 0; padding: 6px; overflow: auto; flex: 1; min-height: 0; }
-.pal-op { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 10px; border-radius: 8px; cursor: pointer; color: var(--body); }
+.pal-op { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 10px; border-radius: var(--r-p); cursor: pointer; color: var(--body); }
 .pal-op[aria-selected="true"] { background: var(--acc-soft); color: var(--ink); }
 .pal-grupo { padding: 10px 10px 2px; font-size: var(--f-12); line-height: 16px; font-weight: 600; color: var(--soft); }
 .pal-grupo:first-child { padding-top: 4px; }
@@ -245,10 +245,10 @@ body[data-modo="reunion"] .av-chip.av-chip-todos .ag-n { display: inline; }
 .aj-tabs { display: flex; gap: 20px; margin: 0 24px 4px; padding: 0; border-bottom: 1px solid var(--hair); flex: none; }
 .aj-tab { height: 36px; padding: 0 2px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--soft); font-size: var(--f-14); line-height: 20px; font-weight: 500; cursor: pointer; transition: color 160ms var(--salida), border-color 160ms var(--salida); }
 .aj-tab:hover { color: var(--ink); }
-.aj-tab[aria-selected="true"] { border-bottom-color: var(--acc); color: var(--ink); font-weight: 600; }
+.aj-tab[aria-selected="true"] { border-bottom-color: var(--acc); border-image: var(--grad) 1; color: var(--ink); font-weight: 600; }
 /* filas de ajuste: la etiqueta a la izquierda, el control a la derecha, un filete entre filas; sin cajas dentro de cajas */
 .aj-sec > label.campo, .aj-sec > .fila2 > label.campo, .aj-sec fieldset > label, .aj-sec .fila3 > label { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 260px); column-gap: 24px; row-gap: 2px; align-items: center; margin: 0; padding: 10px 0; border-top: 1px solid var(--hair); }
-.aj-sec > label.campo > .t-label, .aj-sec > .fila2 > label.campo > .t-label { grid-column: 1; grid-row: 1; margin: 0; font-size: var(--f-14); line-height: 20px; font-weight: 500; color: var(--ink); }
+.aj-sec > label.campo > .t-label, .aj-sec > .fila2 > label.campo > .t-label { grid-column: 1; grid-row: 1; margin: 0; font-family: var(--sans); text-transform: none; letter-spacing: 0; font-variant-numeric: normal; font-size: var(--f-14); line-height: 20px; font-weight: 500; color: var(--ink); }
 .aj-sec > label.campo > .input, .aj-sec > .fila2 > label.campo > .input, .aj-sec fieldset > label > .input, .aj-sec .fila3 > label > .input { grid-column: 2; grid-row: 1; margin: 0; }
 .aj-sec > label.campo > .t-meta { grid-column: 1; grid-row: 2; margin: 0; }
 .aj-sec > .fila2 { display: block; margin: 0; }
@@ -259,12 +259,12 @@ body[data-modo="reunion"] .av-chip.av-chip-todos .ag-n { display: inline; }
 .aj-sec > .aj-solo { margin: 0; }
 .aj-sec > .aj-solo > p { margin: 0 0 8px; }
 .aj-sec fieldset.campo { margin: 24px 0 0; padding: 0; }
-.aj-sec fieldset.campo > legend { font-family: var(--serif-d); font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); padding: 0; margin-bottom: 4px; float: left; width: 100%; }
+.aj-sec fieldset.campo > legend { font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); padding: 0; margin-bottom: 4px; float: left; width: 100%; }
 .aj-sec fieldset.campo > legend + * { clear: both; }
 .aj-sec fieldset.campo > p.t-meta { margin: 0 0 4px; }
 .aj-sec > :first-child, .aj-sec > fieldset.campo:first-child { margin-top: 0; }
 .aj-sec .campo-grupo { margin-top: 24px; }
-.aj-sec .campo-grupo > .t-label, .aj-registro > .t-label { font-family: var(--serif-d); font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
+.aj-sec .campo-grupo > .t-label, .aj-registro > .t-label { font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
 .aj-sec .campo-grupo .campo { margin-top: 8px; }
 /* Ligero / Potente: control segmentado de radio 4 (lo monta ajustes.js sobre el selector, que sigue siendo el que se guarda) */
 .seg-mod { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--hair2); border-radius: var(--r-s); justify-self: end; }

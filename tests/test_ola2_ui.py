@@ -65,10 +65,10 @@ def _hex(h):
 def test_los_colores_de_agente_son_tokens_y_cumplen_aa(tema):
     if tema == "oscuro":
         bloque = APP[APP.index(':root[data-theme="dark"]'):APP.index("@media (prefers-color-scheme: dark)")]
-        fondos = [_hex(x) for x in ("#201F1B", "#1B1A17", "#151412", "#24211C")]
+        fondos = [_hex(x) for x in ("#16161D", "#111118", "#0D0D12", "#141924")]   # §0 Estéreo
     else:
         bloque = APP[APP.index(":root {"):APP.index(':root[data-theme="dark"]')]
-        fondos = [_hex(x) for x in ("#FFFDF8", "#FAF3E2", "#F3F0E8", "#FFFFFF")]
+        fondos = [_hex(x) for x in ("#FFFFFF", "#F8FAFE", "#F0F0F4", "#F9F9FB")]
     tokens = dict(re.findall(r"--(ag-[a-z]+): (#[0-9A-Fa-f]{6})", bloque))
     assert {"ag-capitan", "ag-lupa", "ag-arquitecto", "ag-auditor", "ag-sherpa", "ag-monitor", "ag-asesor"} <= set(tokens)
     for nombre, valor in tokens.items():

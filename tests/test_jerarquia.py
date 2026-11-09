@@ -59,10 +59,10 @@ def _mezcla(frente, alfa, fondo):
 def test_los_colores_por_tipo_cumplen_aa_sobre_tarjeta_aviso_y_papel(tema):
     if tema == "oscuro":
         bloque = APP[APP.index(':root[data-theme="dark"]'):APP.index("@media (prefers-color-scheme: dark)")]
-        fondos = [_hex("#201F1B"), _hex("#1B1A17"), _hex("#24211C"), _mezcla((255, 248, 232), .035, _mezcla((255, 236, 200), .055, _hex("#151412")))]
+        fondos = [_hex("#16161D"), _hex("#111118"), _hex("#141924"), _mezcla((201, 201, 232), .035, _mezcla((250, 46, 100), .11, _hex("#0D0D12")))]   # §0 Estéreo: aviso, grafito, papel y vidrio fino sobre el halo de la sala
     else:
         bloque = APP[APP.index(":root {"):APP.index(':root[data-theme="dark"]')]
-        fondos = [_hex("#FFFDF8"), _hex("#FAF3E2"), _hex("#F3F0E8"), _mezcla((255, 253, 248), .62, _mezcla((255, 253, 244), .85, _hex("#F3F0E8")))]   # aviso, papel, fondo y vidrio fino sobre la luz ambiente
+        fondos = [_hex("#FFFFFF"), _hex("#F8FAFE"), _hex("#F0F0F4"), _mezcla((255, 255, 255), .58, _mezcla((247, 69, 116), .10, _hex("#F0F0F4")))]   # aviso, papel, fondo y vidrio fino sobre el halo de la sala (§0 Estéreo)
     tokens = dict(re.findall(r"--(t-[a-z]+): (#[0-9A-Fa-f]{6})", bloque))
     assert len(tokens) >= 10, tokens
     for nombre, valor in tokens.items():

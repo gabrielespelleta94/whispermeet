@@ -43,12 +43,12 @@
 .eq-l1 { display: flex; align-items: center; gap: 10px; min-height: 32px; }
 .eq-nombre { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .eq-nombre .ind-p { flex: none; width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--soft); }
-.eq-tarj[data-estado="trabajando"] .ind-p, .eq-tarj[data-estado="turno"] .ind-p { background: var(--acc); border-color: var(--acc); }
+.eq-tarj[data-estado="trabajando"] .ind-p, .eq-tarj[data-estado="turno"] .ind-p { background: var(--sala) var(--grad-d); border-color: transparent; }   /* el color de fondo bajo el degradado distingue el estado aunque el degradado no se pinte */
 .eq-tarj[data-estado="error"] .ind-p { background: var(--err); border-color: var(--err); }
 .eq-tarj[data-estado="sin_presupuesto"] .ind-p { background: var(--warn); border-color: var(--warn); }
 .eq-estado { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .eq-tarj[data-estado="trabajando"] .eq-estado, .eq-tarj[data-estado="turno"] .eq-estado { color: var(--acc-t); }
-.eq-tarj[data-estado="trabajando"] .mono { background: var(--acc); color: var(--acc-on); }
+.eq-tarj[data-estado="trabajando"] .mono { background: var(--grad-d); color: var(--on-grad); }   /* trabajando: el agente lee las dos voces */
 .eq-tarj[data-estado="error"] .eq-estado { color: var(--err); }
 .eq-tarj[data-estado="sin_presupuesto"] .eq-estado { color: var(--ink); }   /* el ámbar solo en el punto: como texto sobre el panel claro no llega a 4,5:1 */
 .eq-tarj[data-estado="hecho"] .eq-estado { color: var(--ink); }

@@ -89,7 +89,7 @@ body[data-modo="reunion"] .sesion-banda { display: none; }
 .tuya-c .cat { flex: 1; }
 .tuya .yo { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 4px; background: var(--acc-soft); color: var(--acc-t); font-size: var(--f-12); font-weight: 600; letter-spacing: 0; text-transform: none; }
 .tuya .acciones-t { display: flex; gap: 2px; }
-.tuya textarea { width: 100%; min-height: 56px; border: 1px solid var(--papel-canto); border-radius: 8px; padding: 6px 8px; background: transparent; color: var(--ink); resize: vertical; }
+.tuya textarea { width: 100%; min-height: 56px; border: 1px solid var(--papel-canto); border-radius: var(--r-p); padding: 6px 8px; background: transparent; color: var(--ink); resize: vertical; }
 .tuya.barra { background: var(--hover); transition: background-color 400ms var(--salida); }   /* §0: lo recién anotado se marca con fondo suave, no con barra */
 .tuya.barra-fuera { background: transparent; }
 
@@ -103,7 +103,7 @@ body[data-modo="reunion"] .sesion-banda { display: none; }
 .pregunta-hist { overflow-anchor: none; }
 .consulta { padding: 8px 0; border-top: 1px solid var(--hair); }
 .consulta:first-child { border-top: 0; }
-.consulta-p { color: var(--ink); font-weight: 600; font-family: var(--serif-d); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; }
+.consulta-p { color: var(--ink); font-weight: 600; font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; }
 .consulta-r { max-width: 56ch; margin-top: 2px; font-family: var(--serif); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-14); line-height: 20px; }
 .consulta-r.sin-base { color: var(--soft); }
 .consulta-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 4px; }
@@ -150,14 +150,14 @@ body[data-modo="reunion"] .pregunta-caja { display: none; }
 .add-carpeta .fila-b .t-meta { overflow-wrap: anywhere; min-width: 0; }
 
 /* Papel: lo que escribe el usuario (DESIGN-visual.md); la propuesta de Claude también es editable, así que usa el mismo papel */
-.ctxr { margin: 16px 0 8px; padding: 12px 14px 14px; background: var(--papel); border: 1px solid var(--papel-canto); border-radius: 10px; transition: border-color 160ms var(--salida); }
+.ctxr { margin: 16px 0 8px; padding: 12px 14px 14px; background: var(--papel); border: 1px solid var(--papel-canto); border-radius: var(--r-p); transition: border-color 160ms var(--salida); }
 .ctxr:hover { border-color: color-mix(in srgb, var(--papel-canto), var(--ink) 14%); }
 .ctxr > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; cursor: pointer; list-style: none; }
 .ctxr > summary::-webkit-details-marker { display: none; }
 .ctxr > summary .t-label::after { content: ""; display: inline-block; margin-left: 8px; width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 5px solid var(--acc-t); transition: transform 180ms var(--salida); }
 .ctxr[open] > summary .t-label::after { transform: rotate(90deg); }
 .ctxr > p { margin: 8px 0 0; }
-.ctxr-texto { display: block; width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--papel-canto); border-radius: 8px; background: transparent; color: var(--ink); resize: vertical; min-height: 84px; line-height: 20px; transition: border-color 160ms var(--salida); }
+.ctxr-texto { display: block; width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--papel-canto); border-radius: var(--r-p); background: transparent; color: var(--ink); resize: vertical; min-height: 84px; line-height: 20px; transition: border-color 160ms var(--salida); }
 .ctxr-texto:hover { border-color: rgba(var(--acc-rgb), .45); }
 .ctxr-texto::placeholder { color: var(--soft); }
 .ctxr-texto:focus { outline: 2px solid var(--acc); outline-offset: 2px; box-shadow: 0 0 0 4px var(--bg0); }
@@ -175,7 +175,7 @@ body[data-modo="reunion"] .pregunta-caja { display: none; }
 .ctxr-prop .check { margin-top: 8px; align-items: flex-start; }
 .ctxr-prop .check input { margin-top: 2px; flex: none; }
 .ctxr-prop .check:has(input:disabled) { cursor: not-allowed; color: var(--soft); }
-.ctxr-ok { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--acc-soft); }
+.ctxr-ok { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: var(--r-p); background: var(--acc-soft); }
 .ctxr-ok .t-body { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
 .ctxr #i-ctxr-dictar[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc-t); }
 

@@ -1,7 +1,7 @@
-/* DM Sans (SIL Open Font License), extraída de formato-documento-stratesys/marca/fuentes-web.css. Local: funciona sin internet. */
-@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 300; font-display: block; src: url("/static/fuentes/dm-sans-300.ttf") format("truetype"); }
-@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 400; font-display: block; src: url("/static/fuentes/dm-sans-400.ttf") format("truetype"); }
-@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 500; font-display: block; src: url("/static/fuentes/dm-sans-500.ttf") format("truetype"); }
-@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 600; font-display: block; src: url("/static/fuentes/dm-sans-600.ttf") format("truetype"); }
-@font-face { font-family: "DM Sans"; font-style: normal; font-weight: 700; font-display: block; src: url("/static/fuentes/dm-sans-700.ttf") format("truetype"); }
-@font-face { font-family: "DM Sans"; font-style: italic; font-weight: 400; font-display: block; src: url("/static/fuentes/dm-sans-400-italic.ttf") format("truetype"); }
+/* Marca Estéreo (DESIGN-visual.md §0). Tres familias variables, SIL Open Font License (ver fuentes/OFL-*.txt), copiadas de github.com/google/fonts.
+   Locales: la app funciona sin internet y no pide nada fuera de 127.0.0.1.
+   Unbounded: titulares, cronómetro y marca. Figtree: la herramienta y la lectura. JetBrains Mono: rótulos, horas y cifras de trabajo. */
+@font-face { font-family: "Unbounded"; font-style: normal; font-weight: 200 900; font-display: block; src: url("/static/fuentes/unbounded-var.ttf") format("truetype"); }
+@font-face { font-family: "Figtree"; font-style: normal; font-weight: 300 900; font-display: block; src: url("/static/fuentes/figtree-var.ttf") format("truetype"); }
+@font-face { font-family: "Figtree"; font-style: italic; font-weight: 300 900; font-display: block; src: url("/static/fuentes/figtree-var-italic.ttf") format("truetype"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 100 800; font-display: block; src: url("/static/fuentes/jetbrains-mono-var.ttf") format("truetype"); }

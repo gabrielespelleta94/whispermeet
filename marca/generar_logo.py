@@ -2,7 +2,8 @@ r"""Genera el icono de WhisperMeet: web/marca/apuntes.ico (PNG en 9 tamaños), a
 
     .venv\Scripts\python.exe marca\generar_logo.py
 
-Cuadrado redondeado bermellón #CD432C (el rojo de grabación de la app; radio 0,22 del lado) con barras verticales color papel de extremos redondeados. Solo numpy y stdlib.
+Marca Estéreo (DESIGN-visual.md §0): cuadrado redondeado de noche fría (radio 0,22 del lado) con los DOS CANALES como barras de extremos redondeados:
+a la izquierda la sala (rosa, la más alta) y a la derecha el micro (azul eléctrico, más baja), apoyadas en la misma línea. Solo numpy y stdlib.
 Hasta 48 px la geometría es exacta en píxeles enteros (tabla PEQUENOS); desde 64 es proporcional al lado.
 """
 from __future__ import annotations
@@ -14,21 +15,22 @@ from pathlib import Path
 import numpy as np
 
 SALIDA = Path(__file__).resolve().parent.parent / "web" / "marca"
-FONDO, BARRA = (205, 67, 44), (250, 246, 238)   # bermellón de grabación y papel (DESIGN-visual.md §0)
+FONDO = (21, 21, 30)                                   # noche fría hsl(240 18% 10%)
+SALA, MICRO = (249, 69, 120), (71, 140, 255)          # rosa hsl(344 95% 62%) y azul eléctrico hsl(218 100% 64%): los dos canales
 TAMANOS = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 RADIO = 0.22                 # del lado del cuadrado
 MARGEN = 0.03                # a cada lado, desde 32 px (hasta 24 el cuadrado llena el lienzo)
-ANCHO, PASO = 0.09, 0.15     # proporcionales (desde 64 px)
-ALTURAS = (0.2, 0.42, 0.6, 0.42, 0.2)
+ANCHO, HUECO = 0.2, 0.15     # proporcionales (desde 64 px): barras de 1/5 del lado y hueco entre ellas
+ALTO_SALA, ALTO_MICRO = 0.6, 0.45
 
-# n: (ancho de barra, hueco, alturas) en píxeles; margen del cuadrado en píxeles
+# n: (ancho de barra, hueco, alto sala, alto micro) en píxeles; margen del cuadrado en píxeles
 PEQUENOS = {
-    16: (2, 2, (6, 12, 6)),
-    20: (2, 3, (8, 14, 8)),
-    24: (2, 2, (4, 10, 16, 10, 4)),
-    32: (2, 3, (6, 14, 20, 14, 6)),
-    40: (4, 3, (8, 18, 26, 18, 8)),
-    48: (4, 4, (10, 20, 30, 20, 10)),
+    16: (4, 2, 10, 7),
+    20: (4, 4, 12, 9),
+    24: (5, 4, 14, 10),
+    32: (6, 6, 20, 15),
+    40: (8, 6, 24, 18),
+    48: (10, 6, 28, 21),
 }
 MARGEN_PEQUENO = {16: 0, 20: 0, 24: 0, 32: 1, 40: 1, 48: 1}
 
@@ -41,15 +43,14 @@ def _cuadrado(n: int):
 
 
 def _barras(n: int):
-    """Lista de (x0, y0, ancho, alto) de cada barra, en píxeles, centradas en el lienzo."""
+    """[(x0, y0, ancho, alto, color)] de las dos barras: centradas en horizontal; la de la sala centrada en vertical y la del micro apoyada en su misma base."""
     if n in PEQUENOS:
-        w, hueco, alturas = PEQUENOS[n]
-        paso = w + hueco
-        total = len(alturas) * w + (len(alturas) - 1) * hueco
-        x0 = (n - total) / 2
-        return [(x0 + i * paso, (n - h) / 2, w, h) for i, h in enumerate(alturas)]
-    w, paso, k = ANCHO * n, PASO * n, len(ALTURAS) // 2
-    return [(n / 2 + (i - k) * paso - w / 2, (n - h * n) / 2, w, h * n) for i, h in enumerate(ALTURAS)]
+        w, hueco, hs, hm = PEQUENOS[n]
+    else:
+        w, hueco, hs, hm = ANCHO * n, HUECO * n, ALTO_SALA * n, ALTO_MICRO * n
+    x0 = (n - (2 * w + hueco)) / 2
+    base = (n + hs) / 2
+    return [(x0, base - hs, w, hs, SALA), (x0 + w + hueco, base - hm, w, hm, MICRO)]
 
 
 def _cobertura_rrect(X, Y, x0, y0, w, h, r):
@@ -61,16 +62,15 @@ def _cobertura_rrect(X, Y, x0, y0, w, h, r):
 
 
 def pintar(n: int) -> np.ndarray:
-    """RGBA uint8 (n, n, 4): alfa = cobertura del cuadrado; color = fondo mezclado con el de la barra según su cobertura."""
+    """RGBA uint8 (n, n, 4): alfa = cobertura del cuadrado; color = fondo mezclado con el de cada barra según su cobertura."""
     Y, X = np.mgrid[0:n, 0:n]
     X, Y = X + 0.5, Y + 0.5
     x0, y0, lado, radio = _cuadrado(n)
     alfa = _cobertura_rrect(X, Y, x0, y0, lado, lado, radio)
-    barra = np.zeros((n, n))
-    for bx, by, bw, bh in _barras(n):
-        barra = np.maximum(barra, _cobertura_rrect(X, Y, bx, by, bw, bh, bw / 2))
-    barra = np.minimum(barra, alfa)
-    rgb = np.array(FONDO, float) * (1 - barra[..., None]) + np.array(BARRA, float) * barra[..., None]
+    rgb = np.broadcast_to(np.array(FONDO, float), (n, n, 3)).copy()
+    for bx, by, bw, bh, color in _barras(n):
+        c = np.minimum(_cobertura_rrect(X, Y, bx, by, bw, bh, bw / 2), alfa)[..., None]
+        rgb = rgb * (1 - c) + np.array(color, float) * c
     return np.dstack([np.rint(rgb), np.rint(alfa * 255)]).astype(np.uint8)
 
 
@@ -107,10 +107,12 @@ def svg_texto() -> str:
     n = 64
     x0, y0, lado, radio = _cuadrado(n)
     barras = "\n".join(
-        f'  <rect x="{_f(bx)}" y="{_f(by)}" width="{_f(bw)}" height="{_f(bh)}" rx="{_f(bw / 2)}"/>' for bx, by, bw, bh in _barras(n))
+        f'  <rect x="{_f(bx)}" y="{_f(by)}" width="{_f(bw)}" height="{_f(bh)}" rx="{_f(bw / 2)}" fill="#{c[0]:02X}{c[1]:02X}{c[2]:02X}"/>'
+        for bx, by, bw, bh, c in _barras(n))
+    fondo = "#%02X%02X%02X" % FONDO
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">\n'
-            f'  <rect x="{_f(x0)}" y="{_f(y0)}" width="{_f(lado)}" height="{_f(lado)}" rx="{_f(radio)}" fill="#CD432C"/>\n'
-            f'<g fill="#FAF6EE">\n{barras}\n</g>\n</svg>\n')
+            f'  <rect x="{_f(x0)}" y="{_f(y0)}" width="{_f(lado)}" height="{_f(lado)}" rx="{_f(radio)}" fill="{fondo}"/>\n'
+            f'{barras}\n</svg>\n')
 
 
 def main() -> None:

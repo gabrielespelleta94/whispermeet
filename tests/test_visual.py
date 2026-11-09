@@ -31,17 +31,18 @@ def test_tokens_del_diseno():
     claro = app[app.index(":root {"):app.index(':root[data-theme="dark"]')]
     oscuro = app[app.index(':root[data-theme="dark"]'):app.index("@media (prefers-color-scheme: dark)")]
     sistema = app[app.index("@media (prefers-color-scheme: dark)"):app.index("body { --blur-n")]
-    esperado_oscuro = {"--bg0": "#151412", "--ink": "#EFEBE3", "--body": "#C6C1B6", "--soft": "#A19B8F", "--acc-t": "#F6F2EA", "--papel": "#24211C", "--elev-solido": "#201F1B",
-                       "--grafito-op": "#1B1A17", "--ok": "#7CCB98", "--err": "#F0907F", "--warn": "#E9B266", "--acc": "#EFEBE3", "--acc-on": "#151412", "--rec": "#FF6A52"}
-    esperado_claro = {"--bg0": "#F3F0E8", "--ink": "#1C1A16", "--body": "#3B3832", "--soft": "#68635A", "--acc-t": "#1C1A16", "--papel": "#FAF3E2", "--elev-solido": "#FFFDF8",
-                      "--grafito-op": "#FAF8F2", "--ok": "#2D7A4B", "--err": "#B23A2B", "--warn": "#9C5A0E", "--acc": "#1C1A16", "--acc-on": "#FAF8F2", "--rec": "#D2402A"}
+    esperado_oscuro = {'--bg0': '#0D0D12', '--ink': '#EDEDF2', '--body': '#C4C4CF', '--soft': '#9797A5', '--acc-t': '#F5F5F9', '--papel': '#141924', '--elev-solido': '#16161D', '--grafito-op': '#111118', '--ok': '#6FD39A', '--err': '#FF8A7A', '--warn': '#F2B862', '--acc': '#EDEDF2', '--acc-on': '#0D0D12', '--sala': '#FA4273', '--micro': '#478BFF'}
+    esperado_claro = {'--bg0': '#F0F0F4', '--ink': '#11111D', '--body': '#383847', '--soft': '#595969', '--acc-t': '#11111D', '--papel': '#F8FAFE', '--elev-solido': '#FFFFFF', '--grafito-op': '#F9F9FB', '--ok': '#1F7A4D', '--err': '#B8322A', '--warn': '#95560B', '--acc': '#11111D', '--acc-on': '#FFFFFF', '--sala': '#DF0C44', '--micro': '#0056EB'}
     for tokens, bloque in ((esperado_oscuro, oscuro), (esperado_oscuro, sistema), (esperado_claro, claro)):
         for k, v in tokens.items():
             assert re.search(rf"{re.escape(k)}: {re.escape(v)}[;\s]", bloque), (k, v)
     for k in ("--luz-1", "--luz-2", "--vineta", "--grafito", "--vidrio", "--canto", "--brillo", "--vidrio-f", "--vidrio-fl", "--vidrio-blur", "--sombra-f", "--sombra", "--papel-canto",
               "--hover", "--sel", "--hair", "--hair2", "--acc-soft", "--luz", "--halo"):
         assert f"{k}:" in oscuro and f"{k}:" in claro and f"{k}:" in sistema, k
-    assert "--acc: #1C1A16" in claro   # acciones en tinta: sin azul de marca (§0)
+    assert "--acc: #11111D" in claro   # §0 Estéreo: --acc es tinta neutra; el color de marca son los dos canales y su degradado
+    for k in ("--sala", "--micro", "--sala-t", "--micro-t", "--sala-soft", "--micro-soft", "--sala-halo", "--micro-halo", "--on-grad"):
+        assert f"{k}:" in oscuro and f"{k}:" in claro and f"{k}:" in sistema, k
+    assert "--grad: linear-gradient(90deg, var(--sala), var(--micro))" in claro and "--rec: var(--sala)" in claro   # lo que une las dos voces: degradado sala→micro
     assert "blur(16px) saturate(140%)" in oscuro and "blur(16px) saturate(120%)" in claro   # §4: desenfoque del nivel 2
     for n in ("22", "15", "14", "12", "11"):
         assert f"--f-{n}: {n}px" in claro                                                    # escala única de CINCO tamaños por variable (revisión 2026-11-06: sin 28 ni 13)
@@ -75,9 +76,9 @@ def test_backdrop_filter_solo_donde_lo_permite_el_diseno():
         for m in re.finditer(rf"(?m)^{re.escape(sel)}(?:[ :.\[][^{{]*)?\{{([^}}]*)\}}", css):
             assert "gradient" not in m.group(1) and "backdrop" not in m.group(1) and not re.search(r"box-shadow: (?!none)", m.group(1)), (sel, m.group(1))
     assert "gradient" not in re.search(r"\.tarj \{[^}]*\}", css).group(0)
-    # gradientes: solo la capa ambiente (tokens), la luz de trabajo (cónico), su máscara y el barrido del Gantt
+    # gradientes: solo la capa ambiente (tokens), el degradado de marca sala→micro (tokens, §0 Estéreo), la luz de trabajo (cónico), su máscara y el barrido del Gantt
     for prop, valor in re.findall(r"([\w-]+):\s*([^;{}]*gradient[^;{}]*)", css):
-        assert prop in ("--luz-1", "--luz-2", "--vineta", "-webkit-mask", "mask") or (prop == "background" and ("conic-gradient" in valor or "linear-gradient(100deg" in valor)), (prop, valor[:60])
+        assert prop in ("--luz-1", "--luz-2", "--vineta", "--grad", "--grad-d", "--grad-suave", "--grad-canales", "-webkit-mask", "mask") or (prop == "background" and ("conic-gradient" in valor or "linear-gradient(100deg" in valor)), (prop, valor[:60])
 
 
 def test_recorte_con_elipsis_solo_en_las_excepciones_admitidas():
@@ -142,9 +143,9 @@ def _mezcla(frente, alfa, fondo):
 def test_contraste_sobre_el_vidrio_flotante_en_su_punto_mas_iluminado(tema):
     """§14.4: --body ≥ 7:1; --soft, --acc-t y las etiquetas ≥ 4,5:1, sobre el color efectivo del vidrio flotante en el punto donde más lo ilumina el ambiente."""
     if tema == "oscuro":
-        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#151412"), (0.055, (255, 236, 200)), (0.94, (32, 31, 27)), (0.95, (28, 27, 24)), "#C6C1B6", "#A19B8F", "#F6F2EA", "#EFEBE3", "#EFEBE3"
+        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#0D0D12"), (0.11, (250, 46, 100)), (0.94, (24, 24, 33)), (0.95, (21, 21, 30)), "#C4C4CF", "#9797A5", "#F5F5F9", "#EDEDF2", "#EDEDF2"   # §0 Estéreo: el halo de la sala es lo más iluminado
     else:
-        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#F3F0E8"), (0.85, (255, 253, 244)), (0.94, (253, 251, 246)), (0.95, (253, 251, 246)), "#3B3832", "#68635A", "#1C1A16", "#1C1A16", "#1C1A16"
+        bg0, ambiente, vf, vfl, body, soft, acc_t, ink, texto = _hex("#F0F0F4"), (0.10, (247, 69, 116)), (0.94, (252, 252, 253)), (0.95, (252, 252, 253)), "#383847", "#595969", "#11111D", "#11111D", "#11111D"
     iluminado = _mezcla(ambiente[1], ambiente[0], bg0)
     for alfa_rgb in (vf, vfl):
         fondo = _mezcla(alfa_rgb[1], alfa_rgb[0], iluminado)
@@ -285,7 +286,7 @@ def test_efecto_apagado_sin_filtros_ni_ambiente_ni_anillo_y_estados_distinguible
       return { filtros: con.map(e => e.id || e.className), ambiente: !amb || getComputedStyle(amb).display, grafito: getComputedStyle(document.querySelector('.top')).backgroundColor };
     })()""")
     assert r["filtros"] == [] and r["ambiente"] == "none", r
-    assert r["grafito"] == "rgb(27, 26, 23)", r                                          # sin Efectos, el grafito es opaco (#1B1A17, grafito cálido de §0)
+    assert r["grafito"] == "rgb(17, 17, 24)", r                                          # sin Efectos, el grafito es opaco (--grafito-op oscuro de §0 Estéreo)
     tarea(edge, "inicio", agente="funcional", nombre="Analista funcional")
     time.sleep(0.6)
     assert edge.js("[...document.getAnimations()].filter(a => a.animationName === 'gira').length") == 0   # sin anillo cónico
@@ -413,7 +414,7 @@ def test_modo_reunion_paneles_opacos_y_vidrio_solo_dentro_del_derecho(edge, pagi
         barraConFiltro: getComputedStyle(document.querySelector('#mr-barra')).backdropFilter, fuera: f.filter(e => { const b = e.getBoundingClientRect(); return b.left < inRect.left - 1; }).length };
     })()""")
     for k in ("izq", "der", "barra", "orq"):
-        assert r[k] == "rgb(27, 26, 23)", (k, r)                                      # alfa 1: la opacidad la pone la ventana, no el CSS
+        assert r[k] == "rgb(17, 17, 24)", (k, r)                                      # alfa 1: la opacidad la pone la ventana, no el CSS
     assert r["barraConFiltro"] == "none" and r["fuera"] == 0, r                         # ni la barra ni nada fuera del panel derecho lleva desenfoque
     assert "r-bandeja" in r["filtros"], r
     edge.js("delete document.body.dataset.modo; delete document.body.dataset.mr; 1")
@@ -454,7 +455,7 @@ def test_hover_pulsacion_y_foco_de_los_materiales(edge, pagina):
     assert "0.16s" in r["tarj"][0] and "translate" in r["tarj"][1] and "scale" in r["tarj"][1], r
     assert "translate" in r["btn"][1] and "scale" in r["btn"][1] and "0.16s" in r["btn"][0], r
     assert r["fila"][1].startswith("background-color") and "translate" not in r["fila"][1], r   # las filas de lista solo cambian el fondo
-    assert r["radio"] == ["0px", "8px", "8px", "10px", "4px", "8px"], r   # §0: la tarjeta de perfil del Detalle es una fila con filete (radio 0), no una caja
+    assert r["radio"] == ["0px", "4px", "4px", "6px", "2px", "4px"], r   # §0 Estéreo (esquinas vivas 2 · 4 · 6 · 8): la tarjeta de perfil del Detalle es una fila con filete (radio 0), no una caja
     css = _quita_comentarios(CSS["app.css"])
     assert ".btn:active:not(:disabled) { scale: .98" in css and ".min:active { scale: .96" in css   # §0: al pulsar, scale(.98)
 
@@ -499,7 +500,7 @@ def test_en_modo_reunion_los_avisos_son_siempre_solidos(edge, pagina, nivel):
       AP.efectos.elegir('%s'); for (let i = 0; i < 2; i++) AP.notificar({ id: 's' + i, analisis: 1, categoria: 'riesgo', texto: 'Aviso ' + i, minuto: '05:4' + i, t_seg: 340, estado: 'confirmada' }); return 1; })()""" % nivel)
     time.sleep(2.2)
     r = edge.js("""(() => [...document.querySelectorAll('.notif')].map(x => { const c = getComputedStyle(x); return [c.backgroundColor, c.backdropFilter]; }))()""")
-    assert len(r) == 2 and all(f == ["rgb(32, 31, 27)", "none"] for f in r), r         # --elev-solido (#201F1B): alfa 1 y sin desenfoque
+    assert len(r) == 2 and all(f == ["rgb(22, 22, 29)", "none"] for f in r), r         # --elev-solido oscuro (#16161D): alfa 1 y sin desenfoque
     edge.js("delete document.body.dataset.modo; delete document.body.dataset.mr; 1")
 
 

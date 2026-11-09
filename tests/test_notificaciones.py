@@ -214,7 +214,7 @@ def test_cola_escalonada_pausa_y_vaciado(tmp_path):
     assert r["monos"][:2] == ["Capitán", "Arquitecto"], r["monos"]               # perfil → nombre del agente
     assert r["metaDecision"] == "Responsable: Ana · Fecha: viernes · Sistema: SAP · contra: 03-alcance.md"
     assert r["acciones"][:2] == [["Ver"], ["Ver", "Pregúntale"]]                     # Pregúntale solo en riesgo y contradicción
-    assert r["sombraClaro"] and r["radio"] == "12px"   # §0: radio de capa flotante (--r-l)
+    assert r["sombraClaro"] and r["radio"] == "8px"   # §0 Estéreo: radio de capa flotante (--r-l, esquinas vivas)
     assert r["opaco"][0].startswith("rgb(") and r["opaco"][1] == "none" and r["opaco"][2] != "fixed", r["opaco"]   # fondo opaco, sin desenfoque y en el flujo (no flotante)
     assert r["sinSolape"], r
     assert r["grupo"]["n"] == 2 and r["grupo"]["mas"] == "+10 hallazgos" and r["grupo"]["sinSolape"], r["grupo"]   # 12 de golpe: 2 visibles y el resto agrupado

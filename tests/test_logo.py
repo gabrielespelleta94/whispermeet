@@ -54,12 +54,15 @@ def test_ico_tiene_nueve_entradas_png_validas():
         assert img[w // 4, w // 2, 3] == 255        # el cuadrado es opaco por dentro
 
 
-def test_a_16_px_hay_tres_columnas_con_barras():
+def test_a_16_px_hay_los_dos_canales():
+    """Marca Estéreo (DESIGN-visual.md §0): barra de la sala (rosa, 4×10) a la izquierda y del micro (azul, 4×7) a la derecha, sobre noche fría, con la misma base."""
     png = next(e[4] for e in _entradas() if e[0] == 16)
-    img = _decodificar(png)
-    blanca = (img[..., 1] > 200) & (img[..., 3] == 255)   # barra color papel (verde alto); el fondo bermellón (#CD432C) tiene el verde en 67
-    con_barra = blanca.any(axis=0)
-    grupos = [i for i in range(16) if con_barra[i] and (i == 0 or not con_barra[i - 1])]
-    assert len(grupos) == 3
-    assert con_barra.sum() == 6                      # tres barras de 2 px de ancho
-    assert [int(blanca[:, c].sum()) for c in (3, 7, 11)] == [6, 12, 6]   # alturas 6, 12, 6
+    img = _decodificar(png).astype(int)
+    opaco = img[..., 3] == 255
+    rosa = (img[..., 0] > 200) & (img[..., 2] < 160) & opaco
+    azul = (img[..., 2] > 200) & (img[..., 0] < 120) & opaco
+    assert [c for c in range(16) if rosa[:, c].any()] == [3, 4, 5, 6]
+    assert [c for c in range(16) if azul[:, c].any()] == [9, 10, 11, 12]
+    assert int(rosa[:, 4].sum()) == 10 and int(azul[:, 10].sum()) == 7          # alturas 10 y 7
+    assert max(r for r in range(16) if rosa[r, 4]) == max(r for r in range(16) if azul[r, 10]) == 12   # misma base
+    assert img[1, 8, :3].max() < 40                                               # fondo de noche fría

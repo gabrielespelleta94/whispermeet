@@ -5,9 +5,9 @@ html, body.av-body { height: auto; background: var(--elev-solido); overflow: hid
 /* `.av` también es el monograma de la tira de Orquestación en app.css (inline-flex de 24 px): aquí se anula con más especificidad */
 main.av { display: block; width: 100%; height: auto; flex: none; padding: 16px 20px 20px; position: relative; background: var(--elev-solido); border: 1px solid var(--canto); border-radius: 0; box-shadow: none; color: var(--body); }
 .av-cab { display: flex; align-items: flex-start; gap: 12px; }
-.av-logo { flex: none; width: 32px; height: 32px; border-radius: 8px; display: block; margin-top: 2px; }
+.av-logo { flex: none; width: 32px; height: 32px; border-radius: var(--r-p); display: block; margin-top: 2px; }
 .av-id { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.av-tema { display: block; overflow-wrap: anywhere; text-wrap: pretty; font-family: var(--serif-d); font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
+.av-tema { display: block; overflow-wrap: anywhere; text-wrap: pretty; font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
 .av-cab .t-label { color: var(--soft); }
 .av-logo { border-radius: var(--r-m); }
 .av-detalle .input { background: transparent; }
@@ -26,10 +26,10 @@ main.av { display: block; width: 100%; height: auto; flex: none; padding: 16px 2
 .av-detalle { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--hair); }
 .av-campo { display: block; margin-top: 12px; }
 .av-campo > .t-label { margin-bottom: 6px; }
-.av-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 8px 12px; border-radius: 8px; background: var(--err-bg); color: var(--err); overflow-wrap: anywhere; }
+.av-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; padding: 8px 12px; border-radius: var(--r-p); background: var(--err-bg); color: var(--err); overflow-wrap: anywhere; }
 /* tiempo que queda hasta que se cierra solo: una línea fina al pie que se vacía; el puntero encima (o escribir en el tema) la detiene */
 .av-tiempo { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--hair); overflow: hidden; }
-.av-tiempo i { display: block; height: 100%; width: 100%; background: var(--acc); transform-origin: left center; }
+.av-tiempo i { display: block; height: 100%; width: 100%; background: var(--grad); transform-origin: left center; }
 .av-tiempo.pausa i { background: var(--soft); }
 @media (prefers-reduced-motion: reduce) { .av-mas svg { transition: none; } }
 
