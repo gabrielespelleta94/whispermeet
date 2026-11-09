@@ -113,7 +113,8 @@
         if (ult.palabras != null) res.partes.push(`${ult.palabras} palabras`);
       }
       if (tr && AP.retrasoDe(tr) > 3) res.partes.push(`retraso ${Math.round(AP.retrasoDe(tr))} s`);
-      if (tr && tr.rapido) res.partes.push("modo rápido");   // modo alcance: tramos juntos y decodificación voraz hasta vaciar la cola
+      if (tr && tr.rapido) res.partes.push("modo rápido");   // hay cola de texto útil: decodificación más barata hasta vaciarla
+      if (tr && tr.aplazado_s > 3) res.partes.push(`eco en espera ${Math.round(tr.aplazado_s)} s`);   // Micro que solo repite a Reunión: se transcribe cuando no hay nada útil esperando
       return res;
     }
     const curso = enCurso(n.id), ult = ultima(n.id);

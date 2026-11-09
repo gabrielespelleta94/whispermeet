@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from apuntes import transcripcion as T
 from apuntes.transcripcion import (BEAM_RAPIDO, COLA_ALCANCE_S, FRAMES_POR_S, IDIOMA_VIGENTE_S, MARGEN_VENTANA_S, MAX_TOKENS_WHISPER,
                                    TEMPERATURAS, TEMPERATURAS_RAPIDO, TOKENS_MARGEN, TOKENS_POR_S, TOPE_TOKENS_SEGURO, VENTANAS_S,
                                    Transcriptor, tope_tokens, ventana_frames)
@@ -705,3 +706,309 @@ def test_tras_detener_un_tramo_que_termina_tarde_no_entrega_texto():
         m.suelta.set()
         tr._parar.set()
     assert emitidos == [] and tr.vacio() and tr.pendiente_s == 0
+
+
+# ------------------------------------------------------------------ cola de baja prioridad (tramos aplazados: probable eco)
+def _encolar_aplazado(tr, seg=2.0, valor=0.01, t0=0.0, fuente="yo"):
+    tr.encolar(fuente, _audio(seg, valor), t0, aplazar=True)
+
+
+def _textos(emitidos):
+    return [x for _f, _t, x in emitidos]
+
+
+def test_los_normales_salen_antes_que_los_aplazados_aunque_el_aplazado_se_encolara_primero_y_cada_texto_lleva_su_t0():
+    tr, m, emitidos = _transcriptor()
+    try:
+        _encolar_aplazado(tr, 2, 0.01, 5.0, "yo")
+        tr.encolar("reunion", _audio(2, 0.02), 6.0)
+        tr.encolar("reunion", _audio(2, 0.03), 7.0)
+        _encolar_aplazado(tr, 2, 0.04, 8.0, "yo")
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    # primero los normales en orden de llegada, luego los aplazados en orden de llegada, cada uno con SU t0 y su fuente
+    assert emitidos == [("reunion", 6.0, "frase 2"), ("reunion", 7.0, "frase 3"), ("yo", 5.0, "frase 1"), ("yo", 8.0, "frase 4")]
+    assert len(m.llamadas) == 4 and all(kw["audio_s"] == 2 for kw in m.llamadas)   # una llamada por tramo, sin juntar
+
+
+def test_entre_aplazados_el_orden_es_el_de_llegada():
+    tr, _m, emitidos = _transcriptor()
+    try:
+        for k in range(5):
+            _encolar_aplazado(tr, 1, (k + 1) / 100, 10.0 + k)
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    assert emitidos == [("yo", 10.0 + k, f"frase {k + 1}") for k in range(5)]
+
+
+class ColaEspera(queue.Queue):
+    """Como la cola real, pero espera 1,5 s por vuelta en vez de 0,3: si un aplazado tuviera que esperar al `timeout`, tardaría 1,5 s."""
+    def get(self, block=True, timeout=None):
+        return super().get(block, 1.5 if timeout else timeout)
+
+
+def test_un_aplazado_solo_con_la_cola_normal_vacia_sale_enseguida_sin_esperar_el_timeout():
+    tr, _m, emitidos = _transcriptor()
+    tr._cola = ColaEspera()
+    try:
+        tr.listo.set()
+        time.sleep(0.15)   # el hilo ya está esperando dentro de `get` de la cola normal vacía
+        t = time.perf_counter()
+        _encolar_aplazado(tr, 2, 0.07, 3.0)
+        assert _hasta(lambda: len(emitidos) == 1, 1.0)
+        assert time.perf_counter() - t < 0.8   # muy por debajo de los 1,5 s del timeout
+        assert emitidos == [("yo", 3.0, "frase 7")] and _hasta(lambda: tr.vacio(), 1.0)
+    finally:
+        tr._parar.set()
+        tr._cola.put(T._DESPERTAR)   # saca al hilo de su espera sin aguardar el timeout
+        tr._hilo.join(3)
+
+
+def test_el_tope_un_aplazado_que_lleva_el_maximo_esperando_sale_antes_que_los_normales(monkeypatch):
+    monkeypatch.setattr(T, "APLAZADO_MAX_S", 0.0)   # cualquier aplazado ya ha cumplido el tope: sin dormir segundos
+    tr, _m, emitidos = _transcriptor()
+    try:
+        _encolar_aplazado(tr, 2, 0.01, 5.0)
+        tr.encolar("reunion", _audio(2, 0.02), 6.0)
+        tr.encolar("reunion", _audio(2, 0.03), 7.0)
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    assert _textos(emitidos) == ["frase 1", "frase 2", "frase 3"]
+
+
+def test_el_tope_solo_adelanta_al_aplazado_que_lo_cumple_el_mas_reciente_sigue_esperando_a_los_normales(monkeypatch):
+    monkeypatch.setattr(T, "APLAZADO_MAX_S", 0.1)
+    tr, _m, emitidos = _transcriptor()
+    try:
+        _encolar_aplazado(tr, 2, 0.01, 5.0)
+        time.sleep(0.15)                       # el primero cumple el tope; el segundo (abajo) aún no
+        _encolar_aplazado(tr, 2, 0.02, 6.0)
+        tr.encolar("reunion", _audio(2, 0.03), 7.0)
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    assert _textos(emitidos) == ["frase 1", "frase 3", "frase 2"]
+
+
+def test_pendiente_aplazado_vacio_y_contador_en_cada_momento():
+    tr, _m, _e = _transcriptor()
+    try:
+        assert tr.vacio() and tr.pendiente_s == 0 and tr.aplazado_s == 0 and tr.tramos_aplazados == 0
+        tr.encolar("reunion", _audio(3, 0.01), 0.0)
+        assert tr.pendiente_s == pytest.approx(3.0) and tr.aplazado_s == 0 and not tr.vacio() and tr.tramos_aplazados == 0
+        _encolar_aplazado(tr, 2, 0.02, 1.0)
+        _encolar_aplazado(tr, 1, 0.03, 2.0)
+        assert tr.pendiente_s == pytest.approx(6.0) and tr.aplazado_s == pytest.approx(3.0)
+        assert tr.tramos_aplazados == 2 and not tr.vacio()
+        tr.listo.set()
+        assert _hasta(lambda: tr.vacio() and not tr.alcance)
+    finally:
+        _terminar(tr)
+    assert tr.pendiente_s == 0 and tr.aplazado_s == 0 and tr.vacio() and tr.tramos_aplazados == 2   # el contador no baja al servirse
+
+
+def test_con_solo_aplazados_vacio_es_false_hasta_que_sale_el_ultimo():
+    tr, m, _e = _transcriptor(ModeloBloqueado(), listo=True)
+    try:
+        _encolar_aplazado(tr, 2, 0.05, 0.0)
+        assert m.entro.wait(5)
+        assert not tr.vacio() and tr.pendiente_s == pytest.approx(2.0) and tr.aplazado_s == pytest.approx(2.0)   # en curso: aún cuenta
+        _encolar_aplazado(tr, 1, 0.06, 1.0)
+        assert tr.aplazado_s == pytest.approx(3.0) and not tr.vacio()
+        m.suelta.set()
+        assert _hasta(lambda: tr.vacio())
+    finally:
+        m.suelta.set()
+        _terminar(tr)
+    assert tr.aplazado_s == 0 and tr.pendiente_s == 0
+
+
+def test_retraso_no_cuenta_un_aplazado_que_espera_ni_lo_toca_y_el_normal_si():
+    tr, _m, _e = _transcriptor()
+    try:
+        _encolar_aplazado(tr, 2, 0.01, 0.0)
+        time.sleep(0.05)
+        assert tr.retraso_s == 0 and len(tr._espera) == 0        # un eco aplazado no es retraso de la transcripción
+        tr.encolar("reunion", _audio(2, 0.02), 1.0)
+        time.sleep(0.05)
+        assert len(tr._espera) == 1 and tr.retraso_s >= 0.04     # el normal sí; el aplazado anterior no lo adelanta ni lo oculta
+        tr.listo.set()
+        assert _hasta(lambda: tr.vacio())
+    finally:
+        _terminar(tr)
+    assert tr.retraso_s == 0 and len(tr._espera) == 0
+
+
+def test_la_latencia_solo_la_fija_un_tramo_normal_y_un_aplazado_no_la_cambia():
+    tr, _m, emitidos = _transcriptor()
+    vista = {}
+
+    def tarea(fase, ident, **datos):
+        if fase == "inicio" and datos.get("etiqueta", "").startswith("eco probable"):
+            vista["latencia_al_empezar_el_aplazado"] = tr.latencia_s   # ya fijada por el normal anterior
+    tr.on_tarea = tarea
+    try:
+        _encolar_aplazado(tr, 2, 0.01, 0.0)
+        tr.encolar("reunion", _audio(2, 0.02), 1.0)
+        assert tr.latencia_s is None
+        tr.listo.set()
+        assert _hasta(lambda: tr.vacio())
+    finally:
+        _terminar(tr)
+    assert tr.latencia_s is not None and vista["latencia_al_empezar_el_aplazado"] == tr.latencia_s   # el aplazado (segundo) no la tocó
+    assert _textos(emitidos) == ["frase 2", "frase 1"]
+
+
+def test_con_solo_aplazados_la_latencia_sigue_siendo_none():
+    tr, _m, _e = _transcriptor(listo=True)
+    try:
+        _encolar_aplazado(tr, 2, 0.01, 0.0)
+        assert _hasta(lambda: tr.vacio())
+    finally:
+        _terminar(tr)
+    assert tr.latencia_s is None and tr.retraso_s == 0
+
+
+def test_modo_rapido_muchos_aplazados_esperando_no_ponen_en_rapido_al_normal_y_el_aplazado_con_mucho_pendiente_si():
+    tr, m, _e = _transcriptor()
+    try:
+        tr.encolar("reunion", _audio(2, 0.01), 0.0)
+        for k in range(5):
+            _encolar_aplazado(tr, 2, (k + 2) / 100, float(k + 1))   # 10 s de eco esperando detrás del normal
+        assert tr.pendiente_s - 2 >= COLA_ALCANCE_S and tr.aplazado_s == pytest.approx(10.0)
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    assert len(m.llamadas) == 6
+    assert _completo(m.llamadas[0]) and m.llamadas[0]["alcance"] is False   # el normal, con calidad completa pese a los 10 s aplazados
+    # el aplazado k tiene detrás 8, 6, 4, 2, 0 s de aplazados: rápido con ≥ COLA_ALCANCE_S (los dos primeros, el segundo justo en el borde)
+    assert [_rapido(kw) for kw in m.llamadas[1:]] == [True, True, False, False, False]
+    assert [kw["alcance"] for kw in m.llamadas] == [False] * 6   # una cola de ecos va más barata, pero no enciende «alcanzando el directo»
+    assert tr.tramos_rapidos == 2 and tr.vacio()
+
+
+def test_modo_rapido_un_normal_con_normales_detras_sigue_yendo_en_rapido_aunque_haya_aplazados():
+    tr, m, _e = _transcriptor()
+    try:
+        _encolar_aplazado(tr, 2, 0.09, 99.0)
+        _encolar_8_de_2s(tr)
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    assert [_rapido(kw) for kw in m.llamadas[:8]] == [True] * 5 + [False] * 3   # igual que sin aplazado: solo cuenta el normal que espera
+    assert m.llamadas[8]["audio_s"] == 2 and _completo(m.llamadas[8])          # el aplazado sale el último y solo: calidad completa
+
+
+def test_la_etiqueta_de_on_tarea_marca_el_eco_probable_y_el_normal_no_cambia():
+    tr, _m, _e = _transcriptor()
+    eventos = []
+    tr.on_tarea = lambda fase, ident, **datos: eventos.append((fase, datos)) if fase == "inicio" and "fuente" in datos else None
+    try:
+        tr.encolar("reunion", _audio(2, 0.01), 0.0)
+        for k in range(5):
+            _encolar_aplazado(tr, 2, (k + 2) / 100, float(k + 1))
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    etiquetas = [d.get("etiqueta") for _f, d in eventos]
+    assert etiquetas == [None, "eco probable · rápido", "eco probable · rápido", "eco probable", "eco probable", "eco probable"]
+    assert "etiqueta" not in eventos[0][1]   # el normal sin cola no lleva etiqueta, como siempre
+
+
+def test_la_etiqueta_de_un_normal_en_rapido_no_cambia():
+    tr, _m, _e = _transcriptor()
+    eventos = []
+    tr.on_tarea = lambda fase, ident, **datos: eventos.append(datos.get("etiqueta")) if fase == "inicio" and "fuente" in datos else None
+    try:
+        _encolar_8_de_2s(tr)
+        tr.listo.set()
+        _terminar(tr)
+    finally:
+        tr.detener()
+    assert eventos == ["tramo · rápido"] * 5 + [None] * 3
+
+
+def test_un_aplazado_que_falla_una_vez_se_repite_en_rapido_y_deja_la_contabilidad_limpia():
+    tr, m, emitidos = _transcriptor(ModeloQueFalla(1), listo=True)
+    try:
+        _encolar_aplazado(tr, 4, 0.07, 2.0)
+        assert _hasta(lambda: tr.vacio())
+    finally:
+        _terminar(tr)
+    assert len(m.llamadas) == 2 and _completo(m.llamadas[0]) and _rapido(m.llamadas[1])
+    assert emitidos == [("yo", 2.0, "frase 7")]
+    assert tr.reintentos == 1 and tr.perdidos_s == 0 and tr.error == ""
+    assert tr.pendiente_s == 0 and tr.aplazado_s == 0 and tr.vacio() and tr.retraso_s == 0 and tr.latencia_s is None
+
+
+def test_un_aplazado_que_falla_siempre_cuenta_como_perdido_y_no_deja_rastro_en_la_contabilidad_de_los_normales():
+    tr, m, emitidos = _transcriptor(ModeloQueFalla(10 ** 6))
+    try:
+        _encolar_aplazado(tr, 4, 0.07, 2.0)
+        tr.encolar("reunion", _audio(1, 0.08), 3.0)
+        tr.listo.set()
+        assert _hasta(lambda: tr.vacio())
+    finally:
+        _terminar(tr)
+    assert emitidos == [] and len(m.llamadas) == 4          # pasada + reintento por tramo
+    assert tr.perdidos_s == pytest.approx(5.0) and tr.reintentos == 2 and tr.ultimo_fallo == "RuntimeError"
+    assert tr.pendiente_s == 0 and tr.aplazado_s == 0 and tr.vacio() and tr.retraso_s == 0 and len(tr._espera) == 0
+
+
+def test_encolar_aplazado_con_estado_error_no_acumula_y_cuenta_como_perdido():
+    tr = Transcriptor(CFG, lambda *a: None)
+    tr.estado = "error"
+    tr.encolar("yo", _audio(3), 0.0, aplazar=True)
+    tr.encolar("reunion", _audio(1.5), 1.0)
+    assert tr.perdidos_s == pytest.approx(4.5)
+    assert tr.pendiente_s == 0 and tr.aplazado_s == 0 and tr.tramos_aplazados == 0 and tr.vacio() and tr.retraso_s == 0
+    assert tr._cola.empty() and not tr._aplazados
+
+
+def test_tras_detener_un_aplazado_que_termina_tarde_no_entrega_texto():
+    tr, m, emitidos = _transcriptor(ModeloBloqueado(), listo=True)
+    try:
+        _encolar_aplazado(tr, 2, 0.05, 0.0)
+        assert m.entro.wait(5)
+        tr._parar.set()
+        m.suelta.set()
+        tr._hilo.join(3)
+        assert not tr._hilo.is_alive()
+    finally:
+        m.suelta.set()
+        tr._parar.set()
+    assert emitidos == [] and tr.vacio() and tr.pendiente_s == 0 and tr.aplazado_s == 0
+
+
+def test_dos_hilos_de_captura_encolando_normales_y_aplazados_no_pierden_ni_duplican_ni_desordenan_nada():
+    tr, _m, emitidos = _transcriptor(listo=True)
+    n = 40
+
+    def captura(aplazar, base):
+        for k in range(n):
+            tr.encolar("yo" if aplazar else "reunion", _audio(0.1, 0.01), base + k, aplazar=aplazar)
+
+    hilos = [threading.Thread(target=captura, args=(False, 0.0)), threading.Thread(target=captura, args=(True, 1000.0))]
+    try:
+        for h in hilos:
+            h.start()
+        for h in hilos:
+            h.join(5)
+        assert _hasta(lambda: tr.vacio() and len(emitidos) == 2 * n, 10)
+    finally:
+        _terminar(tr)
+    normales = [t for f, t, _x in emitidos if f == "reunion"]
+    aplazados = [t for f, t, _x in emitidos if f == "yo"]
+    assert normales == [float(k) for k in range(n)] and aplazados == [1000.0 + k for k in range(n)]   # todos, una vez, en su orden
+    assert tr.pendiente_s == pytest.approx(0, abs=1e-6) and tr.aplazado_s == pytest.approx(0, abs=1e-6)
+    assert tr.tramos_aplazados == n and tr.vacio() and len(tr._espera) == 0

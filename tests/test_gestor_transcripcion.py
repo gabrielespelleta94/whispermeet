@@ -254,7 +254,7 @@ def test_vigilar_linea_de_retraso_con_sus_medidas_y_sin_texto_de_la_reunion(gest
     gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.4, pendiente_s=33.0, velocidad_x=0.83, alcance=True, reintentos=2, perdidos_s=0.0)
     assert gestor._vigilar_transcripcion() is True
     (linea,) = lineas_log()
-    assert linea.endswith("transcripcion retraso=20s cola=33s vel=0.8x rapido=True reintentos=2 perdidos=0s")
+    assert linea.endswith("transcripcion retraso=20s cola=33s vel=0.8x rapido=True reintentos=2 perdidos=0s aplazado=0s")
     assert gestor.sesion.incidencias == [] and gestor.avisos == [] and avisos_ev(gestor) == []             # el retraso solo se registra, no se avisa
     assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
 
@@ -313,7 +313,8 @@ def test_agregar_si_guardar_falla_el_segmento_ya_salio_y_queda_el_aviso(gestor, 
 def test_estado_ligero_lleva_los_campos_nuevos_de_la_transcripcion(gestor, reloj):
     gestor.transcriptor = Transcriptor2(reloj, pendiente_s=12.34, retraso_s=3.26, velocidad_x=1.234, alcance=True, perdidos_s=5.44)
     tr = gestor.estado_ligero()["transcripcion"]
-    assert tr == {"estado": "listo", "error": "", "pendiente_s": 12.3, "retraso_s": 3.3, "velocidad_x": 1.23, "rapido": True, "perdidos_s": 5.4}
+    assert tr == {"estado": "listo", "error": "", "pendiente_s": 12.3, "retraso_s": 3.3, "velocidad_x": 1.23, "rapido": True, "perdidos_s": 5.4,
+                  "aplazado_s": 0.0}
 
 
 def test_estado_ligero_valores_por_defecto_y_sin_transcriptor(gestor, reloj):
@@ -343,3 +344,73 @@ def test_iniciar_audio_crea_la_captura_con_vaciar_al_parar(tmp_path, monkeypatch
     asyncio.run(iniciar_y_esperar(g, PROYECTO, "Tema ficticio", 5, None, []))
     g.transcriptor.detener()
     assert recibido.get("vaciar_al_parar") is True
+
+
+# ================================================================ eco en origen: un Micro que parece solo eco se aplaza
+class TranscriptorEspia:
+    """Guarda cómo se encola cada tramo."""
+
+    def __init__(self):
+        self.encolados = []
+
+    def encolar(self, fuente, audio, t0, **kw):
+        self.encolados.append((fuente, t0, kw))
+
+
+class EcoFijo:
+    """Doble del detector: responde lo que se le diga y anota por qué tramos se le preguntó."""
+
+    def __init__(self, respuesta=True, falla=False):
+        self.respuesta, self.falla, self.preguntas = respuesta, falla, []
+
+    def probable_eco(self, audio, t0):
+        self.preguntas.append(t0)
+        if self.falla:
+            raise RuntimeError("detector roto")
+        return self.respuesta
+
+
+def test_un_micro_que_parece_eco_se_encola_aplazado_y_reunion_nunca(gestor):
+    tr = gestor.transcriptor = TranscriptorEspia()
+    eco = gestor._eco_audio = EcoFijo(True)
+    gestor._on_enunciado("yo", object(), 10.0)
+    gestor._on_enunciado("reunion", object(), 11.0)
+    assert tr.encolados == [("yo", 10.0, {"aplazar": True}), ("reunion", 11.0, {})]
+    assert eco.preguntas == [10.0]                      # por Reunión ni se pregunta: su texto es el bueno
+
+
+def test_un_micro_con_voz_propia_va_en_su_orden_de_siempre(gestor):
+    tr = gestor.transcriptor = TranscriptorEspia()
+    gestor._eco_audio = EcoFijo(False)
+    gestor._on_enunciado("yo", object(), 10.0)
+    assert tr.encolados == [("yo", 10.0, {})]           # sin `aplazar`: vale también para un transcriptor que no lo conoce
+
+
+def test_sin_filtro_de_eco_o_con_el_detector_roto_nada_se_aplaza(gestor):
+    tr = gestor.transcriptor = TranscriptorEspia()
+    gestor._eco_audio = None                            # filtro de eco desactivado en Ajustes: no hay detector
+    gestor._on_enunciado("yo", object(), 1.0)
+    gestor._eco_audio = EcoFijo(falla=True)             # un fallo del detector no pierde el tramo ni lo retrasa
+    gestor._on_enunciado("yo", object(), 2.0)
+    assert tr.encolados == [("yo", 1.0, {}), ("yo", 2.0, {})]
+    assert "eco_audio" in registro.RUTA_LOG.read_text(encoding="utf-8")
+
+
+def test_iniciar_audio_conecta_el_detector_de_eco_solo_con_el_filtro_activo(tmp_path, monkeypatch):
+    recibido = {}
+
+    class CapturaEspia(CapturaNula):
+        def __init__(self, *a, **k):
+            recibido.update(k)
+
+    g, _modelo, cfg = gestor_con_audio(tmp_path, monkeypatch)
+    monkeypatch.setattr("apuntes.audio.Captura", CapturaEspia)
+    asyncio.run(iniciar_y_esperar(g, PROYECTO, "Tema ficticio", 5, None, []))
+    g.transcriptor.detener()
+    assert g.sesion.filtrar_eco is True and g._eco_audio is not None
+    assert recibido.get("on_bloque") == g._eco_audio.bloque   # la captura le pasa los niveles de cada bloque
+
+
+def test_estado_ligero_lleva_el_audio_aplazado(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, aplazado_s=7.26)
+    assert gestor.estado_ligero()["transcripcion"]["aplazado_s"] == 7.3

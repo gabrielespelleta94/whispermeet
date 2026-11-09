@@ -32,6 +32,7 @@ from .glosario import Glosario                        # ola 4
 from .plantillas import Plantillas, pesos_de          # ola 4
 from .silencio import ReglasSilencio                  # ola 4
 from .dictado import Dictado
+from .eco_audio import EcoAudio
 from .consumo import Consumo
 from .equipo.director import MODOS_CON_EQUIPO, Director
 from .fuentes import ServicioFuentes
@@ -105,6 +106,7 @@ class Gestor:
         self.reloj = Reloj()
         self.analista: Analista | None = None
         self.transcriptor = None
+        self._eco_audio = None            # detector de eco por niveles de audio de la reunión en curso (None: filtro de eco desactivado)
         self._perdidos_avisados = 0.0     # segundos de audio perdidos por el transcriptor de los que ya se avisó
         self._perdida_avisada_en = None   # cuándo (monotónico) se avisó por última vez de audio perdido (None = nunca en esta reunión)
         self._retraso_registrado = 0.0    # última vez (monotónico) que se anotó el retraso de la transcripción en el registro
@@ -211,7 +213,8 @@ class Gestor:
                                                       "retraso_s": round(float(getattr(tr, "retraso_s", 0.0) or 0.0), 1),   # tiempo de reloj que lleva esperando el tramo más antiguo: lo que va por detrás del directo
                                                       "velocidad_x": None if tr.velocidad_x is None else round(tr.velocidad_x, 2),
                                                       "rapido": bool(getattr(tr, "alcance", False)),   # modo rápido: hay cola y se decodifica más barato hasta vaciarla
-                                                      "perdidos_s": round(float(getattr(tr, "perdidos_s", 0.0) or 0.0), 1)},
+                                                      "perdidos_s": round(float(getattr(tr, "perdidos_s", 0.0) or 0.0), 1),
+                                                      "aplazado_s": round(float(getattr(tr, "aplazado_s", 0.0) or 0.0), 1)},   # audio de Micro que parece solo eco y espera su turno
             "captura": None if self.captura is None else {"errores": {k: str(v) for k, v in dict(self.captura.errores).items()}},
             "avisos": list(self.avisos), "consumo": self.consumo.resumen(),
             "revision": self.revision_publica(),
@@ -365,9 +368,13 @@ class Gestor:
         self.transcriptor.on_tarea = self.sonda.transcripcion
         self.transcriptor.entrega_palabras = True   # ola 4: word_timestamps (si `whisper_palabras`) y `on_texto(..., palabras=)`
         self.transcriptor.iniciar()
+        # Eco en origen (apuntes/eco_audio.py): con el filtro de eco activo, un tramo de Micro que por sus NIVELES es casi seguro solo eco de
+        # Reunión se aplaza en la cola del transcriptor (se transcribe igual, cuando no haya otra cosa esperando). Solo cambia el orden.
+        self._eco_audio = EcoAudio() if (self.sesion and self.sesion.filtrar_eco) else None
         self.captura = Captura(self.reloj.ahora, self._on_enunciado, self._on_nivel,
                                self.cfg["dispositivo_mic"], self.cfg["dispositivo_sistema"],
-                               vaciar_al_parar=True)   # al terminar, la frase a medias se transcribe en vez de perderse (hasta 25 s de reunión)
+                               vaciar_al_parar=True,   # al terminar, la frase a medias se transcribe en vez de perderse (hasta 25 s de reunión)
+                               on_bloque=self._eco_audio.bloque if self._eco_audio else None)
         try:
             await asyncio.to_thread(self.captura.iniciar)
         except Exception as e:  # noqa: BLE001
@@ -392,7 +399,17 @@ class Gestor:
 
     # ------------------------------------------------------------------ audio -> texto
     def _on_enunciado(self, fuente: str, audio, t0: float) -> None:
-        if self.transcriptor:
+        if not self.transcriptor:
+            return
+        aplazar = False
+        if fuente == "yo" and self._eco_audio is not None:
+            try:
+                aplazar = bool(self._eco_audio.probable_eco(audio, t0))
+            except Exception as e:  # noqa: BLE001  (sin detector, el tramo va en su orden de siempre)
+                registrar_error("Gestor._on_enunciado.eco_audio", e)
+        if aplazar:
+            self.transcriptor.encolar(fuente, audio, t0, aplazar=True)
+        else:
             self.transcriptor.encolar(fuente, audio, t0)
 
     def _on_nivel(self, fuente: str, db: float) -> None:
@@ -529,7 +546,8 @@ class Gestor:
             self._retraso_registrado = ahora
             vel = getattr(tr, "velocidad_x", None)
             registrar_linea(f"transcripcion retraso={retraso:.0f}s cola={tr.pendiente_s:.0f}s vel={'-' if vel is None else f'{vel:.1f}x'} "
-                            f"rapido={bool(getattr(tr, 'alcance', False))} reintentos={getattr(tr, 'reintentos', 0)} perdidos={perdidos:.0f}s")
+                            f"rapido={bool(getattr(tr, 'alcance', False))} reintentos={getattr(tr, 'reintentos', 0)} perdidos={perdidos:.0f}s "
+                            f"aplazado={float(getattr(tr, 'aplazado_s', 0.0) or 0.0):.0f}s")
             hecho = True
         return hecho
 

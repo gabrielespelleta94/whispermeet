@@ -205,10 +205,12 @@ def elegir_dispositivo(guardado, validos: list[dict], defecto):
 class Captura:
     """Dos flujos independientes. `on_enunciado(fuente, audio, t_inicio)`, `on_nivel(fuente, db)`."""
 
-    def __init__(self, reloj, on_enunciado, on_nivel, idx_mic=None, idx_sistema=None, fuentes=("yo", "reunion"), vaciar_al_parar=False):
+    def __init__(self, reloj, on_enunciado, on_nivel, idx_mic=None, idx_sistema=None, fuentes=("yo", "reunion"), vaciar_al_parar=False,
+                 on_bloque=None):
         """`fuentes`: qué se captura (el dictado del contexto abre solo el micro: ("yo",)). `vaciar_al_parar`: al detener, el enunciado a
-        medias se entrega en vez de perderse (el dictado lo usa para no comerse la última frase)."""
-        self.fuentes, self.vaciar_al_parar = tuple(fuentes), vaciar_al_parar
+        medias se entrega en vez de perderse (el dictado lo usa para no comerse la última frase). `on_bloque(fuente, x, t)`: cada bloque ya
+        en float32 mono 16 kHz con el instante del reloj en que termina (lo usa el detector de eco por niveles, `eco_audio.py`; no guarda audio)."""
+        self.fuentes, self.vaciar_al_parar, self.on_bloque = tuple(fuentes), vaciar_al_parar, on_bloque
         self.reloj, self.on_enunciado, self.on_nivel = reloj, on_enunciado, on_nivel
         self.idx = {"yo": idx_mic, "reunion": idx_sistema}
         self.pausada = False
@@ -282,6 +284,11 @@ class Captura:
             if ahora - ultimo_nivel > 0.1:
                 self.on_nivel(fuente, rms_db(x))
                 ultimo_nivel = ahora
+            if self.on_bloque is not None:   # antes de segmentar: cuando cierre un tramo, los niveles de ese intervalo ya están anotados
+                try:
+                    self.on_bloque(fuente, x, self.reloj())
+                except Exception:  # noqa: BLE001  (un fallo del observador nunca detiene la captura)
+                    pass
             for audio, t in seg.alimentar(x):
                 self.on_enunciado(fuente, audio, t)
             del x, datos
