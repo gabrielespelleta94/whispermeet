@@ -67,7 +67,8 @@ def test_traza_por_analisis_y_omision(montaje):
 
     async def go():
         await gestor.iniciar(PROYECTO, "Seguimiento", 5)
-        await esperar(lambda: len(gestor.sesion.segmentos) >= 40)
+        # el guion entero (60 líneas de 12 palabras, a 200x) ya entregado: si no, entra una línea más entre los dos análisis
+        await esperar(lambda: gestor._sim_fin)
         assert (await gestor.analizar(manual=True))["ok"]
         r = await gestor.analizar(manual=True)       # sin palabras nuevas: omitido, y no llama al modelo
         assert r.get("omitido")

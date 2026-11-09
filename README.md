@@ -109,6 +109,12 @@ Coste en tokens de los checks: ver «Consumo con checks» más abajo. Los objeti
 
 **Genérico para cualquier proyecto.** «Añadir carpeta de proyecto» (inicio y Ajustes) guarda la ruta en `proyectos_extra` tras validarla el Guardian (absoluta, existente, no raíz de unidad, sin nombre de secreto, fuera de Knowledge, nombre y carpeta sin repetir). Un proyecto sin `00. CONTEXTO (IA)` usa `CLAUDE.md`, `README.md` y `docs\*.md` como contexto de solo lectura (el pie lo indica). Sin plan: objetivos propios y checks; la llamada de digest que ya existía sugiere hasta 5 objetivos y 8 checks marcados como «sugeridos» (los objetivos sugeridos no se evalúan hasta que los confirmas). No hay Gantt del proyecto sin plan ni se inventan fechas.
 
+## Mapa de documentos del proyecto
+
+La ficha de cada proyecto (inicio, al pulsar una tarjeta) tiene un bloque «Documentos del proyecto»: cuántos documentos hay de cada tipo (arranque o kick-off, oferta y alcance, funcional, técnico, modelo de datos, usuarios y roles, planificación, seguimiento y actas, pruebas y formación), cuál es el último de cada tipo y qué tipos no aparecen («No he encontrado»). Se calcula en local mirando solo el nombre, la carpeta, el tamaño y la fecha: no abre ningún fichero, no descarga los que OneDrive tiene solo en la nube y no gasta tokens. Cada documento dice por qué cayó en su tipo (al pasar el ratón por encima) y se puede abrir desde ahí.
+
+Es la primera ola de `HOJA-DE-RUTA.md`, que recoge el análisis de la herramienta de punta a punta y lo que viene después: agente archivero, planificación de sesiones en la app, empaquetado, entregables y datos internos.
+
 ## Dónde escribe (y dónde no)
 
 | Qué | Dónde | Cuándo |
@@ -166,6 +172,7 @@ Solo `127.0.0.1`, token aleatorio por ejecución (cabecera `X-Token` / query del
 app.py                  entrada (argumentos, servidor, ventana)
 apuntes/rutas.py        Guardian: rutas permitidas, secretos, escritura atómica
 apuntes/contexto.py     proyectos, selección local de contexto, plantillas del kit
+apuntes/inventario.py   mapa de documentos del proyecto: los clasifica por tipo (arranque, oferta, funcional, técnico, datos, usuarios, planificación, seguimiento) sin abrir ninguno
 apuntes/planes.py       plan de sesiones (ficha, Gantt, checks base), estado de objetivos, estados del panel de contexto
 apuntes/checks.py       checks de preparación: almacén local, bloqueo manual, marcas automáticas, resumen
 planes/  sesiones/  checks/   planes, transcripciones de proyectos compartidos y checks (locales, fuera de git)
@@ -250,6 +257,8 @@ Qué fallaba y por qué:
 **Pulir con Opus** (reunión ficticia, `ejecutar_simulacion.py --pulir`): una llamada, entrada 2.455 tokens (incluida caché), salida 599, coste de referencia 0,032 USD.
 
 ## Velocidad de transcripción (faster-whisper `small`, CPU int8, 6 hilos)
+
+**Qué modelo usar.** `HOJA-DE-RUTA.md` compara `small`, `large-v3-turbo` y `medium` (errores, jerga reconocida y velocidad): `small` sigue siendo el valor por defecto; `large-v3-turbo` se puede elegir en Ajustes («Muy precisa con jerga») si el equipo va libre, y antes de cambiar de modelo conviene añadir la jerga del proyecto al glosario.
 
 Con voz sintética de Windows (23 s de audio, `pruebas\medir_velocidad.py`): entre 0,56× y 1,66× tiempo real según la pasada (mediana 0,77×) con la máquina cargada. Es decir, **no es holgadamente más rápido que el tiempo real**: si hablan los dos flujos a la vez puede acumularse retraso (el pie y el panel lo indican). Si ocurre, usa `base` o `tiny` en Ajustes.
 

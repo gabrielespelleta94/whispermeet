@@ -1,5 +1,5 @@
 {
-  "raiz_proyectos": "C:\Users\<tu usuario>\Proyectos",
+  "raiz_proyectos": "C:\\Users\\<tu usuario>\\Proyectos",
   "knowledge": "",
   "autor": "Tu Nombre",
   "idioma": "auto",
@@ -7,7 +7,7 @@
   "proyectos_extra": [
     {
       "nombre": "Proyecto compartido de ejemplo",
-      "ruta": "C:\Users\<tu usuario>\OneDrive\Archivos de <otra persona>\<proyecto>",
+      "ruta": "C:\\Users\\<tu usuario>\\OneDrive\\Archivos de <otra persona>\\<proyecto>",
       "compartido": true
     }
   ]

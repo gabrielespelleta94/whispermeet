@@ -52,6 +52,7 @@ STUB = """(() => {
     if (/api\\/proyectos\\/resumen/.test(u)) return r({ resumen: RES, parcial: false });
     if (/\\/pendientes$/.test(u)) return r(PEND);
     if (/\\/contexto$/.test(u)) return r(CTX);
+    if (/\\/documentos$/.test(u)) return r(window.__DOCS || { total: 0, tipos: [], faltan: [], en_nube: 0, truncado: false });
     if (/sesiones-recientes/.test(u)) return r({ sesiones: [{ id: 'aaaaaaaaaaaaaaaa', fecha: '2026-11-04', tema: 'Seguimiento', inicio: '10:00' }], avisos: [] });
     if (/extra\\//.test(u) && m === 'DELETE') { const n = decodeURIComponent(u.split('extra/')[1]); const i = P.findIndex((p) => p.nombre === n); if (i >= 0) P.splice(i, 1); return r({ proyectos_extra: [] }); }
     if (/\\/api\\/info/.test(u)) return r({ simulacion: false, config: { excluir_captura: true, proyectos_extra: [], modelos: {} } });
@@ -331,6 +332,40 @@ def test_panel_abre_con_foco_contenido_y_se_cierra_con_esc(edge, pagina):
     tecla(edge, "#i-panel", "Escape")
     assert edge.js("document.querySelector('#i-panel').hidden") is True and edge.js("document.querySelector('#i-galeria').inert") is False
     assert edge.js("document.activeElement.dataset.clave") == "Alfa Demo"                      # el foco vuelve a la tarjeta
+
+
+DOCS = {"total": 3, "en_nube": 1, "truncado": True, "ignorados": 0, "faltan": [{"clave": "tecnico", "titulo": "Técnico", "pista": "Diseño técnico, arquitectura o integraciones."}],
+        "tipos": [{"clave": "oferta", "titulo": "Oferta y alcance", "esperado": True, "n": 2, "dias": 3, "mas": 0,
+                   "ultimo": {"nombre": "Oferta v2.docx", "rel": "Oferta v2.docx", "mtime": time.time() - 3 * 86400},
+                   "ficheros": [{"id": "aaaaaaaaaaaaaaa1", "nombre": "Oferta v2.docx", "rel": "Oferta v2.docx", "ext": ".docx", "carpeta": "", "tam": 10, "mtime": time.time() - 3 * 86400, "nube": True,
+                                 "motivo": "nombre: «oferta o alcance»", "abrible": True},
+                                {"id": "aaaaaaaaaaaaaaa2", "nombre": "Macro.docm", "rel": "Macro.docm", "ext": ".docm", "carpeta": "x", "tam": 10, "mtime": time.time() - 9 * 86400, "nube": False,
+                                 "motivo": "nombre: «oferta o alcance»", "abrible": False}]},
+                  {"clave": "tecnico", "titulo": "Técnico", "esperado": True, "n": 0, "dias": None, "ultimo": None, "ficheros": [], "mas": 0}]}
+
+
+def test_panel_muestra_el_mapa_de_documentos(edge, pagina):
+    abrir(edge, pagina, antes="window.__DOCS = %s; 1" % json.dumps(DOCS))
+    clic(edge, tarjeta("Alfa Demo"))
+    time.sleep(0.8)
+    assert edge.js("document.querySelector('#vp-docs-resumen').textContent") == "3 documentos · 1 solo en la nube"
+    assert edge.js("document.querySelector('#vp-docs-truncado') !== null")
+    assert edge.js("document.querySelectorAll('#vp-docs details.dc-tipo').length") == 1            # solo los tipos con documentos
+    assert "último: Oferta v2.docx · hace 3 días" in edge.js("document.querySelector('#vp-docs .dc-ult').textContent")
+    assert edge.js("document.querySelector('#vp-docs .dc-fila .vp-marca').textContent") == "en la nube"
+    assert "oferta o alcance" in edge.js("document.querySelector('#vp-docs .dc-fila .vp-n').title")
+    assert edge.js("document.querySelectorAll('#vp-docs .dc-fila button').length") == 1             # el .docm no se puede abrir
+    assert "Técnico" in edge.js("document.querySelector('#vp-docs-faltan').textContent") and "arquitectura" in edge.js("document.querySelector('#vp-docs-faltan').textContent")
+    edge.js("document.querySelector('#vp-docs details').open = true; document.querySelector('#vp-docs .dc-fila button').click(); 1")
+    time.sleep(0.3)
+    assert "POST /api/proyectos/Alfa%20Demo/documentos/aaaaaaaaaaaaaaa1/abrir" in json.loads(edge.js("JSON.stringify(window.__llamadas)"))
+
+
+def test_panel_documentos_vacio(edge, pagina):
+    abrir(edge, pagina)
+    clic(edge, tarjeta("Alfa Demo"))
+    time.sleep(0.8)
+    assert edge.js("document.querySelector('#vp-docs-vacio').textContent") == "Esta carpeta no tiene documentos."
 
 
 def test_panel_atrapa_el_foco_con_tab(edge, pagina):

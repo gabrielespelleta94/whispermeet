@@ -1120,6 +1120,15 @@ summary.lista-cab::before { content: ""; flex: none; align-self: center; width: 
 .vp-ses { display: flex; gap: 8px; width: 100%; min-width: 0; padding: 4px 0; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--body); }
 .vp-ses:hover .vp-n { color: var(--acc-t); }
 .vp-mas { margin-top: 4px; }
+/* Mapa de documentos de la ficha */
+.dc-tipo { border-bottom: 1px solid var(--hair); }
+.dc-res { display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; min-width: 0; }
+.dc-res:focus-visible { outline: 2px solid var(--micro); outline-offset: 2px; }
+.dc-n { flex: none; }
+.dc-ult { flex: 0 1 62%; min-width: 0; overflow-wrap: anywhere; text-align: right; }   /* sin elipsis (§14.5): un nombre largo parte en dos líneas */
+.dc-tipo .vp-lista { padding-left: 12px; }
+.dc-fecha { flex: none; }
+.dc-faltan { margin-top: 8px; }
 
 
 /* =====================================================================================================================================================

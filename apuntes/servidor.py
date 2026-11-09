@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from . import __version__
 from . import contexto as CX
+from . import inventario as INV
 from . import aviso as AV
 from . import api_ola3
 from . import api_ola4
@@ -391,6 +392,44 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
             raise HTTPException(404, "No existe ese fichero.")
         try:
             await asyncio.to_thread(guardian.abrir_md_proyecto, nombre, ref[1], bl.abridor)
+        except OSError as e:
+            raise ValueError(f"No se pudo abrir el fichero: {e}")
+        return {"ok": True}
+
+    ids_doc: dict[str, tuple[str, str]] = {}   # id opaco -> (proyecto en minúsculas, ruta): lo rellena el listado de documentos
+
+    def _id_doc(proyecto: str, rel: str) -> str:
+        return hashlib.sha1(f"doc|{token}|{proyecto.lower()}|{rel}".encode("utf-8")).hexdigest()[:16]
+
+    @app.get("/api/proyectos/{nombre}/documentos")
+    @envolver
+    async def proyecto_documentos(nombre: str):
+        """Mapa de documentos del proyecto por tipo (solo `stat`, nada se lee). Cada fichero lleva un id opaco, nunca la ruta."""
+        try:
+            m = await asyncio.to_thread(INV.mapa, guardian, nombre)
+        except RutaProhibida:
+            raise HTTPException(404, "No existe ese proyecto.")
+        for k in [k for k, (p, _r) in ids_doc.items() if p == nombre.lower()]:
+            del ids_doc[k]
+        for t in m["tipos"]:
+            for f in t["ficheros"]:
+                ruta = f.pop("ruta")
+                f["id"] = _id_doc(nombre, f["rel"])
+                f["abrible"] = f["ext"] in INV.EXT_ABRIBLES
+                ids_doc[f["id"]] = (nombre.lower(), ruta)
+        return m
+
+    @app.post("/api/proyectos/{nombre}/documentos/{ident}/abrir")
+    @envolver
+    async def proyecto_abrir_documento(nombre: str, ident: str):
+        """Abre un documento con la aplicación del sistema. Solo un id que dio el listado de ESTE proyecto: nunca una ruta."""
+        ref = ids_doc.get(ident) if re_id.fullmatch(ident or "") else None
+        if ref is None or ref[0] != nombre.lower():
+            raise HTTPException(404, "No existe ese fichero.")
+        try:
+            await asyncio.to_thread(guardian.abrir_documento_proyecto, nombre, ref[1], bl.abridor)
+        except RutaProhibida:
+            raise HTTPException(404, "No existe ese fichero.")
         except OSError as e:
             raise ValueError(f"No se pudo abrir el fichero: {e}")
         return {"ok": True}

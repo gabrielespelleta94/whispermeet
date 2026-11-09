@@ -25,7 +25,7 @@
   const guardarTxt = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
   const P = { rec: leer(K_REC).slice(0, MAX_REC), fav: leer(K_FAV), modo: leerTxt(K_MODO, ["rejilla", "lista"], "rejilla"), orden: leerTxt(K_ORDEN, ["recientes", "actividad", "pendientes", "nombre"], "recientes"),
     filtro: "todos", etapa: "galeria", res: {}, resT: 0, resCargando: false, resOk: false, reintentos: 0, inactivosAbiertos: false,
-    panel: null, opener: null, n: 0, ctx: null, ses: null, pen: null, confirmar: false, expandido: {}, errorQuitar: "" };
+    panel: null, opener: null, n: 0, ctx: null, doc: null, ses: null, pen: null, confirmar: false, expandido: {}, errorQuitar: "" };
 
   // ------------------------------------------------------------ utilidades puras
   function hace(iso, ahora = new Date()) {
@@ -483,7 +483,7 @@
   function cerrarPanel(devolverFoco = true) {
     if (!P.panel) return;
     const op = P.opener;
-    P.panel = null; P.opener = null; P.n++; P.ctx = P.ses = P.pen = null;
+    P.panel = null; P.opener = null; P.n++; P.ctx = P.doc = P.ses = P.pen = null;
     $("#i-panel").hidden = true; $("#i-scrim").hidden = true; $("#i-panel").replaceChildren();
     $("#i-galeria").inert = false;
     if (devolverFoco && op && op.isConnected) op.focus({ preventScroll: true });
@@ -503,18 +503,23 @@
 
   function cargarPanel(nombre) {
     const id = ++P.n;
-    P.ctx = { estado: "cargando" }; P.ses = { estado: "cargando" }; P.pen = { estado: "cargando" };
+    P.ctx = { estado: "cargando" }; P.doc = { estado: "cargando" }; P.ses = { estado: "cargando" }; P.pen = { estado: "cargando" };
     const pedir = async (ruta, campo) => {
       try { const d = await api("GET", `/api/proyectos/${encodeURIComponent(nombre)}/${ruta}`); if (id === P.n) P[campo] = { estado: "ok", d }; }
       catch (e) { if (id === P.n) P[campo] = { estado: "error", msg: e.message }; }
       if (id === P.n) pintarPanel();
     };
-    pedir("contexto", "ctx"); pedir("sesiones-recientes", "ses"); pedir("pendientes", "pen");
+    pedir("contexto", "ctx"); pedir("documentos", "doc"); pedir("sesiones-recientes", "ses"); pedir("pendientes", "pen");
   }
   function refrescarPanel() { if (porNombre(P.panel)) pintarPanel(); else cerrarPanel(false); }
   async function abrirMd(nombre, ident, boton) {
     boton.disabled = true;
     try { await api("POST", `/api/proyectos/${encodeURIComponent(nombre)}/contexto/${ident}/abrir`); } catch (e) { boton.title = "No se pudo abrir: " + e.message; boton.textContent = "No se pudo"; }
+    finally { setTimeout(() => { boton.disabled = false; if (boton.textContent === "No se pudo") boton.textContent = "Abrir"; }, 2500); }
+  }
+  async function abrirDocumento(nombre, ident, boton) {
+    boton.disabled = true;
+    try { await api("POST", `/api/proyectos/${encodeURIComponent(nombre)}/documentos/${ident}/abrir`); } catch (e) { boton.title = "No se pudo abrir: " + e.message; boton.textContent = "No se pudo"; }
     finally { setTimeout(() => { boton.disabled = false; if (boton.textContent === "No se pudo") boton.textContent = "Abrir"; }, 2500); }
   }
   async function abrirCarpeta(nombre, boton) {
@@ -558,6 +563,36 @@
           abierto ? "Ver menos" : `Ver los ${g.ficheros.length}`) : null));
     }
     return h("div", { class: "vp-bloque" }, partes);
+  }
+  // Mapa de documentos del proyecto (GET .../documentos): por tipo, con el último y lo que falta. Todo texto dinámico entra como nodo de texto.
+  const isoDe = (mtime) => { const d = new Date(mtime * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  function bloqueDocumentos(nombre) {
+    const s = P.doc, cab = (extra) => h("div", { class: "vp-sub" }, h("span", { class: "caps" }, "Documentos del proyecto"), extra || null);
+    if (!s || s.estado === "cargando") return h("div", { class: "vp-bloque", id: "vp-docs" }, cab(), h("p", { class: "t-meta", id: "vp-docs-cargando" }, "Leyendo los documentos… (si está en OneDrive puede tardar)"));
+    if (s.estado === "error") return h("div", { class: "vp-bloque", id: "vp-docs" }, cab(), h("p", { class: "error", id: "vp-docs-error" }, "No se pudieron leer los documentos: " + s.msg));
+    const d = s.d, tipos = d.tipos || [];
+    if (!d.total) return h("div", { class: "vp-bloque", id: "vp-docs" }, cab(), h("p", { class: "t-meta", id: "vp-docs-vacio" }, "Esta carpeta no tiene documentos."));
+    const resumen = `${d.total} ${d.total === 1 ? "documento" : "documentos"}${d.en_nube ? ` · ${d.en_nube} solo en la nube` : ""}`;
+    const partes = [cab(h("span", { class: "t-meta soft", id: "vp-docs-resumen" }, resumen))];
+    if (d.truncado) partes.push(h("p", { class: "t-meta vp-aviso", id: "vp-docs-truncado" }, "La carpeta es muy grande: el mapa es parcial."));
+    for (const t of tipos) {
+      if (!t.n) continue;
+      const clave = "doc:" + t.clave, ult = t.ultimo ? hace(isoDe(t.ultimo.mtime)) : "";
+      const det = h("details", { class: "dc-tipo", "data-tipo": t.clave, open: !!P.expandido[clave], ontoggle: (ev) => { P.expandido[clave] = ev.currentTarget.open; } },
+        h("summary", { class: "dc-res" }, h("span", { class: "vp-n" }, t.titulo), h("span", { class: "t-meta soft dc-n" }, String(t.n)),
+          t.ultimo ? h("span", { class: "t-meta soft dc-ult", title: t.ultimo.rel }, `último: ${t.ultimo.nombre}${ult ? " · " + ult : ""}`) : null),
+        h("ul", { class: "vp-lista" }, t.ficheros.map((f) => h("li", { class: "vp-fila dc-fila", "data-id": f.id },
+          h("span", { class: "vp-n", title: `${f.rel}
+${f.motivo}` }, f.nombre, f.carpeta ? h("span", { class: "t-meta soft" }, ` · ${f.carpeta}`) : null),
+          f.nube ? h("span", { class: "vp-marca", title: "Solo está en la nube: al abrirlo se descargará" }, "en la nube") : null,
+          h("span", { class: "t-meta soft dc-fecha" }, hace(isoDe(f.mtime))),
+          f.abrible ? h("button", { type: "button", class: "btn btn-ghost btn-mini", "aria-label": "Abrir " + f.rel, onclick: (ev) => abrirDocumento(nombre, f.id, ev.currentTarget) }, "Abrir") : null))),
+        t.mas ? h("p", { class: "t-meta soft" }, `y ${t.mas} más`) : null);
+      partes.push(det);
+    }
+    if ((d.faltan || []).length) partes.push(h("div", { class: "dc-faltan", id: "vp-docs-faltan" }, h("div", { class: "vp-gtit t-label" }, "No he encontrado"),
+      h("ul", { class: "vp-lista" }, d.faltan.map((x) => h("li", { class: "vp-fila dc-falta", "data-tipo": x.clave }, h("span", { class: "vp-n" }, x.titulo, h("span", { class: "t-meta soft" }, ` · ${x.pista}`)))))));
+    return h("div", { class: "vp-bloque", id: "vp-docs" }, partes);
   }
   function bloqueSesiones() {
     const s = P.ses;
@@ -624,6 +659,7 @@
       ? "La carpeta de este proyecto ya no existe o no se puede abrir. " + (p.extra ? "Puedes quitarla de la lista." : "")
       : "No se pudo leer el contexto: " + c.msg));
     else cuerpo.push(bloqueFicheros(nombre, c.d));
+    cuerpo.push(bloqueDocumentos(nombre));
     cuerpo.push(bloqueSesiones());
     if (p.plan) {
       const plan = h("div", { class: "contexto pp-plan", id: "pp-plan" });
