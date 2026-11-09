@@ -175,7 +175,8 @@ def test_ahora_lleva_respuesta_siguiente_paso_y_el_contenedor_de_acciones(edge, 
     r = json.loads(edge.js("""JSON.stringify({
       resp: parseFloat(getComputedStyle(document.querySelector('#as-carril .as-vin li')).fontSize), paso: document.querySelector('#ahora-paso').innerText,
       pasoVisible: !document.querySelector('#ahora-paso').hidden, acc: { oculto: document.querySelector('#ahora-acciones').hidden, tag: document.querySelector('#ahora-acciones').tagName, aria: document.querySelector('#ahora-acciones').getAttribute('aria-label') } })"""))
-    assert r["resp"] == 22.0 and r["pasoVisible"] and "siguiente paso" in r["paso"].lower() and "fecha de entrega" in r["paso"] and "Sherpa" in r["paso"], r
+    alto = edge.js("innerHeight")   # §0 Estéreo · Ahora compacto (2026-11-09): con menos de 941 px de alto la respuesta baja de 22 a 15 (ventanas bajas con la banda de flujo); con más, 22
+    assert r["resp"] == (22.0 if alto > 940 else 15.0) and r["pasoVisible"] and "siguiente paso" in r["paso"].lower() and "fecha de entrega" in r["paso"] and "Sherpa" in r["paso"], r
     assert r["acc"] == {"oculto": True, "tag": "SECTION", "aria": "Acciones propuestas"}, r
     # la bandeja se rellena con la lista de acciones y sus tres botones, y avisa por evento (no ejecuta nada por su cuenta)
     r = json.loads(edge.js("""JSON.stringify((() => {

@@ -206,7 +206,8 @@ def test_ahora_respuesta_de_22_y_una_no_respuesta_atenuada_y_compacta(tmp_path, 
         _asesor(e, [RESPUESTA], [CONSEJO | {"id": "c1"}])
         r = e.js("""(() => { const a = document.querySelector('.as-ahora'), li = [...a.querySelectorAll('.as-vin li')].map((x) => parseFloat(getComputedStyle(x).fontSize));
           return { li, preg: parseFloat(getComputedStyle(a.querySelector('.as-preg')).fontSize), alto: Math.round(a.getBoundingClientRect().height) }; })()""")
-        assert r["li"] == [22.0, 14.0] and r["preg"] == 15.0, r
+        grande = 22.0 if e.js("innerHeight") > 940 else 15.0   # §0 Estéreo · Ahora compacto (2026-11-09): con menos de 941 px de alto la respuesta baja de 22 a 15 (ventanas bajas con la banda de flujo); con más, 22
+        assert r["li"] == [grande, 14.0] and r["preg"] == 15.0, r
         sin = dict(RESPUESTA, id="r2", pregunta="¿Qué servicio de correo envía el aviso?", vinetas=["No hay base en tus fuentes: propón comprobarlo y volver con la respuesta"], sin_base=True, base=False, confianza="baja", citas=[])
         _asesor(e, [sin], [])                                                                   # solo hay una no-respuesta: tarjeta compacta, atenuada y sin titular
         r = e.js("""(() => { const a = document.querySelector('.as-ahora'), li = a.querySelector('.as-vin li'), cs = getComputedStyle(li);
@@ -279,7 +280,8 @@ MEDIR_AVISOS = """(() => {
   // §0 Estéreo · flujo (2026-11-09): con la banda desplegada la parte de arriba de «Ahora» cede y hace scroll en sí misma; lo que cuenta es lo VISIBLE (el rectángulo recortado por su contenedor con scroll),
   // no el contenido desplazado fuera de él
   const caja = (el) => { const r = el.getBoundingClientRect(); const c = { l: r.left, t: r.top, r: r.right, b: r.bottom };
-    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p); if (o.overflowY !== 'visible' && o.overflowY !== 'clip' && p.id !== 'r-notifs') { const q = p.getBoundingClientRect(); c.t = Math.max(c.t, q.top); c.b = Math.min(c.b, q.bottom); } }
+    if (getComputedStyle(el).position === 'fixed') return { l: c.l, t: c.t, r: c.r, b: c.b, w: r.width, h: r.height };   // un aviso forzado a `fixed` no lo recorta su contenedor
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { const o = getComputedStyle(p); if (o.overflowY !== 'visible' && o.overflowY !== 'clip') { const q = p.getBoundingClientRect(); c.t = Math.max(c.t, q.top); c.b = Math.min(c.b, q.bottom); } }
     return { l: c.l, t: c.t, r: c.r, b: c.b, w: c.r - c.l, h: Math.max(0, c.b - c.t) }; };
   const cruza = (a, b) => a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
   const avisos = [...document.querySelectorAll('#r-notifs .notif:not(.saliendo)')].filter((n) => n.getBoundingClientRect().height > 0);
@@ -292,7 +294,7 @@ MEDIR_AVISOS = """(() => {
   });
   const mas = document.querySelector('#r-notifs .notif-mas');
   return { n: avisos.length, cruces, tipos: avisos.map((a) => a.dataset.k), opacos: avisos.map((a) => { const c = getComputedStyle(a); const m = c.backgroundColor.match(/[\d.]+/g); return [m.length > 3 ? Number(m[3]) : 1, c.backdropFilter]; }),
-    mas: mas && !mas.hidden ? mas.textContent : null, dentro: avisos.every((a) => { const r = a.getBoundingClientRect(); return r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5; }),
+    mas: mas && !mas.hidden ? mas.textContent : null, dentro: avisos.every((a) => { const r = caja(a); return r.r <= innerWidth + 0.5 && r.b <= innerHeight + 0.5; }),   // §0 Estéreo · Ahora compacto (2026-11-09): la pila de avisos hace scroll en sí misma en ventanas bajas: cuenta lo visible
     ahora: document.querySelector('.as-ahora') ? document.querySelector('.as-ahora').getBoundingClientRect().height : 0 };
 })()"""
 

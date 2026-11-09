@@ -118,7 +118,8 @@ def test_ahora_muestra_la_respuesta_mas_reciente_grande_y_los_consejos_debajo(ed
     })())"""))
     assert not d["hidden"] and d["ahora"] == "r2" and d["pregunta"] == "¿Qué servicio de correo envía el aviso al crear una reserva?"
     assert d["bullets"] == ["Aún no está decidido: lo vemos con vuestro equipo de sistemas.", "Os lo confirmo esta semana."]
-    assert d["tamBullet"][0] == 22 and all(t == 14 for t in d["tamBullet"][1:]) and d["maxOtros"] <= 15   # la respuesta es el titular (22); lo que la acompaña, cuerpo (14)
+    grande = 22 if edge.js("innerHeight") > 940 else 15   # §0 Estéreo · Ahora compacto (2026-11-09): con menos de 941 px de alto la respuesta baja de 22 a 15 (ventanas bajas con la banda de flujo); con más, 22
+    assert d["tamBullet"][0] == grande and all(t == 14 for t in d["tamBullet"][1:]) and d["maxOtros"] <= 15   # la respuesta es el titular (22); lo que la acompaña, cuerpo (14)
     assert d["conf"] == "Confianza media" and d["modelo"] == "Sonnet" and "afinada con Sonnet" in d["nota"] and d["prof"].upper().startswith("PROFUNDIZADO")
     assert "02-alcance.md" in d["fuentes"] and "minuto 00:50" in d["fuentes"]
     assert [c[:2] for c in d["cons"]] == [["Cierre y próximo paso", "Propón fijar hoy la fecha de entrega"], ["Objeción o riesgo", "Avisa del riesgo de retraso por el catálogo de hoteles"],

@@ -141,3 +141,38 @@
 .ses-envios .aj-reg-lista { max-height: 120px; }
 
 @media (prefers-reduced-motion: reduce) { .corr { animation: none; } }
+
+/* ---------- §0 Estéreo · Ahora compacto (2026-11-09): con la banda de flujo desplegada (176 px) las ventanas bajas (≤ 940 px de alto) no tienen sitio para la zona «Ahora» con el ritmo de siempre.
+   Se aprieta el aire vertical y la jerarquía interna (respuesta 15 · paso 14 · acciones en una fila); no se oculta ni se corta nada. Fuera del Modo reunión, que tiene su propio apilado. ---------- */
+@media (max-height: 940px) {
+  body:not([data-modo="reunion"]) .zona-ahora > .zona-h { min-height: 28px; padding: 0; }
+  body:not([data-modo="reunion"]) .ahora-top > .as-carril { margin-top: 4px; }
+  body:not([data-modo="reunion"]) .as-ahora { padding: 2px 0 4px; }
+  body:not([data-modo="reunion"]) .as-cab { min-height: 20px; }
+  body:not([data-modo="reunion"]) .as-vin { margin: 0 0 2px; }
+  body:not([data-modo="reunion"]) .as-vin.grande:not(.sin-base) li:first-child { font-size: var(--f-15); line-height: 22px; font-weight: 600; letter-spacing: 0; color: var(--ink); }   /* sigue siendo lo más destacado de la zona */
+  body:not([data-modo="reunion"]) .as-vin li { padding-top: 1px; padding-bottom: 1px; }
+  body:not([data-modo="reunion"]) .ahora-paso, body:not([data-modo="reunion"]) .ahora-paso.vacio { margin-top: 6px; padding: 6px 0 2px; }
+  body:not([data-modo="reunion"]) .paso-cab { min-height: 20px; }
+  body:not([data-modo="reunion"]) .paso-accion { margin-top: 2px; font-size: var(--f-14); line-height: 20px; }
+  body:not([data-modo="reunion"]) .ahora-acciones { margin-top: 6px; padding-top: 6px; }
+  body:not([data-modo="reunion"]) .acc-cab { min-height: 20px; }
+  body:not([data-modo="reunion"]) .acc-lista { margin-top: 2px; }
+  body:not([data-modo="reunion"]) .acc-item, body:not([data-modo="reunion"]) .acc-lista .acc-item { padding: 6px 0; gap: 2px 8px; flex-wrap: nowrap; align-items: center; }   /* texto a la izquierda y botones en la MISMA fila */
+  body:not([data-modo="reunion"]) .acc-item:first-child { padding-top: 4px; }
+  body:not([data-modo="reunion"]) .acc-tx { flex: 1 1 0; min-width: 0; gap: 0; }
+  body:not([data-modo="reunion"]) .acc-l1 { min-height: 20px; }
+  body:not([data-modo="reunion"]) .acc-t { font-size: var(--f-14); line-height: 20px; }
+  body:not([data-modo="reunion"]) .acc-cita { margin-top: 0; }
+  body:not([data-modo="reunion"]) .acc-bt { flex: none; flex-wrap: nowrap; margin-left: 0; }
+  body:not([data-modo="reunion"]) .zona-ahora > .r-tabs { margin: 4px 0 2px; }
+  body:not([data-modo="reunion"]) .zona-ahora > .tab-panel { min-height: 72px; }
+  /* avisos emergentes: relleno justo y las acciones a la derecha, en la fila del texto */
+  body:not([data-modo="reunion"]) #r-notifs { gap: 6px; margin-top: 6px; padding-bottom: 0; max-height: 128px; overflow-y: auto; }   /* la pila hace scroll en sí misma: el primer aviso se ve entero y la parte de arriba de «Ahora» conserva su sitio */
+  body:not([data-modo="reunion"]) #r-notifs .notif { padding: 4px 10px 4px 8px; gap: 8px; }
+  body:not([data-modo="reunion"]) #r-notifs .n-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: end; }
+  body:not([data-modo="reunion"]) #r-notifs .n-l1 { grid-column: 1 / -1; min-height: 20px; }
+  body:not([data-modo="reunion"]) #r-notifs .n-tx { grid-column: 1; margin-top: 0; }
+  body:not([data-modo="reunion"]) #r-notifs .n-acc { grid-column: 2; margin: 0; align-self: end; }
+  body:not([data-modo="reunion"]) #r-notifs .n-ico { height: 24px; }
+}
