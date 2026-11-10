@@ -201,6 +201,19 @@ def entrada_registro_contexto(autor: str, tema: str, fichero: str, ahora: dateti
     )
 
 
+def entrada_registro_archivero(autor: str, fichero: str, actualizado: bool, n_documentos: int, ahora: datetime | None = None) -> str:
+    """Entrada de `10-registro-de-cambios.md` cuando el usuario guarda en el contexto del proyecto el resultado del Agente Archivero."""
+    ahora = ahora or datetime.now()
+    return (
+        f"### {ahora:%Y-%m-%d %H:%M} · Mapa de documentación {'actualizado' if actualizado else 'añadido'}\n\n"
+        f"- **Quién:** {autor} (con Claude, desde WhisperMeet)\n"
+        f"- **Qué y por qué:** el usuario aceptó guardar en el contexto del proyecto el resultado del Agente Archivero: la cobertura por faceta de la documentación "
+        f"y el resumen de {n_documentos} {'documento leído' if n_documentos == 1 else 'documentos leídos'}.\n"
+        f"- **Ficheros o documentos:** `{fichero}`.\n"
+        f"- **Pendiente:** contrastar el contenido con los documentos originales antes de darlo por confirmado.\n"
+    )
+
+
 def insertar_en_registro(registro: str, entrada: str) -> str:
     """La entrada más reciente va arriba: antes del primer `### ` real (tras la plantilla)."""
     lineas = registro.split("\n")

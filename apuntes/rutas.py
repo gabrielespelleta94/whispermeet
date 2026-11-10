@@ -9,6 +9,8 @@ Reglas:
   (`sesiones/<proyecto>/AAAA-MM-DD-tema.md`, escritura incremental); `02. Sesiones` solo se crea al PUBLICAR el
   documento final (`publicar_sesion`, tras terminar y sin sobrescribir nunca), y nunca si el usuario elige no publicar.
 - Checks de preparación: `checks/<proyecto>.json`, locales (fuera de git); nunca en la carpeta del proyecto.
+- Tipo corregido a mano de un documento (mapa de documentos, ola B): `tipos_documento/p-<hash>.json` (hash del nombre del proyecto; dentro, el nombre legible), local y fuera de git; nunca en la carpeta del proyecto.
+- Agente Archivero (ola B): `leer_para_archivero` lee un documento de la carpeta del proyecto (sin nube, sin secretos, con tope) y es la ÚNICA lectura del Archivero.
 - Backlog: lectura de los .md de sesión (bandeja, sesiones locales y `02. Sesiones` de cada proyecto) con las mismas exclusiones y topes; lo único
   que se escribe es `backlog/estado.json` (local, fuera de git, escritura atómica). Los .md de sesión no se modifican nunca.
 - Planes de sesiones: solo lectura de `planes/*.json` (locales de la app).
@@ -20,6 +22,7 @@ Reglas:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import tempfile
@@ -42,6 +45,7 @@ EXT_SECRETAS = {".pem", ".key", ".pfx", ".p12", ".pkcs12", ".kdbx", ".jks", ".ke
 NOMBRES_PROTEGIDOS = {"claude.md", "agents.md"}
 DIRS_SOLO_LECTURA = {"docs"}
 EXT_LEGIBLES = {".md", ".txt"}
+EXT_TEXTO_ARCHIVERO = frozenset({".md", ".txt", ".sql", ".dbml", ".csv"})   # texto plano que el Archivero puede leer (además de .docx, .pptx y .pdf, por documentos.py)
 RESERVADOS_WIN = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 
 _RE_NOMBRE_SECRETO = re.compile(
@@ -85,6 +89,17 @@ def slug(texto: str, maximo: int = 60) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
     s = s[:maximo].strip("-")
     return s or "reunion"
+
+
+def nombre_normalizado(nombre: str) -> str:
+    """El nombre de un proyecto tal como se compara: NFC y `casefold` (en Windows dos nombres que solo cambian en mayúsculas son la misma carpeta)."""
+    return unicodedata.normalize("NFC", nombre or "").casefold()
+
+
+def hash_proyecto(nombre: str) -> str:
+    """16 hex del nombre exacto del proyecto (normalizado con `nombre_normalizado`). Nombre de los ficheros locales por proyecto (caché del Archivero,
+    tipos corregidos a mano): sin slug, para que dos proyectos nunca compartan fichero y ningún nombre dé un fichero reservado o con pinta de secreto."""
+    return hashlib.sha256(nombre_normalizado(nombre).encode("utf-8")).hexdigest()[:16]
 
 
 def _norm(p: os.PathLike | str) -> str:
@@ -158,7 +173,7 @@ def sugerir_compartida(ruta: str | os.PathLike, entorno=None) -> bool:
 
 class Guardian:
     def __init__(self, raiz_proyectos, bandeja, cache, solo_lectura=(), extras=(), sesiones_locales=None,
-                 planes=None, checks=None, backlog=None, datos=None):
+                 planes=None, checks=None, backlog=None, datos=None, tipos=None):
         self.raiz = Path(raiz_proyectos)
         self.bandeja = Path(bandeja)
         self.cache = Path(cache)
@@ -166,6 +181,7 @@ class Guardian:
         self.sesiones_locales = Path(sesiones_locales) if sesiones_locales else None
         self.planes = Path(planes) if planes else None
         self.checks = Path(checks) if checks else None
+        self.tipos = Path(tipos) if tipos else None         # ola B: tipo de documento corregido a mano (<tipos>/p-<hash>.json, local, fuera de git)
         self.backlog = Path(backlog) if backlog else None   # carpeta local del estado del backlog (estado.json); fuera de git
         # ola 3: seguimiento entre sesiones (<seguimiento>/<proyecto>.json, local, fuera de git) y borradores .eml (carpeta temporal PROPIA de la app)
         self.seguimiento = (self.backlog.parent / "seguimiento") if self.backlog else None
@@ -608,6 +624,27 @@ class Guardian:
         self._escribir(destino, texto)
         return destino
 
+    # ---------- tipo de documento corregido a mano (ola B, local) ----------
+    def ruta_tipos(self, proyecto: str) -> Path:
+        if self.tipos is None:
+            raise RutaProhibida("no hay carpeta local de tipos de documento configurada")
+        self.proyecto_dir(proyecto)  # el proyecto debe existir
+        destino = self.tipos / f"p-{hash_proyecto(proyecto)}.json"   # sin slug: dos proyectos que colisionan no comparten correcciones
+        self._comprobar_escritura(destino, self.tipos)
+        return destino
+
+    def leer_tipos(self, proyecto: str) -> str | None:
+        p = self.ruta_tipos(proyecto)
+        if not p.is_file():
+            return None
+        with open(p, "rb") as f:
+            return f.read(500_000).decode("utf-8-sig", errors="replace")
+
+    def escribir_tipos(self, proyecto: str, texto: str) -> Path:
+        destino = self.ruta_tipos(proyecto)
+        self._escribir(destino, texto)
+        return destino
+
     # ---------- backlog: sesiones pasadas (solo lectura) y estado local (backlog/estado.json) ----------
     def fuentes_sesiones(self) -> list[dict]:
         """Carpetas con sesiones pasadas: [{clave, etiqueta, proyecto, carpeta, origen, lenta}]. Solo mira nombres de carpetas locales; las de
@@ -933,3 +970,46 @@ class Guardian:
         if DOC.en_la_nube(p):
             raise RutaProhibida("el fichero está en la nube sin descargar: no se abre")
         return limpiar_secretos(DOC.texto_de(p, tope_chars))
+
+    def leer_para_archivero(self, proyecto: str, ruta: os.PathLike | str, tope_bytes: int = 200_000, tope_chars: int = 24_000,
+                            tope_oficina_bytes: int = 10_000_000) -> str:
+        """ÚNICA lectura del Agente Archivero (SOLO LECTURA): un documento de la carpeta del proyecto, en texto. Mismo confinamiento que
+        `_comprobar_documento_proyecto` (dentro del proyecto, sin nombre de secreto ni carpetas ocultas o generadas, fichero normal) y además: nunca de
+        `02. Sesiones` (esas entran por el backlog), nunca un fichero que OneDrive tenga solo en la nube (abrirlo lo descargaría; se comprueba en
+        TODOS los formatos, también el texto plano), con tope de tamaño (`tope_bytes` para texto plano, `tope_oficina_bytes` para .docx/.pptx/.pdf) y el
+        texto sale sin las líneas con pinta de secreto. Formatos: `EXT_TEXTO_ARCHIVERO` y .docx, .pptx y .pdf (extractores de `documentos.py`).
+        Lanza `RutaProhibida` o `documentos.Indisponible`."""
+        from . import documentos as DOC
+        pdir = self.proyecto_dir(proyecto)
+        p = Path(ruta)
+        ext = p.suffix.lower()
+        if ext not in EXT_TEXTO_ARCHIVERO | DOC.EXT_OFICINA | DOC.EXT_PDF:
+            raise RutaProhibida("formato sin lector")
+        if not esta_dentro(pdir, p):
+            raise RutaProhibida("fuera de la carpeta del proyecto")
+        rel = Path(_norm(p)).relative_to(Path(_norm(pdir)))
+        if rel.parts and (es_secreto(rel) or p.name.startswith((".", "~$")) or any(x.startswith(".") or x.lower() in DIRS_EXCLUIDOS_MD for x in rel.parts[:-1])):
+            raise RutaProhibida("fichero no permitido")
+        if len(rel.parts) > 1 and rel.parts[0].lower() == CARPETA_SESIONES.lower():
+            raise RutaProhibida("las sesiones entran por el backlog")
+        if len(rel.parts) > 1 and rel.parts[0].lower() == CARPETA_CONTEXTO.lower():
+            raise RutaProhibida("ya entra como contexto del proyecto")
+        if not p.is_file():
+            raise RutaProhibida("no es un fichero")
+        if DOC.en_la_nube(p):
+            raise RutaProhibida("el fichero está solo en la nube: no se abre")
+        try:
+            tam = p.stat().st_size
+        except OSError as e:
+            raise RutaProhibida("no se puede leer el fichero") from e
+        if ext in EXT_TEXTO_ARCHIVERO:
+            if tam > tope_bytes:
+                raise RutaProhibida("supera el tope de tamaño")
+            with open(p, "rb") as f:
+                datos = f.read(tope_bytes + 1)
+            texto = datos[:tope_bytes].decode("utf-8-sig", errors="replace").replace("\r\n", "\n")[:tope_chars]
+        else:
+            if tam > tope_oficina_bytes:
+                raise RutaProhibida("supera el tope de tamaño")
+            texto = DOC.texto_de(p, tope_chars, estructura=True)   # los títulos de Word salen como «# …»: así el Archivero reconoce las secciones
+        return limpiar_secretos(texto)

@@ -3,11 +3,13 @@ Local, determinista y explicable (cada clasificación lleva su motivo). Solo `st
 (así no descarga lo que OneDrive guarda solo en la nube y no gasta tokens). Sin modelos de IA."""
 from __future__ import annotations
 
+import json
 import os
 import re
+import threading
 import time
 
-from .rutas import CARPETA_CONTEXTO, CARPETA_SESIONES, EXT_ABRIBLES, EXT_DOCUMENTO, sin_acentos  # noqa: F401  (EXT_* se reexportan)
+from .rutas import CARPETA_CONTEXTO, CARPETA_SESIONES, EXT_ABRIBLES, EXT_DOCUMENTO, RutaProhibida, nombre_normalizado, sin_acentos  # noqa: F401  (EXT_* se reexportan)
 
 TIPOS: list[dict] = [
     {"clave": "arranque", "titulo": "Arranque (kick-off)", "esperado": True, "pista": "Presentación o acta de la reunión de arranque."},
@@ -105,8 +107,53 @@ def clasificar(rel: str) -> tuple[str, str]:
     return "otros", "sin pista en el nombre ni en la carpeta"
 
 
-def mapa(guardian, proyecto: str, ahora: float | None = None, max_por_tipo: int = 200) -> dict:
-    """Inventario clasificado de los documentos del proyecto (ver el módulo). Deja salir `RutaProhibida` si el proyecto no existe."""
+CLAVES_TIPO = frozenset(t["clave"] for t in TIPOS)
+MAX_CORRECCIONES = 2000
+_lock_correcciones = threading.Lock()
+
+
+def leer_correcciones(guardian, proyecto: str) -> dict[str, str]:
+    """`{rel: tipo}` de los tipos que el usuario ha corregido a mano en este proyecto (almacén local `Guardian.leer_tipos`). Nunca lanza: sin carpeta
+    configurada, sin fichero o con un JSON roto devuelve `{}`; las claves de tipo desconocidas se ignoran."""
+    try:
+        crudo = guardian.leer_tipos(proyecto)
+        d = json.loads(crudo) if crudo else {}
+    except (OSError, ValueError, RutaProhibida):
+        return {}
+    if not isinstance(d, dict) or not isinstance(d.get("proyecto"), str) or nombre_normalizado(d["proyecto"]) != nombre_normalizado(proyecto):
+        return {}   # el fichero lleva el nombre del proyecto al que pertenece: si no coincide, no es de este
+    tipos = d.get("tipos")
+    if not isinstance(tipos, dict):
+        return {}
+    return {str(k): v for k, v in tipos.items() if isinstance(v, str) and v in CLAVES_TIPO and str(k).strip()}
+
+
+def fijar_correccion(guardian, proyecto: str, rel: str, tipo: str | None) -> dict[str, str]:
+    """Fija (o, con `tipo` vacío o None, quita) el tipo de un documento. `ValueError` si el tipo no existe. Devuelve las correcciones del proyecto. Solo
+    toca el almacén local del Guardian; los documentos del proyecto no se tocan nunca."""
+    tipo = (tipo or "").strip() or None
+    if tipo is not None and tipo not in CLAVES_TIPO:
+        raise ValueError("Ese tipo de documento no existe.")
+    rel = (rel or "").strip()
+    if not rel:
+        raise ValueError("Falta el documento.")
+    with _lock_correcciones:
+        actuales = leer_correcciones(guardian, proyecto)
+        if tipo is None:
+            actuales.pop(rel, None)
+        else:
+            if rel not in actuales and len(actuales) >= MAX_CORRECCIONES:
+                raise ValueError("Hay demasiados tipos corregidos a mano en este proyecto.")
+            actuales[rel] = tipo
+        guardian.escribir_tipos(proyecto, json.dumps({"version": 1, "proyecto": proyecto, "tipos": actuales}, ensure_ascii=False, indent=1, sort_keys=True))
+        return actuales
+
+
+def mapa(guardian, proyecto: str, ahora: float | None = None, max_por_tipo: int = 200, correcciones: dict[str, str] | None = None) -> dict:
+    """Inventario clasificado de los documentos del proyecto (ver el módulo). Deja salir `RutaProhibida` si el proyecto no existe. `correcciones`:
+    `{rel: tipo}` de lo que el usuario ha corregido a mano (`leer_correcciones`); un fichero corregido cae en su tipo con motivo «corregido a mano» y
+    `corregido: True`, por encima de cualquier regla."""
+    correcciones = correcciones or {}
     ahora = time.time() if ahora is None else ahora
     r = guardian.ficheros_del_proyecto(proyecto)
     grupos: dict[str, list[dict]] = {t["clave"]: [] for t in TIPOS}
@@ -116,10 +163,13 @@ def mapa(guardian, proyecto: str, ahora: float | None = None, max_por_tipo: int 
             ignorados += 1
             continue
         clave, motivo = clasificar(f["rel"])
+        corregido = correcciones.get(f["rel"]) in CLAVES_TIPO
+        if corregido:
+            clave, motivo = correcciones[f["rel"]], "corregido a mano"
         total += 1
         en_nube += 1 if f["nube"] else 0
         grupos[clave].append({"ruta": f["ruta"], "rel": f["rel"], "nombre": f["nombre"], "ext": f["ext"], "carpeta": f["rel"].rpartition("/")[0],
-                              "tam": f["tam"], "mtime": f["mtime"], "nube": f["nube"], "motivo": motivo})
+                              "tam": f["tam"], "mtime": f["mtime"], "nube": f["nube"], "motivo": motivo, "corregido": corregido})
     tipos = []
     for t in TIPOS:
         lista = sorted(grupos[t["clave"]], key=lambda x: (-x["mtime"], x["rel"].lower()))

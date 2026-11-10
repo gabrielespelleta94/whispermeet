@@ -111,9 +111,11 @@ Coste en tokens de los checks: ver «Consumo con checks» más abajo. Los objeti
 
 ## Mapa de documentos del proyecto
 
-La ficha de cada proyecto (inicio, al pulsar una tarjeta) tiene un bloque «Documentos del proyecto»: cuántos documentos hay de cada tipo (arranque o kick-off, oferta y alcance, funcional, técnico, modelo de datos, usuarios y roles, planificación, seguimiento y actas, pruebas y formación), cuál es el último de cada tipo y qué tipos no aparecen («No he encontrado»). Se calcula en local mirando solo el nombre, la carpeta, el tamaño y la fecha: no abre ningún fichero, no descarga los que OneDrive tiene solo en la nube y no gasta tokens. Cada documento dice por qué cayó en su tipo (al pasar el ratón por encima) y se puede abrir desde ahí.
+La ficha de cada proyecto (inicio, al pulsar una tarjeta) tiene un bloque «Documentos del proyecto»: cuántos documentos hay de cada tipo (arranque o kick-off, oferta y alcance, funcional, técnico, modelo de datos, usuarios y roles, planificación, seguimiento y actas, pruebas y formación), cuál es el último de cada tipo y qué tipos no aparecen («No he encontrado»). Se calcula en local mirando solo el nombre, la carpeta, el tamaño y la fecha: no abre ningún fichero, no descarga los que OneDrive tiene solo en la nube y no gasta tokens. Cada documento dice por qué cayó en su tipo (al pasar el ratón por encima) y se puede abrir desde ahí. Si el tipo no es el que toca, cada fila tiene un desplegable para cambiarlo a mano (se guarda solo en `apuntes\tipos_documento\p-<hash>.json`, local y fuera de git; el documento no se toca). Un formato que la app no abre desde la ficha (por ejemplo `.docm`) lo dice en una marca.
 
-Es la primera ola de `HOJA-DE-RUTA.md`, que recoge el análisis de la herramienta de punta a punta y lo que viene después: agente archivero, planificación de sesiones en la app, empaquetado, entregables y datos internos.
+**Agente Archivero.** Dentro del mismo bloque, «Analizar con Claude» lanza A MANO un agente que, con UNA llamada a `claude -p` (modelo sonnet), lee una selección acotada de los documentos clave y devuelve un resumen de una línea de cada uno, la cobertura de cinco facetas (la solución tal como está, modelo de datos, usuarios y roles, alcance y planificación) con el documento que lo dice y lo que falta, y un tipo propuesto para lo que quedó en «Sin clasificar» (con «Aplicar»). Antes de gastar nada enseña la lista de lo que se va a leer y de lo que se omite con su motivo (lo que está solo en la nube no se abre nunca, lo que pasa del tope de tamaño, las sesiones, la carpeta `00. CONTEXTO (IA)` que ya entra como contexto y los formatos sin lector); nada sale del equipo hasta pulsar «Analizar». El texto que sale pierde las líneas con pinta de secreto, las secciones de contactos (con cualquier título habitual) y los correos y teléfonos. Abrir la ficha no gasta tokens: solo enseña lo ya calculado. Sin licencia o si la llamada falla, muestra una cobertura local («hay N documentos de este tipo, sin leer»). «Guardar en el contexto del proyecto» enseña antes la vista previa y solo al confirmar (si mientras tanto cambió el resultado, no escribe y te enseña la vista previa nueva) escribe `NN-mapa-de-documentacion.md` en `00. CONTEXTO (IA)` (si ya existe, lo actualiza y lo dice) y lo anota en `10-registro-de-cambios.md`: así los agentes de la reunión lo conocen por el camino normal del contexto. Topes en `archivero_*` de la configuración. Prueba con una llamada real: `pruebas\probar_archivero.py`.
+
+Es la ola A y la ola B de `HOJA-DE-RUTA.md`, que recoge el análisis de la herramienta de punta a punta y lo que viene después: planificación de sesiones en la app, empaquetado, entregables y datos internos.
 
 ## Dónde escribe (y dónde no)
 
@@ -122,7 +124,8 @@ Es la primera ola de `HOJA-DE-RUTA.md`, que recoge el análisis de la herramient
 | Transcripción, notas e insights | `<proyecto>\02. Sesiones (transcripciones)\AAAA-MM-DD-tema.md` (o `apuntes\bandeja\`); proyectos compartidos: `apuntes\sesiones\<proyecto>\` durante la reunión | de forma incremental, tras cada línea |
 | Documento final de un proyecto compartido | `<proyecto>\02. Sesiones (transcripciones)\AAAA-MM-DD-tema.md` (se crea la carpeta si falta; nunca sobrescribe) | al cerrar la revisión, salvo «No publicar» |
 | Checks de preparación | `apuntes\checks\<proyecto>.json` (local, fuera de git) | al añadir, editar, marcar o cuando el análisis marca |
-| Contexto | `<proyecto>\00. CONTEXTO (IA)\NN-nombre.md` (si falta, se crea con las plantillas del kit) y `10-registro-de-cambios.md` | solo tras aceptar el usuario |
+| Contexto | `<proyecto>\00. CONTEXTO (IA)\NN-nombre.md` (si falta, se crea con las plantillas del kit; también `NN-mapa-de-documentacion.md` del Archivero) y `10-registro-de-cambios.md` | solo tras aceptar el usuario |
+| Tipo de documento corregido a mano | `apuntes\tipos_documento\p-<hash>.json` (local, fuera de git) | al cambiar el tipo de un documento en la ficha |
 | Digest de contexto | `apuntes\cache\` | al empezar la reunión, si cambian los ficheros de origen |
 | Consumo | `apuntes\datos\consumo.jsonl` | por llamada, sin contenido de reuniones |
 
@@ -173,6 +176,7 @@ app.py                  entrada (argumentos, servidor, ventana)
 apuntes/rutas.py        Guardian: rutas permitidas, secretos, escritura atómica
 apuntes/contexto.py     proyectos, selección local de contexto, plantillas del kit
 apuntes/inventario.py   mapa de documentos del proyecto: los clasifica por tipo (arranque, oferta, funcional, técnico, datos, usuarios, planificación, seguimiento) sin abrir ninguno
+apuntes/archivero.py    Agente Archivero: selección de documentos clave, texto sin datos personales, prompt, validación, caché, cobertura local y guardado en el contexto;  apuntes/api_archivero.py  sus endpoints
 apuntes/planes.py       plan de sesiones (ficha, Gantt, checks base), estado de objetivos, estados del panel de contexto
 apuntes/checks.py       checks de preparación: almacén local, bloqueo manual, marcas automáticas, resumen
 planes/  sesiones/  checks/   planes, transcripciones de proyectos compartidos y checks (locales, fuera de git)

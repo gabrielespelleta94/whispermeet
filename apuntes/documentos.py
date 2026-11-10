@@ -22,6 +22,9 @@ MAX_PAGINAS_PDF = 60
 _RE_TEXTO = re.compile(r"<(?:w|a):t(?:\s[^>]*)?>([^<]*)</(?:w|a):t>")
 _RE_FIN_PARRAFO = re.compile(r"</w:p>|</a:p>")
 _RE_NUM = re.compile(r"(\d+)(?=\.xml$)")
+_RE_FIN_BLOQUE = re.compile(r"(</w:p>|</w:tbl>)")
+_RE_ESTILO = re.compile(r"<w:pStyle\b[^>]*?\bw:val=\"([^\"]*)\"")
+_ESTILOS_TITULO = ("heading", "ttulo", "titulo", "título", "title")
 
 
 class Indisponible(Exception):
@@ -47,6 +50,31 @@ def _xml_a_texto(xml: str) -> str:
     return "\n".join(l for l in lineas if l)
 
 
+def _xml_a_texto_estructurado(xml: str) -> str:
+    """Como `_xml_a_texto` para un .docx, pero conserva dos señales de estructura: los párrafos con estilo de título salen con `# ` (un `#` por nivel si el
+    estilo lleva número, máximo 6) y tras cada tabla (`</w:tbl>`) sale una línea en blanco. Las demás líneas vacías se siguen descartando."""
+    lineas: list[str] = []
+    for trozo in _RE_FIN_BLOQUE.split(xml):
+        if trozo == "</w:tbl>":
+            if lineas and lineas[-1] != "":
+                lineas.append("")
+            continue
+        if trozo == "</w:p>":
+            continue
+        ts = _RE_TEXTO.findall(trozo)
+        if not ts:
+            continue
+        linea = "".join(html.unescape(t) for t in ts).strip()
+        if not linea:
+            continue
+        estilo = _RE_ESTILO.search(trozo)
+        if estilo and estilo.group(1).lower().startswith(_ESTILOS_TITULO):
+            n = re.search(r"(\d+)\s*$", estilo.group(1))
+            linea = "#" * max(1, min(6, int(n.group(1)) if n else 1)) + " " + linea
+        lineas.append(linea)
+    return "\n".join(lineas)
+
+
 def _leer_parte(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> str:
     if info.file_size > MAX_PARTE_BYTES:
         return ""
@@ -54,13 +82,16 @@ def _leer_parte(zf: zipfile.ZipFile, info: zipfile.ZipInfo) -> str:
         return f.read(MAX_PARTE_BYTES).decode("utf-8", errors="replace")
 
 
-def texto_docx(ruta: str | Path, tope_chars: int = 120_000) -> str:
+def texto_docx(ruta: str | Path, tope_chars: int = 120_000, estructura: bool = False) -> str:
+    """`estructura=True`: los títulos de Word salen como `# …` y cada tabla termina en una línea en blanco (ver `_xml_a_texto_estructurado`); por defecto, la
+    salida es la de siempre."""
     try:
         with zipfile.ZipFile(ruta) as zf:
             nombres = {i.filename: i for i in zf.infolist()}
             if "word/document.xml" not in nombres:
                 raise Indisponible("no es un .docx legible")
-            texto = _xml_a_texto(_leer_parte(zf, nombres["word/document.xml"]))
+            xml = _leer_parte(zf, nombres["word/document.xml"])
+            texto = _xml_a_texto_estructurado(xml) if estructura else _xml_a_texto(xml)
     except zipfile.BadZipFile as e:
         raise Indisponible("el .docx está dañado o protegido") from e
     return texto[:tope_chars]
@@ -147,11 +178,11 @@ def texto_pdf(ruta: str | Path, tope_chars: int = 120_000) -> str:
     return "\n".join(partes)[:tope_chars]
 
 
-def texto_de(ruta: str | Path, tope_chars: int = 120_000) -> str:
-    """Texto de un .docx, .pptx o .pdf. `Indisponible` si no se puede."""
+def texto_de(ruta: str | Path, tope_chars: int = 120_000, estructura: bool = False) -> str:
+    """Texto de un .docx, .pptx o .pdf. `Indisponible` si no se puede. `estructura` solo afecta a los .docx (ver `texto_docx`)."""
     ext = Path(ruta).suffix.lower()
     if ext == ".docx":
-        return texto_docx(ruta, tope_chars)
+        return texto_docx(ruta, tope_chars, estructura)
     if ext == ".pptx":
         return texto_pptx(ruta, tope_chars)
     if ext == ".pdf":

@@ -26,7 +26,7 @@
       body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined });
     let datos = null;
     try { datos = await r.json(); } catch { /* sin cuerpo */ }
-    if (!r.ok) { const e = new Error((datos && (datos.detail || datos.error)) || `Error ${r.status}`); e.status = r.status; throw e; }
+    if (!r.ok) { const e = new Error((datos && (datos.detail || datos.error)) || `Error ${r.status}`); e.status = r.status; e.datos = datos; throw e; }
     return datos;
   }
 

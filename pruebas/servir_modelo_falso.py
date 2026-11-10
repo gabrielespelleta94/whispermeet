@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -30,6 +31,17 @@ class FalsoLento(ModeloLLM):
         if "preparas la siguiente reunión" in sistema:   # brief de preparación (datos ficticios, formato de apuntes/brief.py)
             return Respuesta(json.dumps({"objetivos": ["Cerrar el alcance de SAP", "Fijar la fecha del piloto", "Confirmar quién valida el catálogo de hoteles"],
                                          "preguntas": ["¿Quién valida el catálogo de hoteles?", "¿Qué hoteles entran en el piloto?"], "datos": ["Catálogo de hoteles en CSV", "Listado de licencias vigentes"]}), uso, int(self.retardo * 1000))
+        if "Eres el Archivero de" in sistema:   # Agente Archivero (datos ficticios, formato de apuntes/archivero.py): cobertura con los documentos que lleguen
+            docs = [int(x) for x in re.findall(r"<<<DATOS documento (\d+):", usuario)]
+            primero = docs[:1]
+            d = {"documentos": [{"i": i, "resumen": f"Resumen ficticio del documento {i}."} for i in docs],
+                 "facetas": [{"clave": "solucion", "estado": "parcial", "sabemos": ["El portal cotiza reservas de grupos."], "fuentes": primero, "falta": ["Casos de uso detallados."]},
+                             {"clave": "datos", "estado": "sin_documentar", "sabemos": [], "fuentes": [], "falta": ["Entidades y relaciones."]},
+                             {"clave": "usuarios", "estado": "sin_documentar", "sabemos": [], "fuentes": [], "falta": ["Perfiles y roles de la solución."]},
+                             {"clave": "alcance", "estado": "documentado", "sabemos": ["Catálogo, cotizador y panel de seguimiento."], "fuentes": primero, "falta": []},
+                             {"clave": "planificacion", "estado": "parcial", "sabemos": ["Tres sesiones y un piloto."], "fuentes": primero, "falta": ["Fechas exactas."]}],
+                 "clasificacion": [{"i": 1, "tipo": "tecnico"}] if "<<<DATOS sin_clasificar>>>" in usuario else []}
+            return Respuesta(json.dumps(d, ensure_ascii=False), uso, int(self.retardo * 1000))
         if "Formula UNA pregunta corta" in sistema:   # pregunta del Capitán para cerrar un objetivo sin tratar
             return Respuesta(json.dumps({"q": "¿Quién del cliente confirma este punto y para cuándo?"}), uso, int(self.retardo * 1000))
         if "acaba de hacer la pregunta" in sistema:   # el asesor en directo: respuesta sugerida a una pregunta del cliente (datos ficticios)

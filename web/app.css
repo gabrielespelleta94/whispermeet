@@ -1265,3 +1265,41 @@ button.btn-mini, .btn.btn-mini { height: 32px; }
 .ctx-cab > .caps, .contexto .grupo-h .caps { display: block; font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
 .ini-der .contexto { max-height: none; min-height: 0; overflow: visible; }.inicio { padding-top: 8px; }
 .d-cuerpo:focus-visible { outline-offset: -2px; box-shadow: none !important; }
+
+/* ---------- Agente Archivero (ola B, ficha del proyecto): tipo corregible por documento, plan de lectura, resultado por faceta y vista previa del Markdown.
+   Sin elipsis ni line-clamp (§14.5): los textos largos parten en líneas. ---------- */
+.dc-fila { flex-wrap: wrap; row-gap: 4px; padding: 2px 0; }
+.dc-tipo-sel { flex: 0 1 190px; width: auto; min-width: 0; height: 32px; padding: 0 6px; font-size: var(--f-12); line-height: 16px; }
+.ar-bloque { margin-top: 12px; padding: 12px 0; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); min-width: 0; }
+.ar-bloque:focus-visible { outline: 2px solid var(--micro); outline-offset: 2px; }
+.ar-bloque p { margin-top: 8px; }
+.ar-bloque .t-body, .ar-bloque .t-body-m { overflow-wrap: anywhere; }
+.ar-bloque .error { margin-top: 8px; }
+.ar-cab { padding-bottom: 0; margin-bottom: 0; }
+.ar-tit { font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-variant-numeric: lining-nums proportional-nums; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
+.ar-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.ar-motivo { flex: 0 1 55%; }
+.ar-facetas { list-style: none; margin: 8px 0 0; padding: 0; }
+.ar-faceta { padding: 8px 0; border-bottom: 1px solid var(--hair); min-width: 0; }
+.ar-faceta:last-child { border-bottom: 0; }
+.ar-faceta-cab { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.ar-estado { font-family: var(--mono); font-size: var(--f-11); line-height: 16px; letter-spacing: .06em; text-transform: uppercase; font-weight: 500; color: var(--soft); }
+.ar-estado.documentado { color: var(--ok); }
+.ar-estado.parcial { color: var(--warn); }
+.ar-lista { list-style: disc; margin: 4px 0 0; padding-left: 18px; }
+.ar-lista li { overflow-wrap: anywhere; }
+.ar-falta { margin-top: 6px; }
+.ar-fuentes { margin-top: 4px; overflow-wrap: anywhere; }
+.ar-det { margin-top: 8px; border-bottom: 1px solid var(--hair); }
+.ar-doc { padding: 6px 0; border-bottom: 1px solid var(--hair); overflow-wrap: anywhere; }
+.ar-doc:last-child { border-bottom: 0; }
+.ar-doc p { margin-top: 2px; }
+.ar-propuestas { margin-top: 8px; }
+.ar-prop-tipo { flex: none; }
+.ar-previa { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--warn); }
+.ar-previa-md { margin: 8px 0 0; padding: 8px 12px; max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: var(--f-12); line-height: 16px; color: var(--body);
+  background: var(--papel); border: 1px solid var(--papel-canto); border-radius: var(--r-m); user-select: text; }
+.ar-previa-md:focus-visible { outline: 2px solid var(--micro); outline-offset: 2px; }
+.ar-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 12px; }
+.ar-pie .ar-acciones { margin-top: 0; }
+.ar-guardado { color: var(--ok); }

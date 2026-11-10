@@ -7,11 +7,11 @@ Estado a 9 de noviembre de 2026. Recoge el análisis de punta a punta de la herr
 | Área | Qué hay | Qué falta |
 |---|---|---|
 | Reunión en directo | Transcripción local con Whisper, tarjetas, objetivos, checks, asesor, equipo de agentes y eco aplazado en origen. | Validar el eco con sonido real de sala. |
-| Documentos del proyecto | Lee `.md`, `.txt`, `.docx`, `.pptx` y `.pdf` como contexto. Desde la ola A, mapa de documentos por tipo y aviso de los tipos que faltan. | Clasificar lo ambiguo, resumir cada documento clave, leer `.xlsx`. |
-| Solución tal como está y modelo de datos | Solo la plantilla `03-arquitectura-y-datos`, que se rellena a mano. | Que un agente lo extraiga de los documentos y diga qué no está documentado. |
-| Usuarios y roles | No existe la entidad. Las secciones de contactos se excluyen a propósito del contexto de la IA. | Roles de la solución e interlocutores del proyecto, sin enviar datos personales al modelo. |
+| Documentos del proyecto | Lee `.md`, `.txt`, `.docx`, `.pptx` y `.pdf` como contexto. Mapa de documentos por tipo y aviso de los tipos que faltan (ola A); tipo corregible a mano, resumen de una línea de los documentos clave y tipo propuesto para lo ambiguo (ola B). | Leer `.xlsx`; que el mapa entre en la preparación sugerida y en el resumen del proyecto. |
+| Solución tal como está y modelo de datos | La plantilla `03-arquitectura-y-datos`, que se rellena a mano, y desde la ola B el Archivero: cobertura por faceta con el documento que lo dice y lo que falta. | Que proponga los huecos por el flujo de «aceptar cambios»; rellenar la plantilla a partir de lo que encuentra. |
+| Usuarios y roles | Desde la ola B, el Archivero extrae los perfiles y roles de la solución que digan los documentos (nunca personas). Las secciones de contactos se excluyen a propósito del contexto de la IA. | Interlocutores del proyecto, sin enviar datos personales al modelo. |
 | Planificación de sesiones | Plan de varias sesiones con Gantt, objetivos y checks, pero el JSON se escribe a mano fuera de la app. | Crear y editar el plan en la app; proponerlo a partir del arranque y el alcance. |
-| Agentes | Muchos dentro de la reunión. Fuera de ella, solo la preparación sugerida y el contexto de la reunión. | Agentes de proyecto: archivero, planificador y redactor de entregables. |
+| Agentes | Muchos dentro de la reunión. Fuera de ella, la preparación sugerida, el contexto de la reunión y el Archivero (a mano, desde la ficha). | Agentes de proyecto: planificador y redactor de entregables. |
 | Empaquetado | Clonar, crear el entorno, instalar dependencias y lanzar; un acceso directo. | Instalador, comprobación de requisitos al primer arranque y ajustes que hoy solo se cambian en el fichero. |
 | Datos internos | Todo en ficheros (JSON, JSONL y Markdown) a través de `Guardian`, con escritura atómica. No hay base de datos. | Versión de esquema y migraciones, identificadores estables y copia de seguridad. |
 | Entregables | Acta y resumen en Markdown; borrador de correo. | Exportar a Word o PDF con plantilla. |
@@ -36,9 +36,17 @@ La ficha de cada proyecto muestra qué documentación hay, por tipo, cuál es el
 - Tipos: arranque (kick-off), oferta y alcance, funcional, técnico, modelo de datos, usuarios y roles, planificación, seguimiento y actas, pruebas y formación, contexto para la IA y sin clasificar.
 - Piezas: `apuntes/inventario.py`, `Guardian.ficheros_del_proyecto`, `GET /api/proyectos/{nombre}/documentos` y el bloque «Documentos del proyecto» de la ficha.
 
-### Ola B — Agente Archivero
+### Ola B — Agente Archivero (hecha)
 
-Un agente que se lanza a mano desde la ficha y trabaja sobre el mapa de la ola A.
+Un agente que se lanza a mano desde la ficha y trabaja sobre el mapa de la ola A. Hecho: `apuntes/archivero.py`, `apuntes/api_archivero.py`, el bloque «Agente Archivero» de la ficha y el tipo corregible a mano (`PUT .../documentos/{id}/tipo`, `tipos_documento\`). Una sola llamada a `claude -p` (sonnet), con una selección acotada y determinista de documentos (nunca los que están solo en la nube), sin datos personales ni secretos en lo que sale, cacheada y con respaldo local sin licencia. «Guardar en el contexto del proyecto» enseña la vista previa y escribe `NN-mapa-de-documentacion.md` solo tras confirmar.
+
+Lo que quedó fuera de esta ola:
+- Proponer los huecos para `07-fuentes-y-huecos` por el flujo de «aceptar cambios» de la reunión: el Archivero guarda su propio `NN-mapa-de-documentacion.md` (con lo que falta en cada faceta) y no toca las plantillas del kit.
+- Que el mapa entre en la preparación sugerida (brief) y en el resumen del proyecto: hoy llega a la reunión solo por el contexto del proyecto, y solo si el usuario guarda el resultado.
+- Leer `.xlsx` (y otros formatos sin lector): salen en «No se va a leer» con su motivo. El `.pdf` solo se lee si hay una librería de PDF instalada.
+- Usuarios y roles solo cubre perfiles y roles de la solución, no los interlocutores del proyecto (las secciones de contactos siguen fuera del contexto de la IA).
+
+El plan original, como referencia:
 
 - Clasifica lo que las reglas dejan en «sin clasificar» y permite corregir un tipo a mano.
 - Resume en una línea cada documento clave.

@@ -47,11 +47,24 @@ STUB = """(() => {
   const P = %s, CTX = %s, RES = %s, PEND = %s;
   window.fetch = async (u, o) => {
     const m = (o && o.method) || 'GET'; window.__llamadas.push(m + ' ' + u);
-    const r = (d, ok = true) => ({ ok, json: async () => d });
+    const r = (d, ok = true, status = ok ? 200 : 400) => ({ ok, status, json: async () => d });
     if (/api\\/proyectos\\?/.test(u)) { const q = decodeURIComponent(u.split('q=')[1] || '').toLowerCase(); return r({ raiz: 'X:/r', proyectos: P.filter((p) => p.nombre.toLowerCase().includes(q)) }); }
     if (/api\\/proyectos\\/resumen/.test(u)) return r({ resumen: RES, parcial: false });
     if (/\\/pendientes$/.test(u)) return r(PEND);
     if (/\\/contexto$/.test(u)) return r(CTX);
+    if (/\\/archivero\\/guardar$/.test(u) && m === 'POST') {
+      const b = JSON.parse(o.body); (window.__cuerpos = window.__cuerpos || []).push(m + ' ' + o.body);
+      if (window.__ERR_ARCH === 'guardar') return r({ detail: 'Fallo simulado al guardar.' }, false);
+      if (window.__ERR_ARCH === 'conflicto' && b.confirmar) { window.__ERR_ARCH = ''; return r({ detail: 'El resultado ha cambiado; revisa la vista previa antes de guardar.', previa: window.__PREVIA_NUEVA }, false, 409); }
+      return r(b.confirmar ? Object.assign({}, window.__PREVIA, { guardado: true }) : window.__PREVIA);
+    }
+    if (/\\/archivero(\\?refrescar=1)?$/.test(u) && m === 'POST') {
+      if (window.__DEMORA) await new Promise((ok) => setTimeout(ok, window.__DEMORA));
+      if (window.__ERR_ARCH === 'analizar') return r({ detail: 'Claude no ha respondido.' }, false);
+      window.__ARCH = Object.assign({}, window.__ARCH, { resultado: window.__RES }); return r(window.__RES);
+    }
+    if (/\\/archivero$/.test(u)) return r(window.__ARCH || {});
+    if (/documentos\\/[0-9a-f]{16}\\/tipo$/.test(u) && m === 'PUT') { (window.__cuerpos = window.__cuerpos || []).push(m + ' ' + o.body); return r({ ok: true }); }
     if (/\\/documentos$/.test(u)) return r(window.__DOCS || { total: 0, tipos: [], faltan: [], en_nube: 0, truncado: false });
     if (/sesiones-recientes/.test(u)) return r({ sesiones: [{ id: 'aaaaaaaaaaaaaaaa', fecha: '2026-11-04', tema: 'Seguimiento', inicio: '10:00' }], avisos: [] });
     if (/extra\\//.test(u) && m === 'DELETE') { const n = decodeURIComponent(u.split('extra/')[1]); const i = P.findIndex((p) => p.nombre === n); if (i >= 0) P.splice(i, 1); return r({ proyectos_extra: [] }); }
@@ -463,3 +476,258 @@ def test_nada_se_desborda_ni_se_corta_en_1440_y_1024(edge, pagina):
             r = json.loads(edge.js(medida))
             assert r["malos"] == [] and r["docScroll"] is False, (ancho, modo, r)
     edge.cmd("Emulation.setDeviceMetricsOverride", width=1440, height=900, deviceScaleFactor=1, mobile=False)
+
+
+# ---------------------------------------------------------------- Agente Archivero (ola B)
+def _tipos_todos(extra_otros=None):
+    titulos = [("arranque", "Arranque (kick-off)"), ("oferta", "Oferta y alcance"), ("funcional", "Funcional"), ("tecnico", "Técnico"), ("datos", "Modelo de datos"),
+               ("usuarios", "Usuarios y roles"), ("planificacion", "Planificación"), ("seguimiento", "Seguimiento y actas"), ("pruebas", "Pruebas y formación"),
+               ("contexto", "Contexto para la IA"), ("otros", "Sin clasificar")]
+    ahora = time.time()
+    por = {"oferta": [{"id": "aaaaaaaaaaaaaaa1", "nombre": "Oferta v2.docx", "rel": "Oferta v2.docx", "ext": ".docx", "carpeta": "", "tam": 2048, "mtime": ahora - 3 * 86400, "nube": False,
+                       "motivo": "nombre: «oferta o alcance»", "abrible": True, "corregido": False},
+                      {"id": "aaaaaaaaaaaaaaa2", "nombre": "Macro.docm", "rel": "x/Macro.docm", "ext": ".docm", "carpeta": "x", "tam": 10, "mtime": ahora - 9 * 86400, "nube": False,
+                       "motivo": "nombre: «oferta o alcance»", "abrible": False, "corregido": False}],
+           "otros": [{"id": "aaaaaaaaaaaaaaa3", "nombre": "Cosas.docx", "rel": "Varios/Cosas.docx", "ext": ".docx", "carpeta": "Varios", "tam": 900, "mtime": ahora - 4 * 86400, "nube": False,
+                      "motivo": "sin pista en el nombre ni en la carpeta", "abrible": True, "corregido": False}]}
+    tipos = []
+    for clave, titulo in titulos:
+        fich = por.get(clave, [])
+        tipos.append({"clave": clave, "titulo": titulo, "esperado": True, "n": len(fich), "dias": 3 if fich else None, "mas": 0,
+                      "ultimo": {"nombre": fich[0]["nombre"], "rel": fich[0]["rel"], "mtime": fich[0]["mtime"]} if fich else None, "ficheros": fich})
+    return {"total": 3, "en_nube": 0, "truncado": False, "ignorados": 0, "faltan": [], "tipos": tipos}
+
+
+PLAN = {"leer": [{"nombre": "Oferta v2.docx", "rel": "Oferta v2.docx", "tipo": "oferta", "tipo_titulo": "Oferta y alcance", "tam": 2048, "mtime": time.time(), "asignado": 2000},
+                 {"nombre": "Diseño funcional.md", "rel": "Funcional/Diseño funcional.md", "tipo": "funcional", "tipo_titulo": "Funcional", "tam": 900, "mtime": time.time(), "asignado": 900}],
+        "omitidos": [{"nombre": "Macro.docm", "rel": "x/Macro.docm", "tipo": "oferta", "motivo": "formato sin lector en la app (.docm)"},
+                     {"nombre": "Plan.xlsx", "rel": "Plan.xlsx", "tipo": "planificacion", "motivo": "solo está en la nube: no se abre para no descargarlo de OneDrive"}],
+        "mas_omitidos": 0, "chars": 2900, "sin_clasificar": 1, "sin_clasificar_total": 1, "topes": {"max_documentos": 10, "por_documento": 6000, "total": 40000}, "modelo": "sonnet"}
+
+
+def _faceta(clave, titulo, estado, sabemos=(), fuentes=(), falta=(), sin_leer=False):
+    f = {"clave": clave, "titulo": titulo, "estado": estado, "sabemos": list(sabemos), "fuentes": [{"nombre": n, "rel": n} for n in fuentes], "falta": list(falta)}
+    if sin_leer:
+        f["sin_leer"] = True
+    return f
+
+
+RESULTADO = {"version": "archivero-v1", "proyecto": "Alfa Demo", "origen": "modelo", "generado": "2026-11-09T10:30:00", "modelo": "sonnet", "leidos": 2, "tokens": 12345,
+             "desde_cache": False, "desactualizado": False, "aviso": "", "faltan": [], "no_leidos": [],
+             "documentos": [{"nombre": "Oferta v2.docx", "rel": "Oferta v2.docx", "tipo": "oferta", "tipo_titulo": "Oferta y alcance", "resumen": "Alcance del portal de grupos y entregables."},
+                            {"nombre": "Diseño funcional.md", "rel": "Funcional/Diseño funcional.md", "tipo": "funcional", "tipo_titulo": "Funcional", "resumen": "Procesos de cotización."}],
+             "facetas": [_faceta("solucion", "La solución tal como está", "parcial", ["El portal pide cotizaciones de grupos"], ["Diseño funcional.md"], ["Casos de uso"]),
+                         _faceta("datos", "Modelo de datos", "sin_documentar", falta=["Entidades y relaciones"]),
+                         _faceta("usuarios", "Usuarios y roles", "sin_documentar", falta=["Perfiles y roles"]),
+                         _faceta("alcance", "Alcance", "documentado", ["Catálogo y cotizador"], ["Oferta v2.docx"]),
+                         _faceta("planificacion", "Planificación", "parcial", ["Tres sesiones"], ["Oferta v2.docx"], ["Fechas"])],
+             "propuestas": [{"nombre": "Cosas.docx", "rel": "Varios/Cosas.docx", "carpeta": "Varios", "tipo": "tecnico", "tipo_titulo": "Técnico"}]}
+PREVIA = {"huella": "aaaaaaaaaaaa", "fichero": "11-mapa-de-documentacion.md", "actualiza": False, "carpeta_nueva": False, "guardado": False, "compartido": False,
+          "vista_previa": "# Mapa de documentación del proyecto\n\n## Cobertura por faceta\n\n### Alcance: documentado\n- Catálogo y cotizador\n"}
+
+
+def _arch(edge, pagina, resultado=None, previa=None, extra=""):
+    docs = _tipos_todos()
+    antes = "window.__DOCS = %s; window.__ARCH = %s; window.__RES = %s; window.__PREVIA = %s; %s 1" % (
+        json.dumps(docs), json.dumps({"plan": PLAN, "resultado": resultado}), json.dumps(resultado or RESULTADO), json.dumps(previa or PREVIA), extra)
+    abrir(edge, pagina, antes=antes)
+    clic(edge, tarjeta("Alfa Demo"))
+    time.sleep(0.9)
+
+
+def _texto(edge, selector):
+    return edge.js("(document.querySelector(%s) || {}).textContent || ''" % json.dumps(selector))
+
+
+def _llamadas(edge):
+    return json.loads(edge.js("JSON.stringify(window.__llamadas)"))
+
+
+def _cuerpos(edge):
+    return json.loads(edge.js("JSON.stringify(window.__cuerpos || [])"))
+
+
+def test_archivero_sin_resultado_ofrece_analizar_y_no_llama(edge, pagina):
+    _arch(edge, pagina)
+    assert _texto(edge, "#ar-abrir") == "Analizar con Claude"
+    assert "gasta tokens" in _texto(edge, "#ar-intro") and "no se ejecuta solo" in _texto(edge, "#ar-intro")
+    assert edge.js("document.querySelector('#ar-facetas')") is None
+    assert not [x for x in _llamadas(edge) if x.startswith("POST")]                         # abrir la ficha no gasta nada
+    clic(edge, "#ar-abrir")
+    time.sleep(0.3)
+    assert edge.js("document.querySelectorAll('#ar-plan-leer li').length") == 2
+    assert edge.js("document.querySelectorAll('#ar-plan-omitidos li').length") == 2
+    om = _texto(edge, "#ar-plan-omitidos")
+    assert "formato sin lector en la app (.docm)" in om and "solo está en la nube" in om and "OneDrive" in om
+    assert "Nada sale de tu equipo hasta que pulses" in _texto(edge, "#ar-plan-intro") and "1 fichero sin clasificar" in _texto(edge, "#ar-plan-sin")
+    assert "gasta tokens" in _texto(edge, "#ar-plan-aviso") and "sonnet" in _texto(edge, "#ar-plan-aviso")
+    assert edge.js("document.activeElement.id") == "ar-plan-analizar"                       # el foco pasa al botón del paso siguiente
+    assert not [x for x in _llamadas(edge) if x.startswith("POST")]                         # ver el plan tampoco
+    clic(edge, "#ar-plan-cancelar")
+    time.sleep(0.3)
+    assert edge.js("document.activeElement.id") == "ar-abrir" and edge.js("document.querySelector('#ar-plan-leer')") is None
+    assert not [x for x in _llamadas(edge) if x.startswith("POST")]
+    assert "!" not in _texto(edge, "#vp-arch")
+
+
+def test_archivero_analiza_con_estado_ocupado_y_enseña_el_resultado(edge, pagina):
+    _arch(edge, pagina, extra="window.__DEMORA = 900;")
+    clic(edge, "#ar-abrir")
+    clic(edge, "#ar-plan-analizar")
+    time.sleep(0.35)
+    assert edge.js("document.querySelector('#vp-arch').getAttribute('aria-busy')") == "true"
+    assert "Claude está leyendo 2 documentos" in _texto(edge, "#ar-cargando") and edge.js("document.querySelector('#ar-cargando').getAttribute('role')") == "status"
+    time.sleep(1.2)
+    assert edge.js("document.querySelector('#vp-arch').getAttribute('aria-busy')") == "false"
+    assert "POST /api/proyectos/Alfa%20Demo/archivero" in _llamadas(edge)
+    assert edge.js("document.querySelectorAll('#ar-facetas > li').length") == 5
+    por = json.loads(edge.js("JSON.stringify([...document.querySelectorAll('#ar-facetas > li')].map((x) => [x.dataset.faceta, x.dataset.estado]))"))
+    assert por == [["solucion", "parcial"], ["datos", "sin_documentar"], ["usuarios", "sin_documentar"], ["alcance", "documentado"], ["planificacion", "parcial"]]
+    sol = _texto(edge, '#ar-facetas [data-faceta="solucion"]')
+    assert "La solución tal como está" in sol and "Parcial" in sol and "El portal pide cotizaciones de grupos" in sol and "Fuentes: Diseño funcional.md" in sol and "Casos de uso" in sol
+    assert "Sin documentar" in _texto(edge, '#ar-facetas [data-faceta="datos"]') and "Entidades y relaciones" in _texto(edge, '#ar-facetas [data-faceta="datos"]')
+    pie = _texto(edge, "#ar-pie-datos")
+    assert "09/11/2026 10:30" in pie and "modelo sonnet" in pie and "2 documentos leídos" in pie and "12.345 tokens" in pie
+    edge.js("document.querySelector('#ar-docs').open = true; 1")
+    assert "Alcance del portal de grupos y entregables." in _texto(edge, "#ar-docs") and "Procesos de cotización." in _texto(edge, "#ar-docs")
+    assert edge.js("document.querySelector('#ar-reanalizar') !== null && document.querySelector('#ar-guardar') !== null")
+    assert _texto(edge, "#ar-guardar") == "Guardar en el contexto del proyecto" and _texto(edge, "#ar-reanalizar") == "Volver a analizar"
+    assert edge.js("document.activeElement.id") == "ar-reanalizar"
+    assert "!" not in _texto(edge, "#vp-arch")
+
+
+def test_archivero_error_en_linea_y_reintento(edge, pagina):
+    _arch(edge, pagina, extra="window.__ERR_ARCH = 'analizar';")
+    clic(edge, "#ar-abrir")
+    clic(edge, "#ar-plan-analizar")
+    time.sleep(0.5)
+    assert _texto(edge, "#ar-error") == "Claude no ha respondido." and edge.js("document.querySelector('#ar-error').getAttribute('role')") == "alert"
+    assert edge.js("document.querySelector('#ar-plan-analizar') !== null")                  # se puede reintentar sin salir
+    assert edge.js("document.querySelector('#vp-arch').getAttribute('aria-busy')") == "false"
+    edge.js("window.__ERR_ARCH = ''; 1")
+    clic(edge, "#ar-plan-analizar")
+    time.sleep(0.5)
+    assert edge.js("document.querySelectorAll('#ar-facetas > li').length") == 5 and edge.js("document.querySelector('#ar-error')") is None
+
+
+def test_archivero_volver_a_analizar_pasa_por_el_plan(edge, pagina):
+    _arch(edge, pagina, resultado=RESULTADO)
+    assert edge.js("document.querySelectorAll('#ar-facetas > li').length") == 5 and edge.js("document.querySelector('#ar-abrir')") is None
+    clic(edge, "#ar-reanalizar")
+    time.sleep(0.3)
+    assert edge.js("document.querySelectorAll('#ar-plan-leer li').length") == 2
+    assert not [x for x in _llamadas(edge) if x.startswith("POST")]                         # volver a analizar también espera al «Analizar»
+    clic(edge, "#ar-plan-analizar")
+    time.sleep(0.5)
+    assert "POST /api/proyectos/Alfa%20Demo/archivero?refrescar=1" in _llamadas(edge)
+
+
+def test_archivero_resultado_local_y_desactualizado(edge, pagina):
+    loc = dict(RESULTADO, origen="local", modelo=None, tokens=None, leidos=0, documentos=[], propuestas=[], desactualizado=True,
+               aviso="No se ha podido analizar con Claude; te enseño la cobertura local, sin leer los documentos.",
+               facetas=[_faceta("solucion", "La solución tal como está", "parcial", ["Hay 1 documento de tipo «Funcional», sin leer."], ["Diseño funcional.md"], sin_leer=True),
+                        _faceta("datos", "Modelo de datos", "sin_documentar", falta=["No hay documentos de los tipos que suelen cubrir «Modelo de datos»."], sin_leer=True)])
+    _arch(edge, pagina, resultado=loc)
+    assert _texto(edge, "#ar-origen") == "Cobertura local, sin leer" and "cobertura local" in _texto(edge, "#ar-aviso")
+    assert "Hay documentos, sin leer" in _texto(edge, '#ar-facetas [data-faceta="solucion"]') and "Sin documentos" in _texto(edge, '#ar-facetas [data-faceta="datos"]')
+    assert "han cambiado desde este análisis" in _texto(edge, "#ar-desactualizado")
+    assert edge.js("document.querySelector('#ar-guardar')") is None                         # lo local no se guarda en el contexto
+    assert "documentos leídos" not in _texto(edge, "#ar-pie-datos")
+
+
+def test_archivero_aplicar_propuesta_y_cambiar_tipo_a_mano(edge, pagina):
+    _arch(edge, pagina, resultado=RESULTADO)
+    assert edge.js("document.querySelectorAll('#ar-propuestas li').length") == 1
+    assert "Cosas.docx" in _texto(edge, "#ar-propuestas") and "→ Técnico" in _texto(edge, "#ar-propuestas")
+    assert edge.js("document.querySelector('#ar-propuestas button').getAttribute('aria-label')") == "Aplicar el tipo Técnico a Varios/Cosas.docx"
+    clic(edge, "#ar-propuestas button")
+    time.sleep(0.6)
+    assert "PUT /api/proyectos/Alfa%20Demo/documentos/aaaaaaaaaaaaaaa3/tipo" in _llamadas(edge)
+    assert 'PUT {"tipo":"tecnico"}' in _cuerpos(edge)
+    assert _llamadas(edge).count("GET /api/proyectos/Alfa%20Demo/archivero") >= 2 and _llamadas(edge).count("GET /api/proyectos/Alfa%20Demo/documentos") >= 2   # se vuelve a leer lo nuevo
+    # una forma de cambiar el tipo accesible con teclado: un <select> nativo con su nombre accesible en cada fila
+    edge.js("document.querySelector('#vp-docs details[data-tipo=oferta]').open = true; document.querySelector('#vp-docs details[data-tipo=otros]').open = true; 1")
+    assert edge.js("document.querySelectorAll('#vp-docs .dc-fila select.dc-tipo-sel').length") == 3
+    sel = "#ar-tipo-aaaaaaaaaaaaaaa1"
+    assert edge.js("document.querySelector(%s).getAttribute('aria-label')" % json.dumps(sel)) == "Tipo de documento de Oferta v2.docx"
+    assert edge.js("document.querySelector(%s).tabIndex" % json.dumps(sel)) == 0 and edge.js("document.querySelector(%s).value" % json.dumps(sel)) == "oferta"
+    opciones = json.loads(edge.js("JSON.stringify([...document.querySelector(%s).options].map((o) => o.textContent))" % json.dumps(sel)))
+    assert opciones[:3] == ["Arranque (kick-off)", "Oferta y alcance", "Funcional"] and len(opciones) == 11 and "Quitar la corrección (volver a las reglas)" not in opciones
+    edge.js("(() => { const s = document.querySelector(%s); s.value = 'datos'; s.dispatchEvent(new Event('change')); })(); 1" % json.dumps(sel))
+    time.sleep(0.5)
+    assert 'PUT {"tipo":"datos"}' in _cuerpos(edge)
+
+
+def test_archivero_tipo_corregido_se_marca_y_se_puede_quitar(edge, pagina):
+    docs = _tipos_todos()
+    docs["tipos"][1]["ficheros"][0].update({"corregido": True, "motivo": "corregido a mano"})
+    abrir(edge, pagina, antes="window.__DOCS = %s; window.__ARCH = {plan: %s, resultado: null}; 1" % (json.dumps(docs), json.dumps(PLAN)))
+    clic(edge, tarjeta("Alfa Demo"))
+    time.sleep(0.9)
+    edge.js("document.querySelector('#vp-docs details[data-tipo=oferta]').open = true; 1")
+    fila = "#vp-docs .dc-fila[data-id=aaaaaaaaaaaaaaa1]"
+    assert "tipo corregido" in _texto(edge, fila + " .ar-corregido")
+    assert "Quitar la corrección (volver a las reglas)" in json.loads(edge.js("JSON.stringify([...document.querySelector('#ar-tipo-aaaaaaaaaaaaaaa1').options].map((o) => o.textContent))"))
+    edge.js("(() => { const s = document.querySelector('#ar-tipo-aaaaaaaaaaaaaaa1'); s.value = ''; s.dispatchEvent(new Event('change')); })(); 1")
+    time.sleep(0.5)
+    assert 'PUT {"tipo":null}' in _cuerpos(edge)
+
+
+def test_archivero_fila_que_no_se_abre_dice_por_que(edge, pagina):
+    _arch(edge, pagina)
+    edge.js("document.querySelector('#vp-docs details[data-tipo=oferta]').open = true; 1")
+    marca = edge.js("[...document.querySelectorAll('#vp-docs .dc-fila[data-id=aaaaaaaaaaaaaaa2] .vp-marca')].map((x) => x.textContent + '|' + x.title)")
+    assert len(marca) == 1 and marca[0].startswith("no se abre desde aquí|") and "macros" in marca[0]
+    assert edge.js("document.querySelector('#vp-docs .dc-fila[data-id=aaaaaaaaaaaaaaa1] button').textContent") == "Abrir"
+    assert edge.js("document.querySelector('#vp-docs .dc-fila[data-id=aaaaaaaaaaaaaaa2] button')") is None
+
+
+def test_archivero_guardar_vista_previa_cancelar_y_confirmar(edge, pagina):
+    _arch(edge, pagina, resultado=RESULTADO)
+    clic(edge, "#ar-guardar")
+    time.sleep(0.4)
+    assert _cuerpos(edge) == ['POST {"confirmar":false}']                                   # solo la vista previa: nada se escribe todavía
+    assert "Mapa de documentación del proyecto" in _texto(edge, "#ar-previa .ar-previa-md")
+    assert "Se guardará como «11-mapa-de-documentacion.md» en «00. CONTEXTO (IA)»" in _texto(edge, "#ar-previa")
+    assert edge.js("document.activeElement.id") == "ar-guardar-si" and edge.js("document.querySelector('#ar-previa .ar-previa-md').tabIndex") == 0
+    clic(edge, "#ar-guardar-no")
+    time.sleep(0.3)
+    assert edge.js("document.querySelector('#ar-previa')") is None and _cuerpos(edge) == ['POST {"confirmar":false}']
+    clic(edge, "#ar-guardar")
+    time.sleep(0.4)
+    clic(edge, "#ar-guardar-si")
+    time.sleep(0.5)
+    assert _cuerpos(edge)[-1] == 'POST {"confirmar":true,"huella":"aaaaaaaaaaaa"}'   # la confirmación lleva la huella de la vista previa que se enseñó
+    assert "Guardado como «11-mapa-de-documentacion.md»" in _texto(edge, "#ar-guardado") and edge.js("document.querySelector('#ar-previa')") is None
+
+
+def test_archivero_guardar_avisa_si_reescribe_y_muestra_el_error(edge, pagina):
+    _arch(edge, pagina, resultado=RESULTADO, previa=dict(PREVIA, actualiza=True, carpeta_nueva=True))
+    clic(edge, "#ar-guardar")
+    time.sleep(0.4)
+    t = _texto(edge, "#ar-previa")
+    assert "Ya existe «11-mapa-de-documentacion.md»" in t and "se reescribirá" in t and "único caso" in t and "no existe: se creará" in t
+    assert _texto(edge, "#ar-guardar-si") == "Guardar y reescribir"
+    edge.js("window.__ERR_ARCH = 'guardar'; 1")
+    clic(edge, "#ar-guardar-si")
+    time.sleep(0.5)
+    assert _texto(edge, "#ar-error") == "Fallo simulado al guardar." and edge.js("document.querySelector('#ar-previa') !== null")   # la vista previa se queda para reintentar
+
+
+def test_archivero_guardar_con_409_enseña_la_vista_previa_nueva_y_no_guarda(edge, pagina):
+    nueva = dict(PREVIA, huella="bbbbbbbbbbbb", vista_previa="# Mapa de documentación del proyecto\n\n### Alcance: parcial\n- Esto es lo que ha cambiado\n")
+    _arch(edge, pagina, resultado=RESULTADO, extra="window.__PREVIA_NUEVA = %s;" % json.dumps(nueva))
+    clic(edge, "#ar-guardar")
+    time.sleep(0.4)
+    assert "Catálogo y cotizador" in _texto(edge, "#ar-previa .ar-previa-md")
+    edge.js("window.__ERR_ARCH = 'conflicto'; 1")
+    clic(edge, "#ar-guardar-si")
+    time.sleep(0.5)
+    assert _cuerpos(edge)[-1] == 'POST {"confirmar":true,"huella":"aaaaaaaaaaaa"}'
+    assert _texto(edge, "#ar-error") == "El resultado ha cambiado; revisa la vista previa antes de guardar."
+    assert "Esto es lo que ha cambiado" in _texto(edge, "#ar-previa .ar-previa-md") and edge.js("document.querySelector('#ar-guardado')") is None   # la nueva vista previa, sin guardar
+    assert edge.js("document.activeElement.id") == "ar-guardar-si"
+    clic(edge, "#ar-guardar-si")                                                            # tras revisarla, se confirma con la huella nueva
+    time.sleep(0.5)
+    assert _cuerpos(edge)[-1] == 'POST {"confirmar":true,"huella":"bbbbbbbbbbbb"}'
+    assert "Guardado como «11-mapa-de-documentacion.md»" in _texto(edge, "#ar-guardado") and edge.js("document.querySelector('#ar-error')") is None

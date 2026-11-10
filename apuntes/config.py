@@ -18,6 +18,7 @@ PLANES_DIR = APP_DIR / "planes"          # planes de sesiones (JSON locales, fue
 CHECKS_DIR = APP_DIR / "checks"          # checks de preparación por proyecto y sesión (locales, fuera de git)
 SESIONES_DIR = APP_DIR / "sesiones"      # transcripciones de proyectos compartidos (locales, fuera de git)
 BACKLOG_DIR = APP_DIR / "backlog"        # estado local del backlog (estado.json: hecho/descartado/aprovechada y temas renombrados; fuera de git)
+TIPOS_DOC_DIR = APP_DIR / "tipos_documento"   # tipo de documento corregido a mano, un JSON por proyecto (ola B; local, fuera de git)
 PLANTILLAS_DIR = APP_DIR / "plantillas" / "contexto"
 WEB_DIR = APP_DIR / "web"
 CLAUDE_CWD = DATOS_DIR / "claude_cwd"  # directorio neutro y vacío para `claude -p`
@@ -44,6 +45,7 @@ MODELOS_POR_DEFECTO = {
     # ola 3 (capa agéntica)
     "brief": "haiku",                       # brief de preparación de un proyecto: UNA llamada al abrir la ficha (cacheada por hash de entrada)
     "pregunta_capitan": "haiku",            # pregunta propuesta por el Capitán para cerrar un objetivo sin tratar: una llamada ligera, una vez por objetivo
+    "archivero": "sonnet",                  # ola B, Agente Archivero: UNA llamada a mano desde la ficha del proyecto, sin reintentos (manual y poco frecuente)
 }
 
 # Proyectos fuera de la raíz. `compartido: true` = carpeta de OneDrive compartida y de otra persona:
@@ -163,6 +165,11 @@ DEFAULTS: dict = {
     "objetivo_sin_tratar_min": 10,         # minutos sin tocar un objetivo para que el Capitán proponga la pregunta que lo cierra (una por objetivo)
     "seguimiento_umbral": 0.6,             # fracción de las palabras clave de un pendiente que debe aparecer en una frase de una sesión posterior para darlo por hecho
     "brief_max_chars": 6000,               # tope de caracteres de la última sesión y los pendientes que viajan a la llamada del brief
+    # ola B: Agente Archivero (apuntes/archivero.py): lee a mano una selección acotada de los documentos clave del proyecto
+    "archivero_max_documentos": 10,        # documentos que se leen como máximo en una pasada
+    "archivero_chars_por_documento": 6000, # caracteres de cada documento que salen de la máquina (tras quitar secretos, «Contactos», correos y teléfonos)
+    "archivero_tope_total_chars": 40000,   # tope de caracteres de todos los documentos juntos (es lo que más pesa en los tokens de la llamada)
+    "archivero_max_sin_clasificar": 40,    # ficheros «sin clasificar» (solo nombre y carpeta) cuyo tipo se pide a Claude
     # ola 4: confianza y escala (palabras dudosas, silencio, envíos, modo solo local, cartera)
     "whisper_palabras": True,              # word_timestamps: cada segmento lleva sus palabras con probabilidad (algo más de CPU por fragmento)
     "palabra_dudosa_umbral": 0.5,          # una palabra con probabilidad menor que esto se marca como dudosa
@@ -188,7 +195,8 @@ _CLAVES_INT = {"whisper_beam", "whisper_hilos", "timeout_s", "cadencia_min", "mi
                "asesor_chars_extractos", "asesor_chars_extractos_profundizar", "asesor_chars_transcripcion", "asesor_max_consejos",
                "asesor_consejo_cada_s", "fuentes_max_ficheros", "fuentes_tiempo_s",
                "contexto_md_max_ficheros", "contexto_md_profundidad", "contexto_md_tope_total_chars",
-               "objetivo_sin_tratar_min", "brief_max_chars"}   # ola 3
+               "objetivo_sin_tratar_min", "brief_max_chars",   # ola 3
+               "archivero_max_documentos", "archivero_chars_por_documento", "archivero_tope_total_chars", "archivero_max_sin_clasificar"}   # ola B
 _ESFUERZOS = {"low", "medium", "high", "xhigh", "max", ""}
 # ola 4: tipos de sus claves (bloque propio; `Config.actualizar` solo tiene una rama para ellas)
 _OLA4_BOOL = {"whisper_palabras", "modo_local"}

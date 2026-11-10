@@ -25,7 +25,7 @@
   const guardarTxt = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } };
   const P = { rec: leer(K_REC).slice(0, MAX_REC), fav: leer(K_FAV), modo: leerTxt(K_MODO, ["rejilla", "lista"], "rejilla"), orden: leerTxt(K_ORDEN, ["recientes", "actividad", "pendientes", "nombre"], "recientes"),
     filtro: "todos", etapa: "galeria", res: {}, resT: 0, resCargando: false, resOk: false, reintentos: 0, inactivosAbiertos: false,
-    panel: null, opener: null, n: 0, ctx: null, doc: null, ses: null, pen: null, confirmar: false, expandido: {}, errorQuitar: "" };
+    panel: null, opener: null, n: 0, ctx: null, doc: null, ses: null, pen: null, arch: null, aru: null, confirmar: false, expandido: {}, errorQuitar: "" };
 
   // ------------------------------------------------------------ utilidades puras
   function hace(iso, ahora = new Date()) {
@@ -483,7 +483,7 @@
   function cerrarPanel(devolverFoco = true) {
     if (!P.panel) return;
     const op = P.opener;
-    P.panel = null; P.opener = null; P.n++; P.ctx = P.doc = P.ses = P.pen = null;
+    P.panel = null; P.opener = null; P.n++; P.ctx = P.doc = P.ses = P.pen = P.arch = P.aru = null;
     $("#i-panel").hidden = true; $("#i-scrim").hidden = true; $("#i-panel").replaceChildren();
     $("#i-galeria").inert = false;
     if (devolverFoco && op && op.isConnected) op.focus({ preventScroll: true });
@@ -503,13 +503,13 @@
 
   function cargarPanel(nombre) {
     const id = ++P.n;
-    P.ctx = { estado: "cargando" }; P.doc = { estado: "cargando" }; P.ses = { estado: "cargando" }; P.pen = { estado: "cargando" };
+    P.ctx = { estado: "cargando" }; P.doc = { estado: "cargando" }; P.ses = { estado: "cargando" }; P.pen = { estado: "cargando" }; P.arch = { estado: "cargando" }; P.aru = nuevoAru();
     const pedir = async (ruta, campo) => {
       try { const d = await api("GET", `/api/proyectos/${encodeURIComponent(nombre)}/${ruta}`); if (id === P.n) P[campo] = { estado: "ok", d }; }
       catch (e) { if (id === P.n) P[campo] = { estado: "error", msg: e.message }; }
       if (id === P.n) pintarPanel();
     };
-    pedir("contexto", "ctx"); pedir("documentos", "doc"); pedir("sesiones-recientes", "ses"); pedir("pendientes", "pen");
+    pedir("contexto", "ctx"); pedir("documentos", "doc"); pedir("sesiones-recientes", "ses"); pedir("pendientes", "pen"); pedir("archivero", "arch");
   }
   function refrescarPanel() { if (porNombre(P.panel)) pintarPanel(); else cerrarPanel(false); }
   async function abrirMd(nombre, ident, boton) {
@@ -566,6 +566,149 @@
   }
   // Mapa de documentos del proyecto (GET .../documentos): por tipo, con el último y lo que falta. Todo texto dinámico entra como nodo de texto.
   const isoDe = (mtime) => { const d = new Date(mtime * 1000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  // ------------------------------------------------------------ Agente Archivero (ola B)
+  // Lectura MANUAL de los documentos clave del proyecto con UNA llamada a claude -p. GET .../archivero es gratis (plan y último resultado cacheado);
+  // nada sale de la máquina hasta pulsar «Analizar» en la lista de lo que se leerá y de lo que se omite. Todo texto dinámico entra como nodo de texto.
+  const ENC = encodeURIComponent;
+  const ETIQUETA_ESTADO = { documentado: "Documentado", parcial: "Parcial", sin_documentar: "Sin documentar" };
+  const nuevoAru = () => ({ plan: false, refrescar: false, analizando: false, error: "", errorTipo: "", previa: null, guardado: null, ocupado: false, aplicando: {} });
+  const fechaHora = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : ""; };
+  const enFoco = (id) => { const e = document.getElementById(id); if (e) e.focus({ preventScroll: true }); };
+  const idDoc = (rel) => { for (const t of (P.doc && P.doc.d && P.doc.d.tipos) || []) for (const f of t.ficheros) if (f.rel === rel) return f.id; return null; };
+  async function recargarDocs(nombre) {
+    const id = P.n;
+    try { const d = await api("GET", `/api/proyectos/${ENC(nombre)}/documentos`); if (id === P.n) P.doc = { estado: "ok", d }; }
+    catch (e) { if (id === P.n) P.doc = { estado: "error", msg: e.message }; }
+  }
+  async function recargarArchivero(nombre) {
+    const id = P.n;
+    try { const d = await api("GET", `/api/proyectos/${ENC(nombre)}/archivero`); if (id === P.n) P.arch = { estado: "ok", d }; }
+    catch (e) { if (id === P.n) P.arch = { estado: "error", msg: e.message }; }
+  }
+  async function cambiarTipo(nombre, ident, valor) {
+    const id = P.n, U = P.aru; if (!U) return;
+    U.errorTipo = "";
+    try { await api("PUT", `/api/proyectos/${ENC(nombre)}/documentos/${ident}/tipo`, { tipo: valor || null }); await Promise.all([recargarDocs(nombre), recargarArchivero(nombre)]); }
+    catch (e) { U.errorTipo = e.message; }
+    if (id === P.n) { pintarPanel(); enFoco("ar-tipo-" + ident); }
+  }
+  async function analizarArchivero(nombre) {
+    const id = P.n, U = P.aru, refrescar = U.refrescar;
+    U.analizando = true; U.error = ""; U.previa = null; U.guardado = null; pintarPanel(); enFoco("vp-arch");
+    try {
+      const r = await api("POST", `/api/proyectos/${ENC(nombre)}/archivero${refrescar ? "?refrescar=1" : ""}`);
+      if (id !== P.n) return;
+      P.arch = { estado: "ok", d: { plan: (P.arch && P.arch.d && P.arch.d.plan) || null, resultado: r } };
+      U.plan = false;
+    } catch (e) { if (id === P.n) U.error = e.message; }
+    finally { if (id === P.n) { U.analizando = false; pintarPanel(); enFoco(U.plan ? "ar-plan-analizar" : "ar-reanalizar"); } }
+  }
+  async function aplicarPropuesta(nombre, p) {
+    const id = P.n, U = P.aru, ident = idDoc(p.rel); if (!U || !ident) return;
+    U.aplicando[p.rel] = true; U.error = ""; pintarPanel();
+    try { await api("PUT", `/api/proyectos/${ENC(nombre)}/documentos/${ident}/tipo`, { tipo: p.tipo }); await Promise.all([recargarDocs(nombre), recargarArchivero(nombre)]); }
+    catch (e) { U.error = e.message; }
+    if (id === P.n) { delete U.aplicando[p.rel]; pintarPanel(); enFoco("vp-arch"); }
+  }
+  async function guardarArchivero(nombre, confirmar) {
+    const id = P.n, U = P.aru; if (!U) return;
+    U.error = ""; U.ocupado = true; pintarPanel();
+    try {
+      // La confirmación lleva la huella de la vista previa que se enseñó: si lo que se guardaría ya no es eso, el servidor no escribe (409) y manda la nueva.
+      const d = await api("POST", `/api/proyectos/${ENC(nombre)}/archivero/guardar`, confirmar ? { confirmar, huella: (U.previa && U.previa.huella) || null } : { confirmar });
+      if (id !== P.n) return;
+      if (confirmar) { U.guardado = d; U.previa = null; } else { U.previa = d; U.guardado = null; }
+    } catch (e) {
+      if (id !== P.n) return;
+      if (e.status === 409 && e.datos && e.datos.previa) { U.previa = e.datos.previa; U.guardado = null; U.error = "El resultado ha cambiado; revisa la vista previa antes de guardar."; }
+      else U.error = e.message;
+    }
+    finally { if (id === P.n) { U.ocupado = false; pintarPanel(); enFoco(U.previa ? "ar-guardar-si" : "ar-guardar"); } }
+  }
+  function bloqueArchivero(nombre) {
+    const s = P.arch, U = P.aru;
+    if (!s || !U || s.estado === "cargando") return null;
+    const cab = (extra) => h("div", { class: "vp-sub ar-cab" }, h("span", { class: "ar-tit" }, "Agente Archivero"), extra || null);
+    const envoltura = (...hijos) => h("div", { class: "ar-bloque", id: "vp-arch", tabindex: "-1", "aria-busy": U.analizando ? "true" : "false" }, hijos.flat());
+    if (s.estado === "error") return envoltura(cab(), h("p", { class: "t-meta", id: "ar-error-lectura" }, "No se pudo comprobar el Archivero: " + s.msg));
+    if (!s.d || !s.d.plan) return null;   // un servidor sin Archivero: el mapa de documentos sigue como siempre
+    const plan = s.d.plan, r = s.d.resultado, leer = plan.leer || [];
+    const error = U.error ? h("div", { class: "error", id: "ar-error", role: "alert" }, U.error) : null;
+    const boton = (id, texto, clase, onclick, extra) => h("button", { type: "button", class: "btn btn-mini " + clase, id, onclick, ...(extra || {}) }, texto);
+    if (U.analizando) return envoltura(cab(), h("p", { class: "t-body", id: "ar-cargando", role: "status" },
+      `Claude está leyendo ${leer.length} ${leer.length === 1 ? "documento" : "documentos"}… Puede tardar un minuto. Gasta tokens (modelo ${plan.modelo || "de Claude"}).`));
+    if (U.plan) {
+      const om = plan.omitidos || [], total = om.length + (plan.mas_omitidos || 0);
+      return envoltura(cab(),
+        h("p", { class: "t-body", id: "ar-plan-intro" }, "Esto es lo que leerá Claude. Nada sale de tu equipo hasta que pulses «Analizar»."),
+        h("div", { class: "vp-gtit t-label" }, `Se va a leer · ${leer.length}`),
+        leer.length ? h("ul", { class: "vp-lista", id: "ar-plan-leer" }, leer.map((f) => h("li", { class: "vp-fila ar-fila", "data-rel": f.rel },
+          h("span", { class: "vp-n", title: f.rel }, f.nombre, h("span", { class: "t-meta soft" }, ` · ${f.tipo_titulo}`)), h("span", { class: "vp-tam t-meta" }, kb(f.tam)))))
+          : h("p", { class: "t-meta", id: "ar-plan-vacio" }, "Ningún documento se puede leer desde la app: solo verás la cobertura local, sin leer."),
+        leer.length ? h("p", { class: "t-meta soft", id: "ar-plan-chars" }, `Hasta unos ${(plan.chars || 0).toLocaleString("es-ES")} caracteres en total.`) : null,
+        total ? h("div", { class: "vp-gtit t-label" }, `No se va a leer · ${total}`) : null,
+        total ? h("ul", { class: "vp-lista", id: "ar-plan-omitidos" }, om.map((o) => h("li", { class: "vp-fila ar-fila", "data-rel": o.rel },
+          h("span", { class: "vp-n", title: o.rel }, o.nombre), h("span", { class: "vp-marca ar-motivo", title: o.motivo }, o.motivo)))) : null,
+        plan.mas_omitidos ? h("p", { class: "t-meta soft" }, `y ${plan.mas_omitidos} más`) : null,
+        plan.sin_clasificar ? h("p", { class: "t-meta", id: "ar-plan-sin" }, `Claude verá también el nombre y la carpeta de ${plan.sin_clasificar} ${plan.sin_clasificar === 1 ? "fichero sin clasificar" : "ficheros sin clasificar"} para proponer su tipo (no se abren).`) : null,
+        h("p", { class: "t-meta", id: "ar-plan-aviso" }, `De cada documento solo sale texto, sin correos, teléfonos, secciones de contactos ni líneas con pinta de secreto. Es UNA llamada con tu licencia de Claude (modelo ${plan.modelo || "de Claude"}) y gasta tokens.`),
+        error,
+        h("div", { class: "ar-acciones" },
+          boton("ar-plan-analizar", "Analizar", "btn-primary", () => analizarArchivero(nombre)),
+          boton("ar-plan-cancelar", "Cancelar", "btn-ghost", () => { U.plan = false; U.error = ""; pintarPanel(); enFoco(r ? "ar-reanalizar" : "ar-abrir"); })));
+    }
+    if (!r) return envoltura(cab(),
+      h("p", { class: "t-body", id: "ar-intro" }, "Lee los documentos clave del proyecto y resume qué documentación hay: la solución tal como está, el modelo de datos, usuarios y roles, alcance y planificación, con el documento que lo dice. Lo lanzas tú, no se ejecuta solo, y gasta tokens."),
+      error,
+      h("div", { class: "ar-acciones" }, boton("ar-abrir", "Analizar con Claude", "btn-primary", () => { U.plan = true; U.refrescar = false; U.error = ""; pintarPanel(); enFoco("ar-plan-analizar"); })));
+    const local = r.origen === "local", partes = [cab(h("span", { class: "t-meta soft", id: "ar-origen" }, local ? "Cobertura local, sin leer" : "Analizado con Claude"))];
+    if (r.aviso) partes.push(h("p", { class: "t-meta vp-aviso", id: "ar-aviso", title: r.aviso_detalle || null }, r.aviso));
+    if (r.desactualizado) partes.push(h("p", { class: "t-meta vp-aviso", id: "ar-desactualizado" }, "Los documentos o sus tipos han cambiado desde este análisis. Vuelve a analizar para ponerlo al día."));
+    partes.push(h("ul", { class: "ar-facetas", id: "ar-facetas" }, (r.facetas || []).map((f) => {
+      const clave = f.sin_leer ? "sin_leer" : f.estado;
+      return h("li", { class: "ar-faceta", "data-faceta": f.clave, "data-estado": clave },
+        h("div", { class: "ar-faceta-cab" }, h("span", { class: "t-body-m" }, f.titulo),
+          h("span", { class: "ar-estado " + clave }, f.sin_leer ? (f.estado === "sin_documentar" ? "Sin documentos" : "Hay documentos, sin leer") : ETIQUETA_ESTADO[f.estado] || f.estado)),
+        (f.sabemos || []).length ? h("ul", { class: "ar-lista ar-sabemos" }, f.sabemos.map((x) => h("li", { class: "t-body" }, x))) : null,
+        (f.fuentes || []).length ? h("p", { class: "t-meta ar-fuentes" }, "Fuentes: ", f.fuentes.map((x, i) => [i ? ", " : null, h("span", { class: "ar-fuente", title: x.rel }, x.nombre)]).flat()) : null,
+        (f.falta || []).length ? h("div", { class: "ar-falta" }, h("span", { class: "t-label" }, "Falta"), h("ul", { class: "ar-lista" }, f.falta.map((x) => h("li", { class: "t-body" }, x)))) : null);
+    })));
+    if ((r.documentos || []).length) partes.push(h("details", { class: "ar-det", id: "ar-docs", open: !!P.expandido["arch:docs"], ontoggle: (ev) => { P.expandido["arch:docs"] = ev.currentTarget.open; } },
+      h("summary", { class: "dc-res" }, h("span", { class: "vp-n" }, "Qué hay en cada documento leído"), h("span", { class: "t-meta soft dc-n" }, String(r.documentos.length))),
+      h("ul", { class: "vp-lista" }, r.documentos.map((d) => h("li", { class: "ar-doc", "data-rel": d.rel },
+        h("span", { class: "t-body-m", title: d.rel }, d.nombre), h("span", { class: "t-meta soft" }, ` · ${d.tipo_titulo}`), d.resumen ? h("p", { class: "t-body" }, d.resumen) : null)))));
+    if ((r.no_leidos || []).length) partes.push(h("p", { class: "t-meta vp-aviso", id: "ar-no-leidos" }, "No se pudo leer: " + r.no_leidos.map((o) => `${o.nombre} (${o.motivo})`).join("; ")));
+    const props = r.propuestas || [];
+    if (props.length) partes.push(h("div", { class: "ar-propuestas", id: "ar-propuestas" }, h("div", { class: "vp-gtit t-label" }, "Tipos propuestos para lo que no se pudo clasificar"),
+      h("ul", { class: "vp-lista" }, props.map((p) => h("li", { class: "vp-fila ar-prop", "data-rel": p.rel },
+        h("span", { class: "vp-n", title: p.rel }, p.nombre, p.carpeta ? h("span", { class: "t-meta soft" }, ` · ${p.carpeta}`) : null),
+        h("span", { class: "t-meta soft ar-prop-tipo" }, "→ " + p.tipo_titulo),
+        h("button", { type: "button", class: "btn btn-ghost btn-mini", "aria-label": `Aplicar el tipo ${p.tipo_titulo} a ${p.rel}`, disabled: !idDoc(p.rel) || !!U.aplicando[p.rel], onclick: () => aplicarPropuesta(nombre, p) }, "Aplicar"))))));
+    if (U.previa) partes.push(h("div", { class: "ar-previa", id: "ar-previa", role: "group", "aria-label": "Vista previa de lo que se guardará" },
+      h("p", { class: "t-body" }, U.previa.actualiza
+        ? `Ya existe «${U.previa.fichero}» en «00. CONTEXTO (IA)»: se reescribirá con este resultado. Es el único caso en el que la app reescribe un fichero del contexto.`
+        : `Se guardará como «${U.previa.fichero}» en «00. CONTEXTO (IA)» y se anotará en «10-registro-de-cambios.md».`),
+      U.previa.carpeta_nueva ? h("p", { class: "t-meta vp-aviso" }, "La carpeta «00. CONTEXTO (IA)» no existe: se creará con las plantillas de siempre.") : null,
+      h("pre", { class: "ar-previa-md", tabindex: "0", "aria-label": "Markdown que se guardará" }, U.previa.vista_previa),
+      h("div", { class: "ar-acciones" },
+        boton("ar-guardar-si", U.previa.actualiza ? "Guardar y reescribir" : "Guardar", "btn-primary", () => guardarArchivero(nombre, true), { disabled: U.ocupado }),
+        boton("ar-guardar-no", "Cancelar", "btn-ghost", () => { U.previa = null; pintarPanel(); enFoco("ar-guardar"); }))));
+    if (U.guardado) partes.push(h("p", { class: "t-body ar-guardado", id: "ar-guardado", role: "status" }, `Guardado como «${U.guardado.fichero}» en «00. CONTEXTO (IA)»${U.guardado.actualiza ? " (se ha actualizado el que ya había)" : ""}. Los agentes de la reunión lo leerán como el resto del contexto.`));
+    if (error) partes.push(error);
+    const datos = [fechaHora(r.generado) ? "Analizado el " + fechaHora(r.generado) : null, r.modelo ? "modelo " + r.modelo : null,
+      local ? null : `${r.leidos} ${r.leidos === 1 ? "documento leído" : "documentos leídos"}`, r.tokens ? `${r.tokens.toLocaleString("es-ES")} tokens` : null].filter(Boolean);
+    partes.push(h("div", { class: "ar-pie" }, h("span", { class: "t-meta soft", id: "ar-pie-datos" }, datos.join(" · ")),
+      h("div", { class: "ar-acciones" },
+        boton("ar-reanalizar", "Volver a analizar", "btn-ghost", () => { U.plan = true; U.refrescar = true; U.error = ""; pintarPanel(); enFoco("ar-plan-analizar"); }),
+        local || U.previa ? null : boton("ar-guardar", "Guardar en el contexto del proyecto", "btn-ghost", () => guardarArchivero(nombre, false), { disabled: U.ocupado }))));
+    return envoltura(partes);
+  }
+  function selectorTipo(nombre, f, actual, tipos) {
+    return h("select", { class: "input dc-tipo-sel", id: "ar-tipo-" + f.id, "aria-label": `Tipo de documento de ${f.nombre}`, title: "Cambiar el tipo de documento (se guarda solo en esta app: el fichero no se toca)",
+      onchange: (ev) => cambiarTipo(nombre, f.id, ev.currentTarget.value) },
+      tipos.map((t) => h("option", { value: t.clave, selected: t.clave === actual }, t.titulo)),
+      f.corregido ? h("option", { value: "" }, "Quitar la corrección (volver a las reglas)") : null);
+  }
   function bloqueDocumentos(nombre) {
     const s = P.doc, cab = (extra) => h("div", { class: "vp-sub" }, h("span", { class: "caps" }, "Documentos del proyecto"), extra || null);
     if (!s || s.estado === "cargando") return h("div", { class: "vp-bloque", id: "vp-docs" }, cab(), h("p", { class: "t-meta", id: "vp-docs-cargando" }, "Leyendo los documentos… (si está en OneDrive puede tardar)"));
@@ -575,6 +718,8 @@
     const resumen = `${d.total} ${d.total === 1 ? "documento" : "documentos"}${d.en_nube ? ` · ${d.en_nube} solo en la nube` : ""}`;
     const partes = [cab(h("span", { class: "t-meta soft", id: "vp-docs-resumen" }, resumen))];
     if (d.truncado) partes.push(h("p", { class: "t-meta vp-aviso", id: "vp-docs-truncado" }, "La carpeta es muy grande: el mapa es parcial."));
+    const arch = bloqueArchivero(nombre); if (arch) partes.push(arch);
+    if (P.aru && P.aru.errorTipo) partes.push(h("div", { class: "error", id: "vp-docs-error-tipo", role: "alert" }, "No se pudo cambiar el tipo: " + P.aru.errorTipo));
     for (const t of tipos) {
       if (!t.n) continue;
       const clave = "doc:" + t.clave, ult = t.ultimo ? hace(isoDe(t.ultimo.mtime)) : "";
@@ -585,7 +730,10 @@
           h("span", { class: "vp-n", title: `${f.rel}
 ${f.motivo}` }, f.nombre, f.carpeta ? h("span", { class: "t-meta soft" }, ` · ${f.carpeta}`) : null),
           f.nube ? h("span", { class: "vp-marca", title: "Solo está en la nube: al abrirlo se descargará" }, "en la nube") : null,
+          f.corregido ? h("span", { class: "vp-marca ar-corregido", title: "El tipo lo elegiste tú; las reglas ya no se aplican a este documento" }, "tipo corregido") : null,
+          f.abrible ? null : h("span", { class: "vp-marca", title: "Este formato puede llevar macros: la app no lo abre desde aquí. Ábrelo desde el Explorador de archivos." }, "no se abre desde aquí"),
           h("span", { class: "t-meta soft dc-fecha" }, hace(isoDe(f.mtime))),
+          selectorTipo(nombre, f, t.clave, tipos),
           f.abrible ? h("button", { type: "button", class: "btn btn-ghost btn-mini", "aria-label": "Abrir " + f.rel, onclick: (ev) => abrirDocumento(nombre, f.id, ev.currentTarget) }, "Abrir") : null))),
         t.mas ? h("p", { class: "t-meta soft" }, `y ${t.mas} más`) : null);
       partes.push(det);

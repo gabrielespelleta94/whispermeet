@@ -21,6 +21,7 @@ from . import __version__
 from . import contexto as CX
 from . import inventario as INV
 from . import aviso as AV
+from . import api_archivero
 from . import api_ola3
 from . import api_ola4
 from . import backlog as BL
@@ -184,6 +185,10 @@ class EstadoItemIn(BaseModel):
     estado: str                   # pendiente: abierto | hecho | descartado; idea: nueva | aprovechada | descartada
 
 
+class TipoDocIn(BaseModel):
+    tipo: str | None = None         # clave de `inventario.TIPOS`; vacío o null quita la corrección
+
+
 class TemaIn(BaseModel):
     tema: str = ""                # vacío = volver al tema original del .md
 
@@ -197,12 +202,13 @@ class CheckIn(BaseModel):
 
 def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
               al_cambiar_captura=None, ventana=None, al_avisar_llamada=None, vigilar_llamadas_activo=False, aviso=None,
-              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None) -> FastAPI:
+              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None, fabrica_archivero=None) -> FastAPI:
     """`ventana`: función sin argumentos que devuelve la `Ventana` nativa (o None con `--sin-ventana`).
     `backlog`: el `Backlog` (pruebas: con tiempos, reloj y abridor propios); por defecto uno sobre el Guardian.
     `vigilar_llamadas_activo`: solo la app real vigila el micro de Teams (los tests no leen el registro).
     `aviso`: el `AvisoLlamada` flotante (None con `--sin-ventana`: entonces solo banner y parpadeo). `leer_micro` e `intervalo_llamadas`
-    sustituyen la lectura del registro y el intervalo (pruebas con una llamada simulada)."""
+    sustituyen la lectura del registro y el intervalo (pruebas con una llamada simulada). `fabrica_archivero`: devuelve el `Analista` del Agente
+    Archivero (pruebas: un modelo falso); por defecto, uno propio sobre el modelo del gestor."""
     hosts_ok = {f"{HOST}:{puerto}", f"localhost:{puerto}"}
     bl = backlog if backlog is not None else BL.Backlog(guardian, cfg)
     gestor.fuentes.backlog = bl   # las sesiones anteriores del mismo proyecto entran en las fuentes del asesor por backlog.py
@@ -396,7 +402,7 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
             raise ValueError(f"No se pudo abrir el fichero: {e}")
         return {"ok": True}
 
-    ids_doc: dict[str, tuple[str, str]] = {}   # id opaco -> (proyecto en minúsculas, ruta): lo rellena el listado de documentos
+    ids_doc: dict[str, tuple[str, str, str]] = {}   # id opaco -> (proyecto en minúsculas, ruta, ruta relativa): lo rellena el listado de documentos
 
     def _id_doc(proyecto: str, rel: str) -> str:
         return hashlib.sha1(f"doc|{token}|{proyecto.lower()}|{rel}".encode("utf-8")).hexdigest()[:16]
@@ -406,18 +412,29 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
     async def proyecto_documentos(nombre: str):
         """Mapa de documentos del proyecto por tipo (solo `stat`, nada se lee). Cada fichero lleva un id opaco, nunca la ruta."""
         try:
-            m = await asyncio.to_thread(INV.mapa, guardian, nombre)
+            m = await asyncio.to_thread(lambda: INV.mapa(guardian, nombre, correcciones=INV.leer_correcciones(guardian, nombre)))
         except RutaProhibida:
             raise HTTPException(404, "No existe ese proyecto.")
-        for k in [k for k, (p, _r) in ids_doc.items() if p == nombre.lower()]:
+        for k in [k for k, (p, _r, _l) in ids_doc.items() if p == nombre.lower()]:
             del ids_doc[k]
         for t in m["tipos"]:
             for f in t["ficheros"]:
                 ruta = f.pop("ruta")
                 f["id"] = _id_doc(nombre, f["rel"])
                 f["abrible"] = f["ext"] in INV.EXT_ABRIBLES
-                ids_doc[f["id"]] = (nombre.lower(), ruta)
+                ids_doc[f["id"]] = (nombre.lower(), ruta, f["rel"])
         return m
+
+    @app.put("/api/proyectos/{nombre}/documentos/{ident}/tipo")
+    @envolver
+    async def proyecto_tipo_documento(nombre: str, ident: str, b: TipoDocIn):
+        """Corrige a mano el tipo de un documento (vacío o null quita la corrección). Solo un id que dio el listado de ESTE proyecto: nunca una ruta. Se guarda en
+        el almacén local de la app (`Guardian.escribir_tipos`), no en la carpeta del proyecto."""
+        ref = ids_doc.get(ident) if re_id.fullmatch(ident or "") else None
+        if ref is None or ref[0] != nombre.lower():
+            raise HTTPException(404, "No existe ese fichero.")
+        await asyncio.to_thread(INV.fijar_correccion, guardian, nombre, ref[2], b.tipo)
+        return {"ok": True, "tipo": (b.tipo or "").strip() or None}
 
     @app.post("/api/proyectos/{nombre}/documentos/{ident}/abrir")
     @envolver
@@ -818,6 +835,7 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
 
     app.include_router(api_ola3.crear_router(gestor, cfg, guardian, bl, abridor=abridor_ola3))   # ola 3: acciones, autonomía, brief, seguimiento, Outlook
     app.include_router(api_ola4.crear_router(gestor, cfg, guardian, bl, envolver))   # ola 4: confianza y escala (api_ola4.py, demo/api-ola4.md)
+    app.include_router(api_archivero.crear_router(gestor, cfg, guardian, envolver, fabrica_analista=fabrica_archivero))   # ola B: Agente Archivero (api_archivero.py)
 
     # ------------------------------------------------------------ WebSocket
     @app.websocket("/ws")
