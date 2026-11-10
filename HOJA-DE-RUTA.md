@@ -13,7 +13,7 @@ Estado a 10 de noviembre de 2026. Recoge el análisis de punta a punta de la her
 | Planificación de sesiones | Plan de varias sesiones con Gantt, objetivos y checks. Desde la ola C se crea y se edita en la ficha del proyecto (sesiones, fecha, hora, objetivos, checks, dependencias, fichero prioritario), se guarda sin perder el Gantt ni lo que el editor no conoce, y «Proponer plan con Claude» da un borrador a partir del arranque, el alcance y la planificación. | Editar el Gantt y la ficha del plan desde la app (se conservan, pero hoy solo se cambian en el JSON); caché de la propuesta; fechas de hitos. |
 | Agentes | Muchos dentro de la reunión. Fuera de ella, la preparación sugerida, el contexto de la reunión, el Archivero y el Planificador («Proponer plan»), los dos a mano desde la ficha. | Agente de proyecto: redactor de entregables. |
 | Empaquetado | Desde la ola D, `instalar.bat` (un solo script, idempotente, con `--comprobar`): entorno, dependencias con versión fijada (`requirements.txt` para la app y `requirements-dev.txt` para pruebas), configuración inicial, carpetas locales, `claude`, modelo de Whisper y acceso directo. Panel «Antes de la primera reunión» (inicio y Ajustes) con la comprobación de requisitos. Carpeta de Knowledge, vocabulario de transcripción y ancho de búsqueda de Whisper editables en Ajustes. `MANUAL.md` para quien usa la app. | Un ejecutable sin Python previo; fijar también las dependencias indirectas (fichero de bloqueo); comprobar desde la app que la sesión de `claude` está iniciada (hoy solo se localiza el programa); probar el instalador en una máquina limpia de verdad. |
-| Datos internos | Todo en ficheros (JSON, JSONL y Markdown) a través de `Guardian`, con escritura atómica. No hay base de datos. | Versión de esquema y migraciones, identificadores estables y copia de seguridad. |
+| Datos internos | Todo en ficheros (JSON, JSONL y Markdown) a través de `Guardian`, con escritura atómica. No hay base de datos. | Versión de esquema y migraciones, identificadores estables y restauración automática de la copia. |
 | Entregables | Acta y resumen en Markdown; borrador de correo. | Exportar a Word o PDF con plantilla. |
 
 ### Modelo de datos interno, en una línea por entidad
@@ -118,12 +118,23 @@ Lo que quedó fuera de esta parte:
 - Un teléfono partido en dos líneas ya no se enmascara (el patrón no cruza saltos de línea, para no fundir las filas de una hoja).
 - El libro tiene que traer `xl/workbook.xml`; las cadenas y los estilos se localizan por las relaciones, con el nombre habitual como alternativa. Una hoja visible cuya parte falta se cuenta al final; más de 200.000 celdas en una hoja o 24 MB descomprimidos entre todas las hojas cortan la lectura y se dice.
 
-### Ola F — Datos internos
+### Ola F — Datos internos (copia de seguridad hecha; el resto pendiente)
 
-- Versión de esquema en cada fichero de datos y migraciones al arrancar.
-- Identificadores estables para pendientes, decisiones y riesgos.
-- Copia de seguridad y exportación de los datos de la app.
+- Versión de esquema en cada fichero de datos y migraciones al arrancar. (Pendiente.)
+- Identificadores estables para pendientes, decisiones y riesgos. (Pendiente.)
+- Copia de seguridad de los datos de la app. (Hecho.)
+- Restauración automática de la copia, con comprobación de versión. (Pendiente.)
 - Se mantiene el almacenamiento en ficheros: es lo que permite que el proyecto viaje con su carpeta. Una base de datos solo se justificaría con varios usuarios.
+
+Hecho (copia de seguridad): «Crear copia» en Ajustes, Privacidad (`web/copia.js`, `POST /api/copia` en `apuntes/api_copia.py`). `apuntes/copia.py` escribe un zip `whispermeet-copia-AAAA-MM-DD-HHMMSS.zip` en la carpeta `copias` (hermana de `datos`, fuera de git; destino nuevo del Guardián, que solo da la ruta, lista y abre la carpeta, sin borrado) con las carpetas de datos propios que el Guardián ya conoce, con rutas relativas a la carpeta de la app y un `MANIFIESTO.json` (versión, fecha, versión de la app y lista de ficheros con su tamaño). No entran la caché, los modelos, el entorno virtual, las copias anteriores ni los documentos de los proyectos. No sigue enlaces ni uniones, comprueba la ruta real de cada fichero, salta lo ilegible, lo de más de 200 MB y los nombres con pinta de secreto y lo dice en `omitidos`, y corta a los 2 GB diciéndolo. Se escribe a un temporal y se renombra al final; si algo falla, el temporal se borra (el único borrado de la ola) y no queda un zip a medias. No hay copia durante una reunión (409) ni dos a la vez (el cerrojo se coge y se suelta dentro de la función del hilo, así una petición cancelada no lo libera con la copia en marcha). Un fallo de un solo fichero (leerlo, fecharlo, nombrarlo o escribir su entrada) nunca aborta la copia: va a `omitidos`; una fecha fuera del rango del zip se recorta y el fichero entra; una ruta repetida dentro del zip también va a `omitidos`. Si la copia se corta por tamaño, la interfaz dice «Copia incompleta». `GET /api/copia` devuelve solo el nombre de la carpeta. Restaurar es manual y está en `MANUAL.md` (apartado 10).
+
+Lo que quedó fuera de esta parte:
+- Versión de esquema en cada fichero, migraciones al arrancar y restauración automática: el manifiesto ya lleva `version` para cuando lleguen.
+- El registro de consumo y el de errores no entran en la copia (solo `datos\config.json` y `datos\ola4`).
+- Los documentos de los proyectos (transcripciones guardadas en `02. Sesiones`, contexto) no entran: son del usuario y viven en su carpeta de proyectos.
+- Copias programadas, cifrado de la copia y borrado de copias antiguas: las quita el usuario a mano.
+- Los enlaces duros y un cambio de fichero entre la comprobación y la lectura no se detectan.
+- Una reunión que empiece mientras se hace la copia no la detiene.
 
 ## Transcripción: qué modelo de Whisper usar
 

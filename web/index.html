@@ -504,6 +504,22 @@
             </div>
           </details>
         </div>
+        <div class="campo-grupo aj-copia" id="aj-copia">
+          <span class="t-label" id="aj-copia-tit">Copia de seguridad</span>
+          <p class="t-meta soft" id="aj-copia-ayuda">Un zip con los datos propios de la app: ajustes, planes de sesiones, comprobaciones, estado del backlog, seguimiento, tipos de documento, glosario y reglas, borradores y sesiones locales. No incluye la caché, los modelos de transcripción, el entorno virtual, las copias anteriores ni los documentos de tus proyectos. Contiene transcripciones y datos de tus reuniones: se guarda en esta carpeta del equipo y dónde la llevas es cosa tuya. Hazla fuera de una reunión.</p>
+          <div class="aj-copia-fila">
+            <button class="btn btn-primary" type="button" id="aj-copia-crear" aria-describedby="aj-copia-ayuda aj-copia-error">Crear copia</button>
+            <button class="btn btn-ghost" type="button" id="aj-copia-abrir" aria-describedby="aj-copia-error">Abrir la carpeta de copias</button>
+          </div>
+          <span class="error aj-error" id="aj-copia-error" role="alert" hidden></span>
+          <p class="t-meta" id="aj-copia-resultado" role="status"></p>
+          <p class="t-meta" id="aj-copia-cortada" hidden>La copia se cortó al llegar al tope de tamaño: faltan ficheros.</p>
+          <details class="aj-copia-omitidos" id="aj-copia-omitidos" hidden>
+            <summary class="t-meta" id="aj-copia-omitidos-res"></summary>
+            <ul class="t-meta" id="aj-copia-omitidos-lista"></ul>
+          </details>
+          <p class="t-meta soft" id="aj-copia-ultima"></p>
+        </div>
       </section>
       <div class="error" id="s-error" hidden></div>
     </div>
@@ -542,6 +558,7 @@
 <script src="/static/disposicion.js"></script>
 <script src="/static/ajustes.js"></script>
 <script src="/static/requisitos.js"></script>
+<script src="/static/copia.js"></script>
 <script src="/static/paleta.js"></script>
 </body>
 </html>

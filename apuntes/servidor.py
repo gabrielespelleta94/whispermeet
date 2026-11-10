@@ -22,6 +22,7 @@ from . import contexto as CX
 from . import inventario as INV
 from . import aviso as AV
 from . import api_archivero
+from . import api_copia
 from . import api_plan
 from . import api_ola3
 from . import api_ola4
@@ -901,6 +902,7 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
     app.include_router(api_ola3.crear_router(gestor, cfg, guardian, bl, abridor=abridor_ola3))   # ola 3: acciones, autonomía, brief, seguimiento, Outlook
     app.include_router(api_ola4.crear_router(gestor, cfg, guardian, bl, envolver))   # ola 4: confianza y escala (api_ola4.py, demo/api-ola4.md)
     app.include_router(api_archivero.crear_router(gestor, cfg, guardian, envolver, fabrica_analista=fabrica_archivero))   # ola B: Agente Archivero (api_archivero.py)
+    app.include_router(api_copia.crear_router(gestor, cfg, guardian, envolver, abridor=bl.abridor))   # ola F: copia de seguridad de los datos de la app (api_copia.py)
     app.include_router(api_plan.crear_router(gestor, cfg, guardian, envolver, fabrica_analista=fabrica_plan_propuesto))   # ola C: editor del plan y «Proponer plan» (api_plan.py)
 
     # ------------------------------------------------------------ WebSocket

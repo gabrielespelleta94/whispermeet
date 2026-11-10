@@ -175,6 +175,7 @@ Es la ola A, la ola B y la ola C de `HOJA-DE-RUTA.md`, que recoge el análisis d
 | Checks de preparación | `apuntes\checks\<proyecto>.json` (local, fuera de git) | al añadir, editar, marcar o cuando el análisis marca |
 | Contexto | `<proyecto>\00. CONTEXTO (IA)\NN-nombre.md` (si falta, se crea con las plantillas del kit; también `NN-mapa-de-documentacion.md` del Archivero) y `10-registro-de-cambios.md` | solo tras aceptar el usuario |
 | Tipo de documento corregido a mano | `apuntes\tipos_documento\p-<hash>.json` (local, fuera de git) | al cambiar el tipo de un documento en la ficha |
+| Copia de seguridad | `apuntes\copias\whispermeet-copia-AAAA-MM-DD-HHMMSS.zip` (local, fuera de git; datos propios de la app, sin la caché ni los documentos de los proyectos) | al pulsar «Crear copia» en Ajustes, Privacidad, fuera de una reunión; restaurar es manual (`MANUAL.md`, apartado 10) |
 | Digest de contexto | `apuntes\cache\` | al empezar la reunión, si cambian los ficheros de origen |
 | Consumo | `apuntes\datos\consumo.jsonl` | por llamada, sin contenido de reuniones |
 

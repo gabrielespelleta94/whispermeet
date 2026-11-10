@@ -15,6 +15,7 @@ Reglas:
   que se escribe es `backlog/estado.json` (local, fuera de git, escritura atómica). Los .md de sesión no se modifican nunca.
 - Planes de sesiones: lectura de `planes/*.json` (locales de la app). Ola C: el plan se escribe SOLO desde el editor de la ficha (`escribir_plan`: atómico, confinado a `planes/`, con copia `.bak` del anterior).
 - Ola 3: `seguimiento/<proyecto>.json` (pendientes entre sesiones, local) y borradores `.eml` en una carpeta temporal propia (`WhisperMeet-borradores`).
+- Ola F: `copias/whispermeet-copia-AAAA-MM-DD-HHMMSS.zip` (copia de seguridad de los datos de la app, hecha por `copia.py`; el Guardián solo da la ruta de una copia nueva, las lista y abre la carpeta).
 - Nunca se escribe CLAUDE.md, AGENTS.md, docs/ ni nada bajo las raíces de solo lectura (Knowledge).
 - Nada de path traversal: los nombres de proyecto y de fichero se validan por componente y la ruta
   resuelta (symlinks incluidos) debe quedar dentro de la carpeta permitida.
@@ -65,6 +66,10 @@ _RE_FICHERO_SESION = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*\.md$
 _RE_FICHERO_PLAN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._\-]{0,100}\.json$")   # ola C: fichero directo de `planes/` (nunca una ruta)
 _RE_CACHE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,120}\.json$")
 _RE_DATOS = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,60}\.(json|jsonl)$")   # ola 4: ficheros de datos propios de la app (reglas de silencio, envíos, métricas…)
+_RE_COPIA = re.compile(r"whispermeet-copia-\d{4}-\d{2}-\d{2}-\d{6}\.zip")   # ola F: nombre de una copia de seguridad (se valida con fullmatch: sin separadores, sin «..», sin saltos de línea)
+SUFIJO_COPIA_PARCIAL = ".parcial"   # el zip se escribe con este sufijo y se renombra al terminar
+# Qué atributos del Guardián son datos PROPIOS de la app y entran en la copia de seguridad (`copia.py`): ni la caché (se regenera), ni los proyectos del usuario, ni las copias.
+ATRIBUTOS_DE_COPIA = ("ajustes", "datos", "bandeja", "sesiones_locales", "planes", "checks", "backlog", "seguimiento", "tipos")
 _RE_SESION_MD = re.compile(r"^\d{4}-\d{2}-\d{2}.*\.md$", re.I)   # lectura del backlog: más tolerante que _RE_FICHERO_SESION (que es para escribir)
 NOMBRE_ESTADO_BACKLOG = "estado.json"
 TOPE_PLAN_BYTES = 100_000   # un plan por encima de este tamaño NO lo lee la app (`_planes_bytes`) ni se escribe (`escribir_plan`, `plan_editor.guardar`): un solo tope para las dos cosas
@@ -181,7 +186,7 @@ def sugerir_compartida(ruta: str | os.PathLike, entorno=None) -> bool:
 
 class Guardian:
     def __init__(self, raiz_proyectos, bandeja, cache, solo_lectura=(), extras=(), sesiones_locales=None,
-                 planes=None, checks=None, backlog=None, datos=None, tipos=None):
+                 planes=None, checks=None, backlog=None, datos=None, tipos=None, copias=None, ajustes=None):
         self.raiz = Path(raiz_proyectos)
         self.bandeja = Path(bandeja)
         self.cache = Path(cache)
@@ -195,6 +200,8 @@ class Guardian:
         self.seguimiento = (self.backlog.parent / "seguimiento") if self.backlog else None
         self.borradores = Path(tempfile.gettempdir()) / "WhisperMeet-borradores"
         self.datos = Path(datos) if datos else None         # ola 4: carpeta local de datos de la app (reglas de silencio, envíos, métricas, glosario); fuera de git
+        self.copias = Path(copias) if copias else None      # ola F: carpeta de las copias de seguridad (hermana de la carpeta de datos de la app; fuera de git)
+        self.ajustes = Path(ajustes) if ajustes else None   # ola F: el fichero de configuración de la app (solo entra en la copia de seguridad; no se lee ni se escribe por aquí)
         self.extras: dict[str, tuple[Path, bool]] = {}
         self._nombres_extra: dict[str, str] = {}
         self.fijar_extras(extras)
@@ -972,6 +979,54 @@ class Guardian:
                 os.replace(p, nuevo)
                 return nuevo
         return None
+
+    # ---------- ola F: copias de seguridad. El Guardián solo da rutas, lista y abre la carpeta; el zip lo escribe `copia.py` y NO hay método de borrado ----------
+    def _carpeta_copias(self) -> Path:
+        if self.copias is None:
+            raise RutaProhibida("no hay carpeta de copias configurada")
+        return self.copias
+
+    def ruta_copia(self, nombre: str, parcial: bool = False) -> Path:
+        """`copias/whispermeet-copia-AAAA-MM-DD-HHMMSS.zip` (con `parcial`, el nombre temporal con el sufijo `.parcial`). Patrón estricto: ni separadores ni `..`."""
+        carpeta = self._carpeta_copias()
+        if not isinstance(nombre, str) or not _RE_COPIA.fullmatch(nombre):
+            raise RutaProhibida("nombre de copia no válido")
+        destino = carpeta / (nombre + SUFIJO_COPIA_PARCIAL if parcial else nombre)
+        self._comprobar_escritura(destino, carpeta)
+        return destino
+
+    def listar_copias(self) -> list[dict]:
+        """Las copias que hay (`nombre`, `bytes`, `fecha` ISO local de la última modificación), las más recientes primero. Solo ficheros con nombre de copia."""
+        from datetime import datetime
+        carpeta = self._carpeta_copias()
+        out = []
+        try:
+            entradas = list(os.scandir(carpeta))
+        except OSError:
+            return []
+        for e in entradas:
+            try:
+                if _RE_COPIA.fullmatch(e.name) and e.is_file(follow_symlinks=False):
+                    st = e.stat(follow_symlinks=False)
+                    out.append((st.st_mtime, e.name, st.st_size))
+            except OSError:
+                continue
+        out.sort(reverse=True)
+        return [{"nombre": n, "bytes": tam, "fecha": datetime.fromtimestamp(m).isoformat(timespec="seconds")} for m, n, tam in out]
+
+    def raiz_de_copia(self) -> Path:
+        """La carpeta de la app: las rutas dentro de la copia son relativas a ella (la de copias es hermana de la de datos)."""
+        return self._carpeta_copias().parent
+
+    def fuentes_de_copia(self) -> list[Path]:
+        """Las carpetas (y el fichero de ajustes) de datos propios de la app que tiene configurados este Guardián (`ATRIBUTOS_DE_COPIA`), sin mirar si existen."""
+        return [Path(p) for p in (getattr(self, a, None) for a in ATRIBUTOS_DE_COPIA) if p]
+
+    def abrir_carpeta_copias(self, abridor=None) -> None:
+        """Abre la carpeta de copias en el explorador (la crea si falta: es un destino de escritura permitido). `abridor` sustituye a `os.startfile` (pruebas)."""
+        carpeta = self._carpeta_copias()
+        carpeta.mkdir(parents=True, exist_ok=True)
+        self._abrir(carpeta, abridor)
 
     # ---------- ola 3: borradores de correo (.eml con X-Unsent: 1) en una carpeta temporal propia; NUNCA datos del usuario ni el repo ----------
     def escribir_borrador(self, nombre: str, contenido: bytes) -> Path:

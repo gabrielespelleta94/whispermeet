@@ -42,3 +42,15 @@ textarea.input { height: auto; min-height: 96px; padding: 8px 12px; line-height:
 .aj-error[hidden] { display: none; }
 .input[aria-invalid="true"] { border-color: var(--err); }
 .aj-sec > label.campo > input[name="whisper_beam"] { max-width: 120px; justify-self: end; }
+
+/* ------------------------------------------------------------ copia de seguridad (Ajustes, Privacidad; web/copia.js) */
+.aj-copia > .t-meta { display: block; margin: 6px 0 0; }
+.aj-copia-fila { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.aj-copia > .t-meta[hidden] { display: none; }
+/* el marcador nativo lo quita `summary { display: flex }` de app.css: se dibuja el mismo chevron que en `summary.lista-cab` */
+.aj-copia-omitidos > summary { cursor: pointer; list-style: none; gap: 6px; }
+.aj-copia-omitidos > summary::-webkit-details-marker { display: none; }
+.aj-copia-omitidos > summary::before { content: ""; flex: none; align-self: center; width: 6px; height: 6px; margin: 0 4px 0 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: -45deg; transition: rotate 160ms var(--salida); }
+.aj-copia-omitidos[open] > summary::before { rotate: 45deg; }
+.aj-copia-omitidos ul { margin: 6px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
+.aj-copia-omitidos[hidden] { display: none; }

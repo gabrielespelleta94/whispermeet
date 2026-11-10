@@ -59,7 +59,7 @@ Se abren con el botón **Ajustes** de la cabecera. Tienen tres secciones:
   - El ancho de búsqueda va de 1 a 10 (5 por defecto): más ancho acierta más y va más lento. Si la transcripción va con retraso, bájalo; si falla en la jerga, súbelo.
   - El vocabulario es una lista de términos, uno por línea (siglas, nombres de producto, jerga): Whisper los tiene en cuenta y los escribe como tú los pongas. Hasta 60 términos de 40 caracteres. Vale para la reunión siguiente.
 - **Equipo**: cuándo interviene el equipo, cuánto hace por su cuenta, avisos silenciados, y qué modelo usa cada tarea (ligero o potente) y con qué límite de uso por hora.
-- **Privacidad**: ocultar la ventana en capturas y al compartir pantalla, **Modo solo local**, el registro de envíos y las carpetas que lee la app (carpeta de proyectos, carpetas añadidas y **carpeta de Knowledge**).
+- **Privacidad**: ocultar la ventana en capturas y al compartir pantalla, **Modo solo local**, el registro de envíos, las carpetas que lee la app (carpeta de proyectos, carpetas añadidas y **carpeta de Knowledge**) y la **copia de seguridad** (apartado 10).
 
 Si un valor no es válido (un ancho fuera de rango, un término demasiado largo, una carpeta que no existe), el error sale junto a su campo y no se guarda nada. Con una reunión en curso no se cambian la carpeta de proyectos, el modelo de transcripción ni la carpeta de Knowledge: el cambio se rechaza, con el error junto al campo, y hay que repetirlo al terminar. El resto de los ajustes sí se guardan durante la reunión.
 
@@ -68,7 +68,7 @@ Si un valor no es válido (un ancho fuera de rango, un término demasiado largo,
 - **Audio**: nunca se guarda en disco. Solo existe en memoria mientras se transcribe y se descarta.
 - **Transcripciones**: un `.md` por reunión en la carpeta `02. Sesiones (transcripciones)` del proyecto; las reuniones sin proyecto, en `bandeja`. En un proyecto compartido, durante la reunión se guarda solo en tu equipo (`sesiones`), y al terminar se publica en la carpeta compartida sin sobrescribir nunca nada (o puedes elegir no publicar).
 - **Contexto del proyecto**: solo cambia cuando aceptas un cambio en la revisión, en `00. CONTEXTO (IA)` (más el registro de cambios). La app no escribe en `CLAUDE.md`, `AGENTS.md`, `docs` ni en Knowledge.
-- **En la carpeta de la app** (todo local, fuera de git): `datos` (tu configuración y el registro de consumo, sin contenido de reuniones), `planes`, `checks`, `backlog` (qué pendientes has dado por hechos), `cache`, `tipos_documento` y `modelos`.
+- **En la carpeta de la app** (todo local, fuera de git): `datos` (tu configuración y el registro de consumo, sin contenido de reuniones), `planes`, `checks`, `backlog` (qué pendientes has dado por hechos), `cache`, `tipos_documento`, `copias` (tus copias de seguridad, apartado 10) y `modelos`.
 
 El botón **Sesiones** de la cabecera reúne todas las sesiones pasadas y la lista conjunta de pendientes, ideas, decisiones, riesgos y preguntas; no hace llamadas a Claude, y marcar un pendiente como hecho solo se guarda en tu equipo, sin tocar los `.md`.
 
@@ -90,3 +90,26 @@ El botón **Sesiones** de la cabecera reúne todas las sesiones pasadas y la lis
 - **Ajustes no me deja cambiar la carpeta de proyectos, el modelo de transcripción o la carpeta de Knowledge.** Hay una reunión en curso: termínala y repite el cambio. El resto de los ajustes sí se guardan mientras dura.
 - **Los compañeros ven mi ventana al compartir pantalla.** Mira en Ajustes, Privacidad: «Ocultar la ventana en capturas y al compartir pantalla» debe estar marcado (también hay un botón en la cabecera).
 - **Quiero cambiar de sitio la app o actualizarla.** Haz `git pull` y ejecuta `instalar.bat`: instala solo lo que haya cambiado y no toca tus datos. Si cambias la carpeta de sitio, vuelve a crear el acceso directo ejecutando `instalar.bat` (si ya existe uno que apunta a la ubicación anterior, bórralo a mano antes).
+
+## 10. Copia de seguridad y cambio de equipo
+
+Sirve para tener una copia de tus datos de la app o para llevártelos a otro equipo. Se hace en **Ajustes, Privacidad, Copia de seguridad**.
+
+**Crear la copia.** Pulsa **Crear copia**, fuera de una reunión (durante una reunión la app no la hace, para no competir con la transcripción por el disco). La app guarda un zip llamado `whispermeet-copia-AAAA-MM-DD-HHMMSS.zip` en la carpeta `copias` de la app y te dice cuántos ficheros lleva y cuánto ocupa. **Abrir la carpeta de copias** la enseña en el explorador, y la línea «Última copia» te recuerda cuándo hiciste la última. La app nunca borra copias antiguas: las quitas tú cuando quieras.
+
+**Qué entra.** Tu configuración, los planes de sesiones, los checks, el estado del backlog, el seguimiento, los tipos de documento corregidos a mano, el glosario, las reglas y demás datos de la carpeta `datos\ola4`, las reuniones de la bandeja y las sesiones locales de los proyectos compartidos. Cada fichero va con su ruta relativa a la carpeta de la app, y un `MANIFIESTO.json` en la raíz del zip los lista.
+
+**Qué no entra.** La caché (se regenera sola), los modelos de transcripción (se descargan de nuevo con `instalar.bat`), el registro de consumo y el de errores, el entorno virtual, las copias anteriores y los documentos de tus proyectos: las transcripciones guardadas en `02. Sesiones (transcripciones)` y el contexto de cada proyecto viven en tu carpeta de proyectos, y esa carpeta la llevas tú. Un fichero que no se puede leer, que pesa más de 200 MB, que tiene un nombre con pinta de clave o que no se puede guardar en el zip (por ejemplo, un nombre con caracteres que no se codifican) se salta, y la app lo lista con su motivo; un fichero con una fecha de modificación fuera del rango del zip (antes de 1980 o después de 2107) sí entra, con la fecha ajustada. Si la copia llega a 2 GB, se corta: la línea de resultado dice «Copia incompleta», avisa de que faltan ficheros y la lista desplegable explica dónde se cortó.
+
+**Restaurar (a mano).**
+
+1. Cierra la app.
+2. En el equipo nuevo, instala la app con `instalar.bat`.
+3. Descomprime el zip sobre la carpeta de la app, la que contiene `datos`, `planes` y `bandeja`, y acepta sobrescribir.
+4. Abre la app y revisa en **Ajustes, Privacidad** que la carpeta de proyectos y la de Knowledge son las de este equipo: la configuración guarda las rutas del equipo anterior.
+
+El zip lleva un `MANIFIESTO.json` con la lista de ficheros; al descomprimir sobre la carpeta de la app queda ahí, es solo una referencia y se puede borrar.
+
+No hay restauración automática ni migración de versiones todavía.
+
+**Ojo con lo que contiene.** La copia lleva transcripciones y datos de tus reuniones. Se guarda en local, en tu equipo, y dónde la llevas después (un disco, la nube, un correo) es responsabilidad tuya.

@@ -18,6 +18,7 @@ PLANES_DIR = APP_DIR / "planes"          # planes de sesiones (JSON locales, fue
 CHECKS_DIR = APP_DIR / "checks"          # checks de preparación por proyecto y sesión (locales, fuera de git)
 SESIONES_DIR = APP_DIR / "sesiones"      # transcripciones de proyectos compartidos (locales, fuera de git)
 BACKLOG_DIR = APP_DIR / "backlog"        # estado local del backlog (estado.json: hecho/descartado/aprovechada y temas renombrados; fuera de git)
+COPIAS_DIR = APP_DIR / "copias"          # copias de seguridad de los datos de la app (ola F; zips locales, fuera de git; hermana de `datos`)
 TIPOS_DOC_DIR = APP_DIR / "tipos_documento"   # tipo de documento corregido a mano, un JSON por proyecto (ola B; local, fuera de git)
 PLANTILLAS_DIR = APP_DIR / "plantillas" / "contexto"
 WEB_DIR = APP_DIR / "web"

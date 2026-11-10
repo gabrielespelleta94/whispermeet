@@ -17,7 +17,7 @@ import uvicorn
 
 from apuntes.analisis import crear_modelo
 from apuntes.aviso import AvisoLlamada, limpiar_titulo, titulo_reunion_teams
-from apuntes.config import APP_DIR, BACKLOG_DIR, BANDEJA_DIR, CACHE_DIR, CHECKS_DIR, DATOS_DIR, PLANES_DIR, SESIONES_DIR, TIPOS_DOC_DIR, Config
+from apuntes.config import APP_DIR, BACKLOG_DIR, BANDEJA_DIR, CACHE_DIR, CHECKS_DIR, COPIAS_DIR, DATOS_DIR, PLANES_DIR, SESIONES_DIR, TIPOS_DOC_DIR, Config
 from apuntes.consumo import Consumo
 from apuntes.gestor import Gestor
 from apuntes.rutas import Guardian
@@ -48,12 +48,13 @@ def construir(args) -> tuple:
     sesiones = Path(args.sesiones).resolve() if args.sesiones else SESIONES_DIR
     checks = Path(args.checks).resolve() if args.checks else CHECKS_DIR
     tipos = Path(args.tipos).resolve() if args.tipos else TIPOS_DOC_DIR
+    copias = Path(getattr(args, "copias", None)).resolve() if getattr(args, "copias", None) else COPIAS_DIR   # ola F: copias de seguridad (hermana de `datos`)
     cache = Path(args.cache).resolve() if args.cache else CACHE_DIR
     bandeja = Path(args.bandeja).resolve() if args.bandeja else BANDEJA_DIR
     backlog = Path(args.backlog).resolve() if args.backlog else BACKLOG_DIR
     datos_app = Path(args.datos).resolve() if args.datos else DATOS_DIR / "ola4"   # ola 4: reglas de silencio, envíos, métricas, glosario, plantillas propias
     guardian = Guardian(cfg["raiz_proyectos"], bandeja, cache, solo_lectura=[cfg["knowledge"]],
-                        extras=cfg["proyectos_extra"], sesiones_locales=sesiones, planes=planes, checks=checks, backlog=backlog, datos=datos_app, tipos=tipos)
+                        extras=cfg["proyectos_extra"], sesiones_locales=sesiones, planes=planes, checks=checks, backlog=backlog, datos=datos_app, tipos=tipos, copias=copias, ajustes=cfg.ruta)
     consumo = Consumo(Path(args.consumo).resolve() if args.consumo else DATOS_DIR / "consumo.jsonl")
     sim = cargar(args.simular) if args.simular else None
     difusor = Difusor()
@@ -87,6 +88,7 @@ def main(argv=None) -> int:
     ap.add_argument("--tipos", metavar="CARPETA", help="pruebas: carpeta local de los tipos de documento corregidos a mano (por defecto, carpeta tipos_documento de la app)")
     ap.add_argument("--bandeja", metavar="CARPETA", help="pruebas: carpeta de la Bandeja (por defecto, la real)")
     ap.add_argument("--backlog", metavar="CARPETA", help="pruebas: carpeta del estado local del backlog (por defecto, backlog\\ de la app)")
+    ap.add_argument("--copias", metavar="CARPETA", help="pruebas: carpeta de las copias de seguridad (por defecto, copias en la carpeta de la app)")
     ap.add_argument("--datos", metavar="CARPETA", help="pruebas: carpeta de datos locales de la ola 4 (reglas de silencio, envíos, métricas; por defecto datos/ola4)")
     ap.add_argument("--consumo", metavar="FICHERO.jsonl", help="pruebas: registro de consumo alternativo (con modelo falso, NUNCA datos/consumo.jsonl: mezclaría llamadas falsas con las reales)")
     ap.add_argument("--cache", metavar="CARPETA", help="pruebas: carpeta de la caché de digests (con modelo falso, NUNCA la real: un digest falso contaminaría una pasada real)")
