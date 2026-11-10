@@ -5,7 +5,7 @@
 (() => {
   const AP = window.AP;
   if (!AP) return;
-  const { h, $, $$ } = AP;
+  const { h, $, $$, api } = AP;
   const dlg = $("#d-ajustes");
   if (!dlg) return;
   const tabs = $$(".aj-tab", dlg), secs = $$(".aj-sec", dlg);
@@ -45,4 +45,77 @@
   // «Modo solo local» y «Registro de envíos»: los pinta olas34.js con /api/modo-local y /api/envios. Aquí solo se vuelve a la primera sección al abrir.
   const previoAbrir = AP.hooks.ajustesAbrir;
   AP.hooks.ajustesAbrir = (info, f) => { ir("audio"); if (previoAbrir) previoAbrir(info, f); };
+
+  // ------------------------------------------------------------ ola D: ajustes que antes solo estaban en el fichero
+  // Carpeta de Knowledge, vocabulario de transcripción y ancho de búsqueda de Whisper. Solo se envía lo que ha cambiado; el servidor valida (tipos, topes, que la carpeta
+  // exista y no sea de secretos) y contesta con el CAMPO del error (`datos.campo`): se pinta junto a ese campo, en su sección, y el foco va a él.
+  const NUEVOS = {
+    whisper_beam: { sec: "audio", entrada: "[name=whisper_beam]", error: "#aj-beam-error" },
+    vocabulario_transcripcion: { sec: "audio", entrada: "#aj-vocab", error: "#aj-vocab-error" },
+    knowledge: { sec: "privacidad", entrada: "#aj-knowledge", error: "#aj-knowledge-error" },
+    // la raíz y el modelo no son nuevos, pero durante una reunión el servidor rechaza su CAMBIO con el campo: se pinta junto a ellos
+    raiz_proyectos: { sec: "privacidad", entrada: "[name=raiz_proyectos]", error: "#aj-raiz-error" },
+    whisper_modelo: { sec: "audio", entrada: "[name=whisper_modelo]", error: "#aj-modelo-error" },
+  };
+  const inicial = { beam: null, vocab: "[]", knowledge: "" };
+  const terminos = () => $("#aj-vocab").value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  function limpiarErroresNuevos() {
+    Object.values(NUEVOS).forEach((d) => { const e = $(d.error, dlg), i = $(d.entrada, dlg); if (e) { e.hidden = true; e.textContent = ""; } if (i) i.removeAttribute("aria-invalid"); });
+  }
+  function cuentaVocab() { const n = terminos().length; $("#aj-vocab-cuenta").textContent = `${n} de 60 términos.`; }
+  const entradasNuevas = [$("#aj-vocab"), $("[name=whisper_beam]", dlg), $("#aj-knowledge"), $("[name=raiz_proyectos]", dlg), $("[name=whisper_modelo]", dlg)];
+  entradasNuevas.forEach((i) => i && i.addEventListener("input", () => {
+    const def = Object.values(NUEVOS).find((d) => $(d.entrada, dlg) === i);
+    if (def) { const e = $(def.error, dlg); e.hidden = true; i.removeAttribute("aria-invalid"); }
+    if (i.id === "aj-vocab") cuentaVocab();
+  }));
+  const abrirPrevio = AP.hooks.ajustesAbrir;
+  AP.hooks.ajustesAbrir = (info, f) => {
+    if (abrirPrevio) abrirPrevio(info, f);
+    const c = (info && info.config) || {};
+    f.whisper_beam.value = c.whisper_beam == null ? "" : c.whisper_beam;
+    const lista = Array.isArray(c.vocabulario_transcripcion) ? c.vocabulario_transcripcion : [];
+    $("#aj-vocab").value = lista.join("\n");
+    f.knowledge.value = c.knowledge || "";
+    inicial.beam = c.whisper_beam == null ? null : c.whisper_beam; inicial.vocab = JSON.stringify(lista); inicial.knowledge = c.knowledge || "";
+    limpiarErroresNuevos(); cuentaVocab();
+  };
+  const guardarPrevio = AP.hooks.ajustesGuardar;
+  AP.hooks.ajustesGuardar = (f) => {
+    const cambios = guardarPrevio ? guardarPrevio(f) : {};
+    limpiarErroresNuevos();
+    const crudo = f.whisper_beam.value.trim();
+    const beam = crudo === "" ? null : Number(crudo);
+    if (beam !== inicial.beam) cambios.whisper_beam = beam;
+    const lista = terminos();
+    if (JSON.stringify(lista) !== inicial.vocab) cambios.vocabulario_transcripcion = lista;
+    const k = f.knowledge.value.trim();
+    if (k !== inicial.knowledge) cambios.knowledge = k;
+    return cambios;
+  };
+  AP.hooks.ajustesError = (e) => {
+    const d = NUEVOS[e && e.datos && e.datos.campo];
+    if (!d) return false;
+    const msg = $(d.error, dlg), entrada = $(d.entrada, dlg);
+    $("#s-error").hidden = true;
+    msg.textContent = e.message; msg.hidden = false;
+    entrada.setAttribute("aria-invalid", "true");
+    ir(d.sec);
+    entrada.focus();
+    return true;
+  };
+  // «Elegir carpeta…» para Knowledge: el mismo selector nativo que las carpetas de proyecto (solo con ventana nativa); solo rellena la ruta, no guarda nada
+  const elegirK = $("#aj-knowledge-elegir");
+  if (elegirK) {
+    api("GET", "/api/ventana").then((v) => { if (v && v.nativa) elegirK.hidden = false; }).catch(() => { /* sin ventana nativa: ruta a mano */ });
+    elegirK.addEventListener("click", async () => {
+      const texto = elegirK.textContent;
+      elegirK.disabled = true; elegirK.textContent = "Abriendo el selector…";
+      try {
+        const r = await api("POST", "/api/ventana/elegir-carpeta");
+        if (!r.cancelado) { $("#aj-knowledge").value = r.ruta; $("#aj-knowledge").dispatchEvent(new Event("input", { bubbles: true })); }
+      } catch (e) { AP.hooks.ajustesError({ message: e.message, datos: { campo: "knowledge" } }); }
+      finally { elegirK.disabled = false; elegirK.textContent = texto; }
+    });
+  }
 })();

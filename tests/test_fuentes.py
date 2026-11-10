@@ -408,3 +408,97 @@ def test_prioridad_baja_no_falla_si_la_llamada_del_sistema_falla(monkeypatch):
     FU._prioridad_baja()
     monkeypatch.setattr(FU.os, "name", "posix")
     FU._prioridad_baja()
+
+
+# ================================================================ cambiar de carpeta de Knowledge con un indexado todavía en marcha
+class _IndexadoresControlados:
+    """Sustituye a `indexar_knowledge`: cada llamada espera a su propio Event (en `llamadas`, por orden) y devuelve un documento con la palabra de la carpeta."""
+
+    def __init__(self, monkeypatch):
+        self.llamadas: list[tuple[str, threading.Event]] = []
+        self.cortes: list[bool] = []
+        monkeypatch.setattr(FU, "indexar_knowledge", self)
+
+    def __call__(self, g, raiz, previo, *a, cortar=None, **k):
+        nombre = Path(raiz).name
+        suelta = threading.Event()
+        self.llamadas.append((nombre, suelta))
+        suelta.wait(10)
+        self.cortes.append(bool(cortar and cortar()))
+        inf = FU.Informe()
+        inf.ficheros = len(self.llamadas) * 100 + {"A": 1, "B": 2}[nombre]       # distingue qué llamada produjo el informe
+        doc = {"firma": "1:1", "etiqueta": f"Knowledge/{nombre}.md", "tipo": "knowledge", "trozos": [[f"documento exclusivo de la carpeta {nombre.lower()}zz", None]]}
+        return {f"{nombre}.md": doc}, inf
+
+    def soltar(self, i: int) -> None:
+        self.llamadas[i][1].set()
+
+
+def _servicio_ab(tmp_path, monkeypatch):
+    g = Guardian(tmp_path / "raiz", tmp_path / "bandeja", tmp_path / "cache")
+    cfg = Config(tmp_path / "config.json")
+    a, b = tmp_path / "A", tmp_path / "B"
+    a.mkdir()
+    b.mkdir()
+    cfg.actualizar({"knowledge": str(a)}, guardar=False)
+    return g, cfg, FU.ServicioFuentes(g, cfg), _IndexadoresControlados(monkeypatch), a, b
+
+
+def _etiquetas(s, marca):
+    return [r.etiqueta for r in s.buscar(f"documento exclusivo de la carpeta {marca}")]
+
+
+def _esperar(cond, s=5.0):
+    t0 = time.monotonic()
+    while not cond() and time.monotonic() - t0 < s:
+        time.sleep(0.01)
+    assert cond()
+
+
+def test_el_hilo_de_la_carpeta_anterior_no_pisa_el_estado_de_la_nueva(tmp_path, monkeypatch):
+    g, cfg, s, ind, a, b = _servicio_ab(tmp_path, monkeypatch)
+    hilo_a = s.arrancar()
+    _esperar(lambda: len(ind.llamadas) == 1)
+    cfg.actualizar({"knowledge": str(b)}, guardar=False)
+    hilo_b = s.cambiar_knowledge()
+    _esperar(lambda: len(ind.llamadas) == 2)
+    ind.soltar(0)                                                  # termina A, que ya no es la carpeta vigente
+    hilo_a.join(5)
+    assert not hilo_a.is_alive()
+    assert not s.listo_knowledge.is_set() and s.informe_knowledge is None
+    assert not list((tmp_path / "cache").glob("indice-knowledge-*.json"))        # tampoco guarda su caché
+    assert "Knowledge/A.md" not in _etiquetas(s, "azz")                           # ni mete su índice
+    assert ind.cortes[0] is True                                                  # y se le avisó de que dejara de leer
+    ind.soltar(1)
+    hilo_b.join(5)
+    assert s.listo_knowledge.is_set() and s.informe_knowledge.ficheros == 202
+    assert _etiquetas(s, "bzz")[:1] == ["Knowledge/B.md"] and "Knowledge/A.md" not in _etiquetas(s, "azz")
+
+
+def test_de_a_a_b_y_otra_vez_a_el_primer_resultado_de_a_se_descarta(tmp_path, monkeypatch):
+    g, cfg, s, ind, a, b = _servicio_ab(tmp_path, monkeypatch)
+    hilo_a1 = s.arrancar()
+    _esperar(lambda: len(ind.llamadas) == 1)
+    cfg.actualizar({"knowledge": str(b)}, guardar=False)
+    hilo_b = s.cambiar_knowledge()
+    _esperar(lambda: len(ind.llamadas) == 2)
+    cfg.actualizar({"knowledge": str(a)}, guardar=False)
+    hilo_a3 = s.cambiar_knowledge()
+    _esperar(lambda: len(ind.llamadas) == 3)
+    ind.soltar(0)                                                  # el primer hilo de A: la carpeta vuelve a ser A, pero esta pasada es de otra generación
+    hilo_a1.join(5)
+    assert not s.listo_knowledge.is_set() and s.informe_knowledge is None
+    assert not list((tmp_path / "cache").glob("indice-knowledge-*.json"))
+    ind.soltar(1)
+    hilo_b.join(5)
+    assert not s.listo_knowledge.is_set() and s.informe_knowledge is None
+    ind.soltar(2)
+    hilo_a3.join(5)
+    assert s.listo_knowledge.is_set() and s.informe_knowledge.ficheros == 301        # el de la tercera llamada, no el de la primera (101)
+    assert _etiquetas(s, "azz")[:1] == ["Knowledge/A.md"] and "Knowledge/B.md" not in _etiquetas(s, "bzz")
+
+
+def test_indexar_knowledge_se_detiene_si_se_lo_piden(tmp_path, knowledge):
+    g = Guardian(tmp_path / "raiz", tmp_path / "bandeja", tmp_path / "cache", solo_lectura=[knowledge])
+    fuentes, _inf = FU.indexar_knowledge(g, knowledge, {}, cortar=lambda: True)
+    assert fuentes == {}

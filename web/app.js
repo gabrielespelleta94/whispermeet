@@ -924,7 +924,10 @@
       pintarCaptura(r.config.excluir_captura);
       dlg.close();
       cargarProyectos();
-    } catch (e) { $("#s-error").textContent = e.message; $("#s-error").hidden = false; }
+    } catch (e) {
+      if (AP.hooks.ajustesError && AP.hooks.ajustesError(e)) return;   // ajustes.js: el error de un campo nuevo se pinta junto a su campo
+      $("#s-error").textContent = e.message; $("#s-error").hidden = false;
+    }
   });
   function pintarCaptura(on) { const b = $("#b-captura"); b.hidden = false; b.setAttribute("aria-pressed", String(!!on)); b.classList.toggle("off", !on); b.textContent = on ? "Oculta al compartir" : "Visible al compartir"; if (UI.info) UI.info.config.excluir_captura = !!on; }
   $("#b-captura").addEventListener("click", async () => {

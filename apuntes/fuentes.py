@@ -330,10 +330,11 @@ class Informe:
 
 def indexar_knowledge(g, raiz_knowledge: str | os.PathLike | None, previo: dict[str, dict], max_ficheros: int = 800, tope_bytes: int = 200_000,
                       tope_documento_bytes: int = 15_000_000, tiempo_s: float = 40.0, profundidad: int = 6,
-                      al_avanzar=None) -> tuple[dict[str, dict], Informe]:
+                      al_avanzar=None, cortar=None) -> tuple[dict[str, dict], Informe]:
     """Recorre Knowledge SIN escribir nada en él. Reutiliza lo que no ha cambiado (fecha de modificación y tamaño). Se detiene al agotar `tiempo_s`
     o `max_ficheros` (el índice queda parcial y la pasada siguiente lo completa). Los ficheros con nombre de secreto, de carpetas excluidas, mayores
-    que el tope o sin descargar de la nube se omiten. `al_avanzar(fuentes)` se llama cada 40 ficheros nuevos para poder guardar lo hecho."""
+    que el tope o sin descargar de la nube se omiten. `al_avanzar(fuentes)` se llama cada 40 ficheros nuevos para poder guardar lo hecho.
+    `cortar()` se consulta antes de cada fichero: si devuelve True se deja de leer la carpeta (el llamador descarta ese resultado)."""
     inf = Informe()
     t0 = time.monotonic()
     if not raiz_knowledge or not os.path.isdir(raiz_knowledge):
@@ -353,6 +354,8 @@ def indexar_knowledge(g, raiz_knowledge: str | os.PathLike | None, previo: dict[
                 if es_secreto(fn):
                     inf.omitidos += 1
                     continue
+                if cortar and cortar():
+                    raise _Tope()
                 if inf.ficheros >= max_ficheros or time.monotonic() - t0 > tiempo_s:
                     inf.completo = False
                     raise _Tope()
@@ -482,6 +485,7 @@ class ServicioFuentes:
         self._hilo_k: threading.Thread | None = None
         self._hilo_p: threading.Thread | None = None
         self.listo_knowledge = threading.Event()
+        self._gen_knowledge = 0          # generación de la carpeta de Knowledge: `cambiar_knowledge` la sube y el hilo de una generación anterior no toca nada
         self.listo_proyecto = threading.Event()
         self.reconstrucciones = 0        # cuántas veces se ha rehecho el índice combinado (diagnóstico y pruebas)
 
@@ -505,32 +509,54 @@ class ServicioFuentes:
         nombre = self._nombre_knowledge()
         previo = cargar_cache(self.g, nombre)
         with self._lock:
+            gen = self._gen_knowledge
             self._knowledge = [_doc_de(e) for e in previo.values()]
         if self._knowledge:
             self._reconstruir()
+
+        def vigente() -> bool:
+            return gen == self._gen_knowledge and raiz == self.cfg["knowledge"]
 
         def trabajo():
             _prioridad_baja()
             try:
                 def parcial(f):
-                    guardar_cache(self.g, nombre, f)
+                    if vigente():
+                        guardar_cache(self.g, nombre, f)
                 fuentes, inf = indexar_knowledge(self.g, raiz, previo, int(self.cfg["fuentes_max_ficheros"]), int(self.cfg["tope_fichero_bytes"]),
-                                                 tiempo_s=float(self.cfg["fuentes_tiempo_s"]), al_avanzar=parcial)
-                self.informe_knowledge = inf
+                                                 tiempo_s=float(self.cfg["fuentes_tiempo_s"]), al_avanzar=parcial, cortar=lambda: not vigente())
+                with self._lock:
+                    if not vigente():   # el usuario cambió la carpeta de Knowledge mientras se indexaba esta: el resultado ya no vale y no se toca nada
+                        return
+                    self.informe_knowledge = inf
+                    if fuentes != previo:   # sin cambios (lo habitual: misma fecha y tamaño) el índice de la caché, ya cargado arriba, sigue valiendo
+                        self._knowledge = [_doc_de(e) for e in fuentes.values()]
                 if fuentes and (inf.nuevos or set(fuentes) != set(previo)):
                     guardar_cache(self.g, nombre, fuentes)
-                if fuentes != previo:   # sin cambios (lo habitual: misma fecha y tamaño) el índice de la caché, ya cargado arriba, sigue valiendo
-                    with self._lock:
-                        self._knowledge = [_doc_de(e) for e in fuentes.values()]
+                if fuentes != previo:
                     self._reconstruir()
             except Exception as e:  # noqa: BLE001 — el índice es una ayuda: un fallo no afecta a la reunión
                 from .registro import registrar_error
                 registrar_error("ServicioFuentes.knowledge", e)
             finally:
-                self.listo_knowledge.set()
+                if vigente():
+                    self.listo_knowledge.set()
         self._hilo_k = threading.Thread(target=trabajo, daemon=True, name="fuentes-knowledge")
         self._hilo_k.start()
         return self._hilo_k
+
+    def cambiar_knowledge(self) -> threading.Thread | None:
+        """El usuario cambió (o vació) la carpeta de Knowledge en Ajustes: olvida el índice de la anterior y empieza el de la nueva en segundo plano.
+        El hilo de la carpeta anterior, si sigue en marcha, deja de leerla y su resultado se descarta (generación nueva): no toca ni el informe, ni la
+        caché, ni el índice, ni el aviso de «listo»."""
+        with self._lock:
+            self._gen_knowledge += 1
+            self._knowledge = []
+            self.listo_knowledge.clear()
+            self.informe_knowledge = None
+            self._hilo_k = None
+        self._reconstruir()
+        return self.arrancar()
 
     # ---- proyecto, sesiones anteriores y contexto de la reunión: al empezar una reunión
     def preparar_proyecto(self, proyecto: str | None, excluir_archivo: str = "", contexto_reunion: str = "") -> threading.Thread:

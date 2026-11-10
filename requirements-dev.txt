@@ -1,0 +1,6 @@
+# Lo de arriba más lo que solo hace falta para desarrollar: pruebas (pytest) y mediciones (pruebas/).
+-r requirements.txt
+pytest==9.2.0
+httpx==0.28.1
+pyttsx3==2.99
+pywin32==312

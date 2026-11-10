@@ -1,0 +1,44 @@
+/* WhisperMeet: requisitos del equipo y ajustes de la ola D (web/requisitos.js, web/ajustes.js). DESIGN-visual.md §0 (marca «Estéreo»): un solo nivel de caja, filetes entre filas,
+   radios 2·4·6·8, color solo con significado (--ok, --warn, --err), escala de cinco tamaños por variable, sin recortes de texto con puntos suspensivos. */
+
+/* ------------------------------------------------------------ panel «Antes de la primera reunión» (inicio) */
+.requisitos { margin: 8px 0 16px; border: 1px solid var(--hair2); border-radius: var(--r-p); background: var(--grafito); }
+.requisitos[hidden] { display: none; }
+.req-cab { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 16px; border-bottom: 1px solid var(--hair); }
+.req-cab .t-title { margin: 0; }
+.req-cab .grow { flex: 1 1 auto; }
+
+/* En el inicio, la lista lleva solo lo que no está bien y una línea con el resto; en Ajustes, la lista completa */
+.req-ok { margin: 0; padding: 10px 16px; border-top: 1px solid var(--hair); }
+.req-ok[hidden] { display: none; }
+.req-lista:empty + .req-ok { border-top: 0; }
+
+/* Las filas son las mismas en el inicio y en Ajustes */
+.req-lista { list-style: none; margin: 0; padding: 0; }
+.req-fila { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 4px 12px; padding: 10px 16px; border-top: 1px solid var(--hair); }
+.req-fila:first-child { border-top: 0; }
+.req-est { margin: 0; font-weight: 600; }
+.req-fila[data-estado="bien"] .req-est { color: var(--ok); }
+.req-fila[data-estado="aviso"] .req-est { color: var(--warn); }
+.req-fila[data-estado="falta"] .req-est { color: var(--err); }
+.req-cuerpo { min-width: 0; overflow-wrap: anywhere; }
+.req-tit { display: block; }
+.req-det, .req-como { margin: 2px 0 0; color: var(--soft); }
+.req-como { color: var(--body); }
+.req-como b { font-weight: 600; color: var(--ink); }
+
+/* ------------------------------------------------------------ Ajustes */
+.aj-req .req-lista { margin-top: 8px; border-top: 1px solid var(--hair); }
+.aj-req .req-fila { padding-left: 0; padding-right: 0; }
+.aj-req-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.aj-req-cab .t-label { margin: 0; }
+.aj-sec > .aj-bloque { display: block; }
+.aj-sec > .aj-bloque > .t-label, #aj-c-knowledge > .t-label { display: block; margin-bottom: 6px; font-family: var(--sans); text-transform: none; letter-spacing: 0; font-variant-numeric: normal; font-size: var(--f-14); line-height: 20px; font-weight: 500; color: var(--ink); }
+.aj-req-cab .t-label { font-family: var(--serif-d); text-transform: none; letter-spacing: -.01em; font-size: var(--f-15); line-height: 20px; font-weight: 600; color: var(--ink); }
+.aj-sec > .aj-bloque > .t-meta, #aj-c-knowledge > .t-meta { display: block; margin-top: 6px; }
+textarea.input { height: auto; min-height: 96px; padding: 8px 12px; line-height: 20px; resize: vertical; font-family: var(--sans); }
+.aj-sec > label.campo > .aj-error { grid-column: 1 / -1; grid-row: 3; margin-top: 4px; }
+.aj-error { margin-top: 6px; display: block; }
+.aj-error[hidden] { display: none; }
+.input[aria-invalid="true"] { border-color: var(--err); }
+.aj-sec > label.campo > input[name="whisper_beam"] { max-width: 120px; justify-self: end; }

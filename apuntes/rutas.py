@@ -238,8 +238,8 @@ class Guardian:
             raise RutaProhibida("La carpeta no existe o no es una carpeta.")
         if es_secreto(p):
             raise RutaProhibida("La ruta tiene pinta de contener secretos o credenciales.")
-        if any(esta_dentro(ro, p) for ro in self.solo_lectura):
-            raise RutaProhibida("Esa carpeta está dentro de una ubicación de solo lectura (Knowledge).")
+        if any(esta_dentro(ro, p) or esta_dentro(p, ro) for ro in self.solo_lectura):
+            raise RutaProhibida("Esa carpeta está dentro de una ubicación de solo lectura (Knowledge) o la contiene: elige otra.")
         if _norm(p) == _norm(self.raiz):
             raise RutaProhibida("Esa es la raíz de proyectos: elige la carpeta de un proyecto concreto.")
         if nombre.lower() in self.extras or (self.raiz / nombre).is_dir():
@@ -247,6 +247,43 @@ class Guardian:
         if any(_norm(r) == _norm(p) for r, _c in self.extras.values()):
             raise RutaProhibida("Esa carpeta ya está añadida como proyecto.")
         return {"nombre": nombre, "ruta": str(p), "compartido": bool(compartido)}
+
+    def validar_knowledge(self, ruta, raiz=None, apartadas=(), home=None, extras=None) -> str:
+        """Valida la carpeta de Knowledge (solo lectura) que el usuario pone en Ajustes. Vacío = sin Knowledge (devuelve ""). Devuelve la ruta RESUELTA (sin «..» ni enlaces) o lanza
+        RutaProhibida con el motivo. Mismas exigencias que un proyecto extra (absoluta, existente, no raíz de unidad, sin pinta de secreto) y además que no se
+        solape con nada que la app escribe o necesita ver como propio: la raíz de proyectos (`raiz`, o la actual), los proyectos extra, ni cualquier carpeta de
+        `apartadas` (la propia carpeta de la app, con sus datos y su configuración), ni contenga la carpeta personal del usuario (`home`, por defecto la real).
+        `extras`: rutas de los proyectos extra que quedarán tras el cambio, si el mismo cambio también los modifica (por defecto, los actuales)."""
+        if ruta is None or ruta == "":
+            return ""
+        if not isinstance(ruta, str):
+            raise RutaProhibida("La carpeta de Knowledge debe ser una ruta de texto.")
+        texto = ruta.strip().strip('"')
+        if not texto:
+            return ""
+        escrita = Path(texto)
+        if not escrita.is_absolute():
+            raise RutaProhibida("La ruta debe ser absoluta (por ejemplo D:\\Documentacion).")
+        if es_secreto(escrita):   # por el nombre tal como se escribió...
+            raise RutaProhibida("La ruta tiene pinta de contener secretos o credenciales.")
+        # ...y TODAS las demás comprobaciones, sobre la ruta resuelta (sin «..» ni enlaces): si no, «C:\Windows\..» pasaría por una carpeta y
+        # una junction de nombre inocente hacia una carpeta de secretos pasaría por Knowledge
+        p = Path(os.path.realpath(texto))
+        if p == Path(p.anchor):
+            raise RutaProhibida("No se admite la raíz de una unidad ni de un recurso de red como carpeta de Knowledge.")
+        if not p.is_dir():
+            raise RutaProhibida("La carpeta no existe o no es una carpeta.")
+        if es_secreto(p):
+            raise RutaProhibida("La ruta tiene pinta de contener secretos o credenciales.")
+        base = Path(str(raiz)) if raiz else self.raiz
+        propias = [r for r, _c in self.extras.values()] if extras is None else [Path(str(e)) for e in extras]
+        for otra in [base, *propias, *(Path(str(a)) for a in apartadas)]:
+            if esta_dentro(otra, p) or esta_dentro(p, otra):
+                raise RutaProhibida("Esa carpeta se solapa con una carpeta de proyectos o con la propia carpeta de la app: Knowledge debe ser otra distinta.")
+        casa = Path(str(home)) if home else Path.home()
+        if esta_dentro(p, casa):
+            raise RutaProhibida("Esa carpeta es demasiado amplia (contiene toda tu carpeta personal): elige la carpeta concreta de documentación.")
+        return str(p)
 
     def validar_carpeta_nueva(self, nombre: str, ubicacion: str | None = None) -> Path:
         """Valida la carpeta que el usuario quiere CREAR desde la app («Nueva carpeta») y devuelve su ruta (no crea nada).

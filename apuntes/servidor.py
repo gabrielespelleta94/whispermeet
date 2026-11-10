@@ -30,8 +30,9 @@ from . import resumen as RS
 from . import llamadas as LL
 from . import planes as PL
 from .audio import listar_dispositivos
-from .config import APP_DIR, WEB_DIR
-from .rutas import RutaProhibida, raiz_onedrive, sugerir_compartida
+from . import requisitos as REQ
+from .config import APP_DIR, WEB_DIR, validar_beam, validar_vocabulario_estricto
+from .rutas import RutaProhibida, esta_dentro, raiz_onedrive, sugerir_compartida
 
 HOST = "127.0.0.1"
 
@@ -201,6 +202,22 @@ class CheckIn(BaseModel):
     hecho: bool | None = None
 
 
+def _misma_carpeta(a, b) -> bool:
+    """Misma carpeta aunque se escriba distinto (mayúsculas, barra final, «..», enlaces). Vacío solo es igual a vacío."""
+    a, b = str(a or "").strip(), str(b or "").strip()
+    if not a or not b:
+        return a == b
+    return esta_dentro(a, b) and esta_dentro(b, a)
+
+
+class ErrorCampo(ValueError):
+    """Error de validación de un campo concreto de Ajustes: responde 400 con `campo` y la interfaz lo pinta junto a ese campo."""
+
+    def __init__(self, campo: str, mensaje: str):
+        super().__init__(mensaje)
+        self.campo = campo
+
+
 def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
               al_cambiar_captura=None, ventana=None, al_avisar_llamada=None, vigilar_llamadas_activo=False, aviso=None,
               leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None, fabrica_archivero=None, fabrica_plan_propuesto=None) -> FastAPI:
@@ -253,6 +270,8 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         async def _w(*a, **k):
             try:
                 return await fn(*a, **k)
+            except ErrorCampo as e:
+                return JSONResponse({"detail": str(e), "campo": e.campo}, status_code=400)
             except ValueError as e:
                 raise HTTPException(400, str(e))
             except RutaProhibida as e:
@@ -277,6 +296,11 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         return {"version": __version__, "simulacion": gestor.sim is not None, "config": cfg.publico(),
                 "raiz_existe": Path(cfg["raiz_proyectos"]).is_dir()}
 
+    @app.get("/api/requisitos")
+    async def requisitos():
+        """Qué hace falta para la primera reunión (apuntes/requisitos.py): sin tokens, sin abrir el micrófono, sin descargar ni escribir nada."""
+        return await asyncio.to_thread(REQ.comprobar_todo, cfg, guardian, audio_en_uso=gestor.estado != "inactivo")
+
     @app.put("/api/config")
     @envolver
     async def poner_config(cambios: dict):
@@ -287,9 +311,49 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
                 raise ValueError("La carpeta raíz de proyectos no existe.")
         if "whisper_modelo" in cambios and not re.fullmatch(r"[A-Za-z0-9._\-/]{1,80}", str(cambios["whisper_modelo"])):
             raise ValueError("Nombre de modelo no válido.")
-        if gestor.estado != "inactivo" and ("raiz_proyectos" in cambios or "whisper_modelo" in cambios):
-            raise ValueError("Cambia la raíz o el modelo de transcripción fuera de una reunión.")
+        # Durante una reunión se rechaza solo lo que CAMBIA (la interfaz manda siempre la raíz y el modelo, con el valor vigente: eso no es un cambio)
+        if gestor.estado != "inactivo":
+            if "raiz_proyectos" in cambios and not _misma_carpeta(cambios["raiz_proyectos"], cfg["raiz_proyectos"]):
+                raise ErrorCampo("raiz_proyectos", "Cambia la carpeta de proyectos fuera de una reunión.")
+            if "whisper_modelo" in cambios and str(cambios["whisper_modelo"]) != cfg["whisper_modelo"]:
+                raise ErrorCampo("whisper_modelo", "Cambia el modelo de transcripción fuera de una reunión.")
+        # Ajustes que solo estaban en el fichero (ola D): se validan aquí, con el campo al que pertenece el error, ANTES de tocar la configuración
+        antes_knowledge = cfg["knowledge"]
+        cambios = dict(cambios)
+        if "whisper_beam" in cambios:
+            try:
+                cambios["whisper_beam"] = validar_beam(cambios["whisper_beam"])
+            except ValueError as e:
+                raise ErrorCampo("whisper_beam", str(e))
+        if "vocabulario_transcripcion" in cambios:
+            try:
+                cambios["vocabulario_transcripcion"] = validar_vocabulario_estricto(cambios["vocabulario_transcripcion"])
+            except ValueError as e:
+                raise ErrorCampo("vocabulario_transcripcion", str(e))
+        raiz_nueva = Path(str(cambios["raiz_proyectos"])) if "raiz_proyectos" in cambios else None
+        if "knowledge" in cambios:
+            extras_nuevos = None   # si el mismo cuerpo cambia las carpetas añadidas, Knowledge se valida contra las NUEVAS
+            if isinstance(cambios.get("proyectos_extra"), list):
+                extras_nuevos = [e["ruta"] for e in cambios["proyectos_extra"] if isinstance(e, dict) and isinstance(e.get("ruta"), str)]
+            try:
+                nueva = await asyncio.to_thread(guardian.validar_knowledge, cambios["knowledge"], raiz=raiz_nueva, apartadas=(APP_DIR,), extras=extras_nuevos)
+            except RutaProhibida as e:
+                raise ErrorCampo("knowledge", str(e))
+            if await asyncio.to_thread(_misma_carpeta, nueva, antes_knowledge):   # la ruta resuelta de la misma carpeta no es un cambio (ni reindexa ni se rechaza en una reunión)
+                del cambios["knowledge"]
+            else:
+                if gestor.estado != "inactivo":
+                    raise ErrorCampo("knowledge", "Cambia la carpeta de Knowledge fuera de una reunión.")
+                cambios["knowledge"] = nueva
+        elif (raiz_nueva is not None and antes_knowledge and Path(antes_knowledge).is_dir()
+              and not (esta_dentro(guardian.raiz, raiz_nueva) and esta_dentro(raiz_nueva, guardian.raiz))):   # una raíz NUEVA no puede solaparse con el Knowledge que ya hay (si no cambia, no se bloquea otro ajuste por esto)
+            if esta_dentro(antes_knowledge, raiz_nueva) or esta_dentro(raiz_nueva, antes_knowledge):
+                raise ErrorCampo("raiz_proyectos", "La carpeta de proyectos no puede solaparse con la de Knowledge (que es de solo lectura).")
         cfg.actualizar(cambios)
+        if cfg["knowledge"] != antes_knowledge:   # el Guardian debe saberlo ya: Knowledge es de solo lectura y no admite proyectos dentro
+            guardian.solo_lectura = [Path(cfg["knowledge"])] if cfg["knowledge"] else []
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(gestor.fuentes.cambiar_knowledge)
         guardian.raiz = Path(cfg["raiz_proyectos"])
         guardian.fijar_extras(cfg["proyectos_extra"])
         if cfg["excluir_captura"] != antes and al_cambiar_captura:

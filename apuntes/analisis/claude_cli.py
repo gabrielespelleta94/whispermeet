@@ -34,6 +34,11 @@ def entorno_limpio(base: dict | None = None, sin_razonamiento: bool = False) -> 
     return env
 
 
+def localizar_claude(buscar=None) -> str | None:
+    """Ruta del ejecutable `claude` en el PATH (o None). Un solo sitio: lo usan las llamadas y la comprobación de requisitos. No ejecuta nada."""
+    return (buscar or shutil.which)("claude")
+
+
 def construir_comando(exe: str, sistema: str, modelo: str, esfuerzo: str = "", web: bool = False) -> list[str]:
     herramientas = ["--tools", "WebSearch", "--allowedTools", "WebSearch"] if web else ["--tools", ""]   # web: SOLO la búsqueda, y solo si el usuario la pidió
     cmd = [exe, "-p", "--output-format", "json", "--model", modelo,
@@ -57,7 +62,7 @@ def capacidad_web(exe: str | None = None, forzar: bool = False) -> tuple[bool, s
     -> (disponible, motivo)."""
     if _CAPACIDAD_WEB and not forzar:
         return _CAPACIDAD_WEB["r"]
-    exe = exe or shutil.which("claude") or "claude"
+    exe = exe or localizar_claude() or "claude"
     try:
         p = subprocess.run([exe, "--help"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -124,7 +129,7 @@ def _flags_creacion() -> int:
 
 class ClaudeCLI(ModeloLLM):
     def __init__(self, exe: str | None = None):
-        self.exe = exe or shutil.which("claude") or "claude"
+        self.exe = exe or localizar_claude() or "claude"
 
     def completar(self, sistema: str, usuario: str, modelo: str, esfuerzo: str = "", timeout_s: int = 240,
                   sin_razonamiento: bool = False, web: bool = False) -> Respuesta:

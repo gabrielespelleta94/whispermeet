@@ -1,0 +1,2 @@
+# Los .bat van siempre en CRLF: con finales LF (descarga en ZIP, clon sin autocrlf) cmd puede no encontrar la etiqueta de un goto.
+*.bat text eol=crlf

@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="/static/backlog.css">
 <link rel="stylesheet" href="/static/ola2.css">
 <link rel="stylesheet" href="/static/olas34.css">
+<link rel="stylesheet" href="/static/requisitos.css">
 </head>
 <body data-vista="inicio" data-efectos="alto">
 <div class="ambiente" id="ambiente" aria-hidden="true"></div>
@@ -122,6 +123,17 @@
             <button class="btn btn-ghost" id="i-llamada-no" type="button">Ahora no</button>
           </div>
         </div>
+        <section class="requisitos" id="i-requisitos" aria-labelledby="req-tit" hidden>
+          <div class="req-cab">
+            <h2 class="t-title" id="req-tit">Antes de la primera reunión</h2>
+            <span class="t-meta soft" id="req-res" role="status"></span>
+            <span class="grow"></span>
+            <button class="btn btn-ghost" id="req-recomprobar" type="button">Volver a comprobar</button>
+            <button class="btn btn-ghost" id="req-cerrar" type="button" title="Se vuelve a mostrar la próxima vez que abras la app si sigue faltando algo">Ocultar</button>
+          </div>
+          <ul class="req-lista" id="req-lista"></ul>
+          <p class="req-ok t-meta soft" id="req-ok" hidden></p>
+        </section>
         <div class="gal-lista" id="i-lista" role="listbox" aria-label="Proyectos"></div>
         <div class="t-meta pista-teclas" id="i-teclas">Flechas para moverte · Intro abre la ficha · E empieza la reunión · / para buscar · Ctrl+K para todo lo demás</div>
         <div class="nota-pie t-meta" id="i-raiz"></div>
@@ -389,10 +401,19 @@
           <label class="campo"><span class="t-label">Audio de la reunión (el que suena en tu equipo)</span><select class="input" name="dispositivo_sistema" id="s-sis"></select></label>
         </div>
         <label class="campo"><span class="t-label">Precisión de la transcripción</span>
-          <select class="input" name="whisper_modelo">
+          <select class="input" name="whisper_modelo" aria-describedby="aj-modelo-error">
             <option value="tiny">Mínima: la más rápida</option><option value="base">Básica</option><option value="small">Equilibrada</option><option value="medium">Precisa</option><option value="large-v3-turbo">Muy precisa con jerga: necesita el equipo libre (descarga de 1,6 GB)</option><option value="large-v3">La más precisa: necesita un equipo potente</option>
           </select>
-          <span class="t-meta soft">Más precisión tarda más en transcribir: de «Precisa» en adelante, en un portátil la transcripción puede ir con retraso. Antes de subirla, añade la jerga del proyecto al glosario. Se aplica a la reunión siguiente.</span></label>
+          <span class="t-meta soft">Más precisión tarda más en transcribir: de «Precisa» en adelante, en un portátil la transcripción puede ir con retraso. Antes de subirla, añade la jerga del proyecto al glosario. Se aplica a la reunión siguiente.</span>
+          <span class="error aj-error" id="aj-modelo-error" data-error-de="whisper_modelo" role="alert" hidden></span></label>
+        <label class="campo" id="aj-c-beam"><span class="t-label">Ancho de búsqueda de la transcripción</span>
+          <input class="input" name="whisper_beam" type="number" min="1" max="10" step="1" inputmode="numeric" aria-describedby="aj-beam-ayuda aj-beam-error">
+          <span class="t-meta soft" id="aj-beam-ayuda">De 1 a 10 (5 por defecto). Más ancho acierta más y va más lento: si la transcripción va con retraso, bájalo; si falla en la jerga, súbelo.</span>
+          <span class="error aj-error" id="aj-beam-error" data-error-de="whisper_beam" role="alert" hidden></span></label>
+        <div class="campo aj-bloque" id="aj-c-vocab"><label class="t-label" for="aj-vocab">Vocabulario de transcripción</label>
+          <textarea class="input" id="aj-vocab" name="vocabulario_transcripcion" rows="4" spellcheck="false" autocomplete="off" aria-describedby="aj-vocab-ayuda aj-vocab-error"></textarea>
+          <span class="t-meta soft" id="aj-vocab-ayuda">Un término por línea: siglas, nombres de producto o jerga que Whisper suele escribir mal. Hasta 60 términos de 40 caracteres como mucho. Vale para la reunión siguiente. <span id="aj-vocab-cuenta"></span></span>
+          <span class="error aj-error" id="aj-vocab-error" data-error-de="vocabulario_transcripcion" role="alert" hidden></span></div>
         <label class="check"><input type="checkbox" name="filtrar_eco"> Quitar del micro el eco de lo que ya suena en la reunión (vale para la siguiente reunión)</label>
         <label class="check"><input type="checkbox" name="detectar_llamadas"> Proponer grabar cuando empiece una llamada de Teams</label>
         <label class="campo"><span class="t-label">Efectos visuales</span>
@@ -402,6 +423,12 @@
             <option value="medio">Medio: sin fondo con luz; desenfoque solo en Hallazgos y Registro</option>
             <option value="apagado">Apagado: sin desenfoque ni anillo; lo que trabaja se indica con un resplandor fijo y el cronómetro</option>
           </select></label>
+        <div class="campo aj-bloque aj-req" id="aj-requisitos">
+          <div class="aj-req-cab"><span class="t-label">Requisitos del equipo</span><button class="btn btn-ghost" id="aj-req-recomprobar" type="button">Volver a comprobar</button></div>
+          <span class="t-meta soft">Python, Claude, modelo de transcripción, micrófono y carpetas. Comprobarlo no gasta nada ni abre el micrófono.</span>
+          <span class="t-meta" id="aj-req-res" role="status"></span>
+          <ul class="req-lista" id="aj-req-lista"></ul>
+        </div>
       </section>
       <!-- ============ EQUIPO: cuándo habla cada uno y con qué músculo ============ -->
       <section class="aj-sec" id="aj-equipo" role="tabpanel" aria-labelledby="aj-tab-equipo" data-aj="equipo" hidden>
@@ -458,7 +485,12 @@
         </section>
         <div class="campo-grupo">
           <span class="t-label">Carpetas que lee la app</span>
-          <label class="campo"><span class="t-label">Carpeta que contiene tus proyectos</span><input class="input" name="raiz_proyectos" type="text"></label>
+          <label class="campo"><span class="t-label">Carpeta que contiene tus proyectos</span><input class="input" name="raiz_proyectos" type="text" aria-describedby="aj-raiz-error">
+            <span class="error aj-error" id="aj-raiz-error" data-error-de="raiz_proyectos" role="alert" hidden></span></label>
+          <div class="campo" id="aj-c-knowledge"><label class="t-label" for="aj-knowledge">Carpeta de Knowledge (solo lectura)</label>
+            <div class="ruta-fila"><input class="input" id="aj-knowledge" name="knowledge" type="text" autocomplete="off" placeholder="Sin Knowledge" aria-describedby="aj-knowledge-ayuda aj-knowledge-error"><button class="btn btn-ghost" type="button" id="aj-knowledge-elegir" hidden>Elegir carpeta…</button></div>
+            <span class="t-meta soft" id="aj-knowledge-ayuda">Documentos de consulta que puede leer el asesor (md, txt, docx, pptx y pdf; el pdf solo se lee si hay un lector de PDF instalado). La app nunca escribe en ella y no admite una carpeta de claves o credenciales. Vacío, sin Knowledge. Solo se cambia fuera de una reunión.</span>
+            <span class="error aj-error" id="aj-knowledge-error" data-error-de="knowledge" role="alert" hidden></span></div>
           <details class="add-carpeta" id="s-add-carpeta">
             <summary class="t-meta">Añadir otra carpeta de proyecto</summary>
             <div id="s-extras" class="t-meta"></div>
@@ -509,6 +541,7 @@
 <script src="/static/olas34.js"></script>
 <script src="/static/disposicion.js"></script>
 <script src="/static/ajustes.js"></script>
+<script src="/static/requisitos.js"></script>
 <script src="/static/paleta.js"></script>
 </body>
 </html>

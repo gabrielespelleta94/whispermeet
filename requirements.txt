@@ -1,10 +1,11 @@
-fastapi>=0.110
-uvicorn[standard]>=0.29
-pywebview>=5.0
-pyaudiowpatch>=0.2.12
-faster-whisper>=1.0
-numpy
-# solo para pruebas y mediciones (pyttsx3: voz sintética para medir la velocidad)
-pyttsx3
-pytest
-httpx
+# WhisperMeet: lo que la app necesita para funcionar (versiones fijadas).
+# Probado con Python 3.12.10 en Windows. Python 3.12 o superior: numpy 2.5 y av 19 (las trae faster-whisper) no se instalan en versiones anteriores.
+# Pruebas y mediciones: requirements-dev.txt.
+# Opcional y NO fijado: pypdf (o PyPDF2 o pymupdf) para leer .pdf como contexto; sin ninguna de ellas los .pdf se listan pero no se leen.
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.2
+pywebview==6.2.1
+pyaudiowpatch==0.2.12.9
+faster-whisper==1.2.1
+numpy==2.5.4

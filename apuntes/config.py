@@ -258,6 +258,43 @@ def _validar_vocabulario(lista: list) -> list[str]:
     return out[:60]
 
 
+BEAM_MIN, BEAM_MAX = 1, 10          # ancho de búsqueda de Whisper: 1 = voraz; por encima de 10 solo tarda más
+VOCABULARIO_MAX_TERMINOS, VOCABULARIO_MAX_CHARS = 60, 40
+
+
+def validar_beam(valor) -> int:
+    """Ancho de búsqueda de Whisper (entero de 1 a 10). ValueError con el motivo si no es válido: lo usa la API de Ajustes (error junto al campo)."""
+    if isinstance(valor, bool) or not isinstance(valor, int):
+        raise ValueError("El ancho de búsqueda debe ser un número entero.")
+    if not BEAM_MIN <= valor <= BEAM_MAX:
+        raise ValueError(f"El ancho de búsqueda va de {BEAM_MIN} a {BEAM_MAX}.")
+    return valor
+
+
+def validar_vocabulario_estricto(lista) -> list[str]:
+    """Vocabulario de transcripción para Ajustes: lista de textos de hasta 40 caracteres, sin caracteres de control, sin repetir ignorando mayúsculas y como mucho 60.
+    A diferencia de `_validar_vocabulario` (que descarta en silencio lo que no vale, para un fichero escrito a mano), AVISA con ValueError."""
+    if not isinstance(lista, list):
+        raise ValueError("El vocabulario debe ser una lista de términos.")
+    out, vistos = [], set()
+    for t in lista:
+        if not isinstance(t, str):
+            raise ValueError("Cada término del vocabulario debe ser texto.")
+        t = " ".join(t.split())
+        if not t:
+            continue
+        if len(t) > VOCABULARIO_MAX_CHARS:
+            raise ValueError(f"«{t[:20]}…» pasa de {VOCABULARIO_MAX_CHARS} caracteres: un término es una palabra o una expresión corta.")
+        if not t.isprintable():
+            raise ValueError(f"«{t[:20]}» tiene caracteres que no se pueden escribir.")
+        if t.lower() not in vistos:
+            vistos.add(t.lower())
+            out.append(t)
+    if len(out) > VOCABULARIO_MAX_TERMINOS:
+        raise ValueError(f"Como máximo {VOCABULARIO_MAX_TERMINOS} términos (hay {len(out)}).")
+    return out
+
+
 class Config:
     def __init__(self, ruta: Path | None = None):
         self.ruta = ruta or (DATOS_DIR / "config.json")
@@ -318,6 +355,9 @@ class Config:
                     self.datos[k] = float(v)
                 elif k == "proyectos_extra" and isinstance(v, list):
                     self.datos[k] = _validar_extras(v)
+                elif k == "whisper_beam":   # 1-10: lo que no encaja (un fichero escrito a mano) se ignora y queda el valor anterior
+                    with contextlib.suppress(ValueError):
+                        self.datos[k] = validar_beam(v)
                 elif k == "vocabulario_transcripcion" and isinstance(v, list):
                     self.datos[k] = _validar_vocabulario(v)
                 elif k in ("idioma", "ultimo_idioma"):

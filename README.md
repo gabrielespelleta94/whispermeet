@@ -4,16 +4,68 @@ Herramienta local para Windows, al estilo Granola: transcribe reuniones en direc
 
 ## Instalación
 
-Solo Windows. Requiere Python 3.12 y el CLI de Claude Code (`claude`) instalado y con la sesión iniciada (las llamadas de análisis usan tu licencia; no hay claves de API).
+Solo Windows (10 u 11). Un solo script lleva una máquina limpia hasta la primera reunión:
 
 ```
-cd <tu carpeta>\apuntes
+git clone <repositorio> apuntes      (o descarga la carpeta y descomprímela)
+cd apuntes
+instalar.bat                         (doble clic también vale: la ventana queda abierta al terminar o si falla)
+```
+
+`instalar.bat` busca Python (`py -3` o `python`) y llama a `instalar.py`, que usa solo la biblioteca estándar (se ejecuta con el Python del sistema, antes de que exista el entorno). Cada paso dice «hecho», «ya estaba» o «falta: …», y se puede repetir las veces que haga falta: la segunda vez no cambia nada.
+
+| Paso | Qué hace |
+|---|---|
+| Python | Comprueba que es la 3.12 o superior (el mínimo real: las versiones fijadas de `numpy` y `av` no se instalan en una anterior). |
+| Entorno | Crea `.venv` si no existe. Si existe pero su Python no arranca o es anterior, avisa y no lo toca. |
+| Dependencias | Instala `requirements.txt` (solo lo que la app necesita, con versión fijada) si falta algún paquete o su versión no coincide. |
+| Configuración | Crea `datos\config.json` a partir de `config.example.json` SOLO si no existe (con la raíz de proyectos en `~\Proyectos` y el autor vacío, que es tu usuario de Windows). Nunca pisa uno existente. |
+| Carpetas locales | Crea las que falten: `datos`, `bandeja`, `cache`, `planes`, `checks`, `sesiones`, `backlog`, `tipos_documento` y `modelos`. No abre ni toca nada de lo que ya contengan. |
+| Claude Code | Comprueba `claude --version` (no gasta tokens ni abre sesión). |
+| Modelo de Whisper | Ofrece descargar el modelo configurado (`small` por defecto, unos 460 MB, una sola vez) a `modelos\`. |
+| Acceso directo | Crea «WhisperMeet» en el menú Inicio, con su icono (luego, «Anclar a la barra de tareas»). Si ya existe, no lo recrea. |
+
+Opciones (`instalar.bat <opción>` o `py -3 instalar.py <opción>`):
+
+| Opción | Efecto |
+|---|---|
+| `--comprobar` | No cambia nada: dice qué haría y qué falta. Código de salida 1 si falta algo. |
+| `--dev` | Instala también lo de desarrollo (`requirements-dev.txt`: pytest, httpx, pyttsx3 y pywin32). |
+| `--si` | No pregunta: acepta descargar el modelo de Whisper. |
+| `--sin-modelo` | No descarga el modelo ni lo pregunta (se descarga solo al empezar la primera reunión, con conexión). |
+| `--sin-acceso-directo` | No crea el acceso directo. |
+
+El instalador **nunca borra nada** y no toca `datos`, `sesiones`, `planes` ni ninguna otra carpeta de datos más que para crearla si falta. Al final lista lo que queda por hacer a mano; lo habitual es iniciar sesión en `claude` (escribe `claude` en una terminal una vez y entra con tu cuenta: las llamadas de análisis usan tu licencia; no hay claves de API).
+
+La primera vez que abres la app, si algo falta (Python, `claude`, el modelo, el micrófono, una carpeta) sale el panel «Antes de la primera reunión» en el inicio, con qué hacer en cada caso y «Volver a comprobar»; también está en Ajustes, sección Audio. Si todo está bien, no molesta.
+
+### Requisitos reales
+
+- Windows 10 u 11, con WASAPI loopback para el audio del sistema.
+- Python 3.12 o superior (probado con 3.12.10).
+- Claude Code (`claude`) en el PATH, con la sesión iniciada.
+- Un micrófono. Sin salida de audio del sistema solo se transcribe el micro.
+- Conexión a internet la primera vez: las dependencias (cientos de MB) y el modelo de Whisper.
+
+### Cómo actualizar
+
+```
+git pull
+instalar.bat
+```
+
+Instala solo los paquetes cuya versión fijada en `requirements.txt` haya cambiado y deja `datos\` y el resto de tus carpetas como están. Si algo falla, `instalar.bat --comprobar` dice qué falta.
+
+### Sin el script
+
+```
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe crear_acceso_directo.py
 .venv\Scripts\python.exe app.py
 ```
 
-Los modelos de Whisper se descargan solos la primera vez que se transcribe (carpeta `modelos\`). La configuración se guarda en `datos\config.json`; `config.example.json` muestra las claves habituales (carpeta raíz de proyectos, Knowledge de solo lectura, autor y proyectos extra). Con los valores por defecto la raíz es `~\Proyectos` y el autor, tu usuario de Windows.
+`config.example.json` muestra las claves habituales (carpeta raíz de proyectos, Knowledge de solo lectura, autor y proyectos extra); la carpeta de Knowledge, el vocabulario de transcripción y el ancho de búsqueda de Whisper también se cambian en Ajustes. La guía para quien usa la app está en `MANUAL.md`.
 
 ## Arranque
 
@@ -39,19 +91,13 @@ esultado_adaptativo.json   # la reunión real TR2 con el disparo adaptativo
 ```
 
 Opciones: `--raiz <carpeta>` (raíz de proyectos), `--puerto N`, `--mostrar-en-captura`. Solo para pruebas: `--config FICHERO.json` (configuración alternativa, no toca `datos\config.json`), `--extra NOMBRE=RUTA` (proyecto compartido que sustituye a `proyectos_extra` sin tocar `datos\config.json`), `--planes <carpeta>`, `--sesiones <carpeta>`, `--checks <carpeta>`.
-Tests: `.venv\Scripts\python.exe -m pytest tests -q`.
-
-### Instalación desde cero
-
-```
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-El modelo de transcripción (`small`, unos 460 MB) se descarga la primera vez a `modelos\`.
+Tests (antes, `instalar.bat --dev` para tener pytest): `.venv\Scripts\python.exe -m pytest tests -q`.
 
 ## Requisitos
 
+Los de la sección «Instalación»; en corto:
+
+- Python 3.12 o superior, Windows 10/11 y un micrófono.
 - Claude Code (`claude`) en el PATH y con la sesión iniciada con tu licencia. **El análisis usa solo Claude Code; nunca la API.** No hay clave que configurar.
 - WASAPI loopback (Windows 10/11) para el audio del sistema.
 
@@ -175,7 +221,12 @@ Solo `127.0.0.1`, token aleatorio por ejecución (cabecera `X-Token` / query del
 ## Estructura
 
 ```
+instalar.bat, instalar.py  instalador de un solo script (entorno, dependencias, configuración, carpetas, `claude`, modelo, acceso directo); solo biblioteca estándar
+requirements.txt        lo que la app necesita, con versión fijada;  requirements-dev.txt  más pruebas y mediciones (`instalar.bat --dev`)
+crear_acceso_directo.py acceso directo del menú Inicio con icono y AppUserModelID (lo llama el instalador)
+MANUAL.md               guía para quien USA la app (primera vez, reunión, proyectos, ajustes, qué se guarda y qué sale de la máquina)
 app.py                  entrada (argumentos, servidor, ventana)
+apuntes/requisitos.py   comprobación de requisitos (Python, claude, modelo de Whisper, audio, carpetas), sin tokens ni efectos;  GET /api/requisitos;  web/requisitos.js|css  panel «Antes de la primera reunión»
 apuntes/rutas.py        Guardian: rutas permitidas, secretos, escritura atómica
 apuntes/contexto.py     proyectos, selección local de contexto, plantillas del kit
 apuntes/inventario.py   mapa de documentos del proyecto: los clasifica por tipo (arranque, oferta, funcional, técnico, datos, usuarios, planificación, seguimiento) sin abrir ninguno
@@ -198,7 +249,7 @@ web/                    HTML, CSS y JS sin build: app.js (base), agentes.js (orq
 pruebas/                proyecto ficticio, transcripciones, scripts de medición; servir_modelo_falso.py (la app con un modelo falso y latencia, para ver y medir la interfaz)
 web/equipo.js, equipo.css   Monitor, tarjetas de perfil, Definiciones y Minuto a minuto de la pantalla de reunión
 web/sesion.js, sesion.css, escucha.js   banda «Sesión» (Gantt de la reunión, componente GanttSesion), anotaciones propias, Pregúntale, objetivos propios, carpeta añadida
-tests/                  equipo (monitor, perfiles, presupuesto, definiciones y flujo completo), disparo, escucha activa, layout del Gantt de la sesión (Edge sin cabeza), reglas de rutas, claude -p, cambios, flujo completo con modelo falso
+tests/                  instalador (`test_instalar.py`), requisitos y ajustes nuevos (`test_requisitos.py`, `test_ajustes_config.py`, `test_requisitos_ui.py`), equipo (monitor, perfiles, presupuesto, definiciones y flujo completo), disparo, escucha activa, layout del Gantt de la sesión (Edge sin cabeza), reglas de rutas, claude -p, cambios, flujo completo con modelo falso
 ```
 
 ## Consumo medido (texto ficticio, `claude -p` con la licencia)

@@ -493,8 +493,12 @@ def test_carpeta_anadida_persiste_en_proyectos_extra(tmp_path):
 
 def test_guardian_valida_extra_directamente(entorno):
     g, raiz, tmp, knowledge = entorno
-    ok = g.validar_extra("Cli", str(tmp), False)
+    cli = tmp / "CarpetaCli"
+    cli.mkdir()
+    ok = g.validar_extra("Cli", str(cli), False)
     assert ok["nombre"] == "Cli"
+    with pytest.raises(RutaProhibida):
+        g.validar_extra("Cont", str(tmp), False)           # contiene el Knowledge (solo lectura): tampoco, en los dos sentidos
     with pytest.raises(RutaProhibida):
         g.validar_extra("Cli", "", False)
     with pytest.raises(RutaProhibida):

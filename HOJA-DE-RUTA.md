@@ -12,7 +12,7 @@ Estado a 10 de noviembre de 2026. Recoge el análisis de punta a punta de la her
 | Usuarios y roles | Desde la ola B, el Archivero extrae los perfiles y roles de la solución que digan los documentos (nunca personas). Las secciones de contactos se excluyen a propósito del contexto de la IA. | Interlocutores del proyecto, sin enviar datos personales al modelo. |
 | Planificación de sesiones | Plan de varias sesiones con Gantt, objetivos y checks. Desde la ola C se crea y se edita en la ficha del proyecto (sesiones, fecha, hora, objetivos, checks, dependencias, fichero prioritario), se guarda sin perder el Gantt ni lo que el editor no conoce, y «Proponer plan con Claude» da un borrador a partir del arranque, el alcance y la planificación. | Editar el Gantt y la ficha del plan desde la app (se conservan, pero hoy solo se cambian en el JSON); caché de la propuesta; fechas de hitos. |
 | Agentes | Muchos dentro de la reunión. Fuera de ella, la preparación sugerida, el contexto de la reunión, el Archivero y el Planificador («Proponer plan»), los dos a mano desde la ficha. | Agente de proyecto: redactor de entregables. |
-| Empaquetado | Clonar, crear el entorno, instalar dependencias y lanzar; un acceso directo. | Instalador, comprobación de requisitos al primer arranque y ajustes que hoy solo se cambian en el fichero. |
+| Empaquetado | Desde la ola D, `instalar.bat` (un solo script, idempotente, con `--comprobar`): entorno, dependencias con versión fijada (`requirements.txt` para la app y `requirements-dev.txt` para pruebas), configuración inicial, carpetas locales, `claude`, modelo de Whisper y acceso directo. Panel «Antes de la primera reunión» (inicio y Ajustes) con la comprobación de requisitos. Carpeta de Knowledge, vocabulario de transcripción y ancho de búsqueda de Whisper editables en Ajustes. `MANUAL.md` para quien usa la app. | Un ejecutable sin Python previo; fijar también las dependencias indirectas (fichero de bloqueo); comprobar desde la app que la sesión de `claude` está iniciada (hoy solo se localiza el programa); probar el instalador en una máquina limpia de verdad. |
 | Datos internos | Todo en ficheros (JSON, JSONL y Markdown) a través de `Guardian`, con escritura atómica. No hay base de datos. | Versión de esquema y migraciones, identificadores estables y copia de seguridad. |
 | Entregables | Acta y resumen en Markdown; borrador de correo. | Exportar a Word o PDF con plantilla. |
 
@@ -79,7 +79,7 @@ El plan original, como referencia:
 - «Proponer plan»: un agente lee los documentos de arranque y alcance y propone las sesiones; se revisa antes de guardar.
 - Hecho cuando: se puede crear un plan desde cero sin tocar un JSON y una reunión nueva queda enlazada a su sesión del plan.
 
-### Ola D — Empaquetado
+### Ola D — Empaquetado (hecha)
 
 - Script de instalación: entorno, dependencias, acceso directo y comprobaciones.
 - Comprobación de requisitos al primer arranque: Python, `claude` con sesión iniciada, modelo de Whisper, micrófono y carpetas.
@@ -87,6 +87,18 @@ El plan original, como referencia:
 - Ajustes que hoy solo están en el fichero: carpeta de Knowledge, vocabulario de transcripción y ancho de búsqueda de Whisper.
 - README al día y manual de usuario.
 - Hecho cuando: una máquina limpia llega a la primera reunión con un solo script y la app explica qué falta si falta algo.
+
+Hecho: `instalar.bat` + `instalar.py` (solo biblioteca estándar; opciones `--comprobar`, `--dev`, `--si`, `--sin-modelo`, `--sin-acceso-directo`; nunca borra ni pisa: `datos\config.json` solo se crea si falta y las carpetas locales solo se crean), `requirements.txt` (solo la app, versiones fijadas con Python 3.12.10) y `requirements-dev.txt`, `apuntes/requisitos.py` y `GET /api/requisitos` (Python, `claude`, modelo de Whisper, audio, carpetas; sin tokens, sin abrir el micrófono, sin descargar ni escribir), el panel «Antes de la primera reunión» en el inicio y en Ajustes, los tres ajustes nuevos con validación en el servidor y error junto al campo (`knowledge` por `Guardian.validar_knowledge`, `vocabulario_transcripcion`, `whisper_beam`), la sección «Instalación» del `README.md` y `MANUAL.md`.
+
+Lo que quedó fuera de esta ola:
+- Probarlo en una máquina limpia de verdad: el instalador se probó en una carpeta temporal con el Python del sistema y la caché de pip del equipo, con dobles para los pasos que descargan o escriben fuera del repositorio (modelo, acceso directo). Con la red fría la primera instalación tarda más (varios cientos de MB).
+- Python 3.12 como mínimo no es una exigencia del código (el análisis estático da 3.9) sino de las versiones fijadas (`numpy` 2.5 y `av` 19); relajar las versiones permitiría Python más antiguo.
+- Las dependencias indirectas no están fijadas (no hay fichero de bloqueo): dos instalaciones en fechas distintas pueden traer versiones distintas de las transitivas. `pypdf` (lectura de `.pdf`) sigue siendo opcional y no se instala.
+- La sesión de `claude`: el instalador y el panel solo localizan el programa (y el instalador lanza `claude --version`); saber si hay sesión iniciada exigiría una llamada que gasta tokens, así que se deja como paso manual.
+- Permisos de escritura de las carpetas locales: se miran con `os.access`, que en Windows solo ve los atributos de solo lectura, no las listas de acceso; un bloqueo por permisos finos solo se vería al escribir.
+- Si ya existe un acceso directo `WhisperMeet` que apunta a otra carpeta, el instalador no lo recrea ni lo avisa.
+- El panel no sale en Modo reunión ni durante la reunión (con una reunión en curso, el audio ni se enumera); el vocabulario se edita como texto con un término por línea, no como lista de etiquetas.
+- Cambiar la carpeta de Knowledge reindexa las fuentes en segundo plano, pero un cambio hecho mientras una reunión graba se rechaza y hay que repetirlo al terminar; lo mismo vale para la carpeta de proyectos y el modelo de transcripción, y el resto de Ajustes sí se guarda durante la reunión.
 
 ### Ola E — Entregables
 
