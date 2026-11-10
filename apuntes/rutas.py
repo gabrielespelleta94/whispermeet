@@ -13,7 +13,7 @@ Reglas:
 - Agente Archivero (ola B): `leer_para_archivero` lee un documento de la carpeta del proyecto (sin nube, sin secretos, con tope) y es la ÚNICA lectura del Archivero.
 - Backlog: lectura de los .md de sesión (bandeja, sesiones locales y `02. Sesiones` de cada proyecto) con las mismas exclusiones y topes; lo único
   que se escribe es `backlog/estado.json` (local, fuera de git, escritura atómica). Los .md de sesión no se modifican nunca.
-- Planes de sesiones: solo lectura de `planes/*.json` (locales de la app).
+- Planes de sesiones: lectura de `planes/*.json` (locales de la app). Ola C: el plan se escribe SOLO desde el editor de la ficha (`escribir_plan`: atómico, confinado a `planes/`, con copia `.bak` del anterior).
 - Ola 3: `seguimiento/<proyecto>.json` (pendientes entre sesiones, local) y borradores `.eml` en una carpeta temporal propia (`WhisperMeet-borradores`).
 - Nunca se escribe CLAUDE.md, AGENTS.md, docs/ ni nada bajo las raíces de solo lectura (Knowledge).
 - Nada de path traversal: los nombres de proyecto y de fichero se validan por componente y la ruta
@@ -23,6 +23,7 @@ Reglas:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import tempfile
@@ -61,10 +62,12 @@ _RE_NOMBRE_SECRETO = re.compile(
 
 _RE_FICHERO_CONTEXTO = re.compile(r"^[0-9]{2}-[A-Za-z0-9][A-Za-z0-9\-]{0,80}\.md$")
 _RE_FICHERO_SESION = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9]+(-[a-z0-9]+)*\.md$")
+_RE_FICHERO_PLAN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._\-]{0,100}\.json$")   # ola C: fichero directo de `planes/` (nunca una ruta)
 _RE_CACHE = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,120}\.json$")
 _RE_DATOS = re.compile(r"^[a-z0-9][a-z0-9_\-]{0,60}\.(json|jsonl)$")   # ola 4: ficheros de datos propios de la app (reglas de silencio, envíos, métricas…)
 _RE_SESION_MD = re.compile(r"^\d{4}-\d{2}-\d{2}.*\.md$", re.I)   # lectura del backlog: más tolerante que _RE_FICHERO_SESION (que es para escribir)
 NOMBRE_ESTADO_BACKLOG = "estado.json"
+TOPE_PLAN_BYTES = 100_000   # un plan por encima de este tamaño NO lo lee la app (`_planes_bytes`) ni se escribe (`escribir_plan`, `plan_editor.guardar`): un solo tope para las dos cosas
 
 # Líneas con pinta de secreto dentro de un texto leído (defensa en profundidad).
 _RE_LINEA_SECRETA = re.compile(
@@ -94,6 +97,11 @@ def slug(texto: str, maximo: int = 60) -> str:
 def nombre_normalizado(nombre: str) -> str:
     """El nombre de un proyecto tal como se compara: NFC y `casefold` (en Windows dos nombres que solo cambian en mayúsculas son la misma carpeta)."""
     return unicodedata.normalize("NFC", nombre or "").casefold()
+
+
+def clave_declarada(nombre: str) -> str:
+    """Cómo se compara el proyecto que declara un plan con el nombre del proyecto: espacios colapsados (como `planes._texto`), NFC y sin mayúsculas."""
+    return nombre_normalizado(" ".join(str(nombre or "").split())[:120])
 
 
 def hash_proyecto(nombre: str) -> str:
@@ -309,10 +317,9 @@ class Guardian:
             raise RutaProhibida("no hay carpeta local de sesiones configurada")
         return self.sesiones_locales / slug(proyecto, 60)
 
-    # ---------- planes de sesiones (solo lectura) ----------
-    def leer_planes(self, tope_bytes: int = 100_000) -> list[tuple[str, str]]:
-        """[(nombre_fichero, texto)] de `planes/*.json`. Solo ficheros directos de la carpeta local."""
-        out: list[tuple[str, str]] = []
+    # ---------- planes de sesiones (lectura; la escritura, solo desde el editor: ver `escribir_plan`) ----------
+    def _planes_bytes(self, tope_bytes: int = TOPE_PLAN_BYTES) -> list[tuple[str, bytes]]:
+        out: list[tuple[str, bytes]] = []
         if self.planes is None or not self.planes.is_dir():
             return out
         for p in sorted(self.planes.glob("*.json")):
@@ -322,8 +329,95 @@ class Guardian:
                 datos = f.read(tope_bytes + 1)
             if len(datos) > tope_bytes:
                 continue
-            out.append((p.name, datos.decode("utf-8-sig", errors="replace")))
+            out.append((p.name, datos))
         return out
+
+    def leer_planes(self, tope_bytes: int = TOPE_PLAN_BYTES) -> list[tuple[str, str]]:
+        """[(nombre_fichero, texto)] de `planes/*.json`. Solo ficheros directos de la carpeta local."""
+        return [(n, d.decode("utf-8-sig", errors="replace")) for n, d in self._planes_bytes(tope_bytes)]
+
+    # ---------- ola C: escribir el plan de sesiones (editor de la ficha; solo por acción explícita del usuario) ----------
+    def planes_ilegibles(self, tope_bytes: int = TOPE_PLAN_BYTES) -> list[str]:
+        """Solo los NOMBRES de los `planes/*.json` que no son JSON válido o no son un objeto: de ellos no se sabe de qué proyecto son (el editor avisa antes de crear un plan nuevo)."""
+        out = []
+        for nombre, datos in self._planes_bytes(tope_bytes):
+            try:
+                d = json.loads(datos.decode("utf-8-sig", errors="replace"))
+            except ValueError:
+                d = None
+            if not isinstance(d, dict):
+                out.append(nombre)
+        return out
+
+    def planes_de(self, proyecto: str, tope_bytes: int = TOPE_PLAN_BYTES) -> list[tuple[str, bytes]]:
+        """[(nombre_fichero, bytes)] de los `planes/*.json` que DECLARAN este proyecto (campo `proyecto` dentro del JSON; el nombre del fichero no cuenta).
+        Un plan que ya existe se localiza así, como hace `cargar_planes`; si salen dos, quien llama decide (el editor no adivina)."""
+        clave = clave_declarada(proyecto)
+        out = []
+        for nombre, datos in self._planes_bytes(tope_bytes):
+            try:
+                d = json.loads(datos.decode("utf-8-sig", errors="replace"))
+            except ValueError:
+                continue
+            if isinstance(d, dict) and isinstance(d.get("proyecto"), str) and clave_declarada(d["proyecto"]) == clave:
+                out.append((nombre, datos))
+        return out
+
+    @staticmethod
+    def nombre_fichero_plan(proyecto: str) -> str:
+        """Fichero de un plan NUEVO: `plan-<hash>.json` (hash del nombre normalizado, sin slug: dos proyectos no comparten fichero y ningún nombre da un fichero reservado
+        o con pinta de secreto); dentro va el nombre legible del proyecto."""
+        return f"plan-{hash_proyecto(proyecto)}.json"
+
+    def escribir_plan(self, proyecto: str, fichero: str, texto: str, nuevo: bool = False) -> Path:
+        """Escribe `planes/<fichero>` (atómico; confinado a la carpeta de planes y solo ficheros `.json` directos). El proyecto debe existir. Con `nuevo` el fichero no
+        puede existir (creación exclusiva; nombre estricto); sin `nuevo` se reescribe el que ya hay, tras guardar UNA copia `<fichero>.bak` del anterior (se pisa la anterior).
+        Un fichero que ya existe puede tener cualquier nombre que la app haya listado de su propia carpeta (acentos, paréntesis…), pero nunca una ruta."""
+        if self.planes is None:
+            raise RutaProhibida("no hay carpeta local de planes configurada")
+        self.proyecto_dir(proyecto)
+        if len(texto.encode("utf-8")) > TOPE_PLAN_BYTES:
+            raise RutaProhibida("el plan ocupa más de lo que la app puede leer")
+        if not (_RE_FICHERO_PLAN.match(fichero or "") if nuevo else self._nombre_plan_existente_valido(fichero)) or fichero.split(".")[0].lower() in RESERVADOS_WIN:
+            raise RutaProhibida("nombre de fichero de plan no válido")
+        destino = self.planes / fichero
+        if not nuevo and not destino.is_file():
+            raise RutaProhibida("el plan que se quiere reescribir no existe")
+        self._comprobar_escritura(destino, self.planes)
+        if _norm(destino.parent) != _norm(self.planes):
+            raise RutaProhibida("el plan debe estar directamente en la carpeta de planes")
+        if destino.is_symlink():
+            raise RutaProhibida("el plan no puede ser un enlace")
+        existe = destino.exists()
+        if existe and not destino.is_file():
+            raise RutaProhibida("el destino del plan no es un fichero")
+        if nuevo and existe:
+            raise RutaProhibida("ya existe un fichero con ese nombre en la carpeta de planes")
+        if existe:
+            bak = destino.with_name(destino.name + ".bak")
+            self._comprobar_escritura(bak, self.planes)
+            tmp = bak.with_name(bak.name + ".tmp")
+            tmp.write_bytes(destino.read_bytes())
+            os.replace(tmp, bak)
+        self._escribir(destino, texto)
+        return destino
+
+    @staticmethod
+    def _nombre_plan_existente_valido(fichero: str) -> bool:
+        """Nombre de un plan que ya está en la carpeta: acaba en `.json`, es un nombre suelto (sin separadores, `..` ni `:`), sin caracteres de control y sin pinta de secreto."""
+        return bool(isinstance(fichero, str) and fichero.lower().endswith(".json") and len(fichero) > len(".json") and len(fichero) <= 200
+                    and not any(c in fichero for c in '/\\:') and ".." not in fichero and not any(ord(c) < 32 or ord(c) == 127 for c in fichero)
+                    and fichero == fichero.strip() and not es_secreto(fichero))
+
+    def nombres_contexto(self, proyecto: str) -> list[str]:
+        """Los nombres (solo nombres; no se abre nada) de los ficheros de `00. CONTEXTO (IA)` con el formato `NN-nombre.md`: los que valen como fichero prioritario de una
+        sesión del plan. Sin carpeta, lista vacía."""
+        carpeta = self.proyecto_dir(proyecto) / CARPETA_CONTEXTO
+        try:
+            with os.scandir(carpeta) as it:
+                return sorted(e.name for e in it if _RE_FICHERO_CONTEXTO.match(e.name) and not es_secreto(e.name) and e.is_file())
+        except OSError:
+            return []
 
     # ---------- proyectos ----------
     def proyecto_dir(self, nombre: str) -> Path:

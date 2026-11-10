@@ -1,6 +1,6 @@
 # Hoja de ruta de WhisperMeet
 
-Estado a 9 de noviembre de 2026. Recoge el análisis de punta a punta de la herramienta y el plan por olas para llevarla de «apuntador de reuniones» a «puesto de mando del proyecto»: que sepa qué documentación tiene cada proyecto, cómo es la solución, su modelo de datos, sus usuarios y su plan de sesiones, y que tenga agentes que ayuden también fuera de la reunión.
+Estado a 10 de noviembre de 2026. Recoge el análisis de punta a punta de la herramienta y el plan por olas para llevarla de «apuntador de reuniones» a «puesto de mando del proyecto»: que sepa qué documentación tiene cada proyecto, cómo es la solución, su modelo de datos, sus usuarios y su plan de sesiones, y que tenga agentes que ayuden también fuera de la reunión.
 
 ## Cómo está hoy
 
@@ -10,8 +10,8 @@ Estado a 9 de noviembre de 2026. Recoge el análisis de punta a punta de la herr
 | Documentos del proyecto | Lee `.md`, `.txt`, `.docx`, `.pptx` y `.pdf` como contexto. Mapa de documentos por tipo y aviso de los tipos que faltan (ola A); tipo corregible a mano, resumen de una línea de los documentos clave y tipo propuesto para lo ambiguo (ola B). | Leer `.xlsx`; que el mapa entre en la preparación sugerida y en el resumen del proyecto. |
 | Solución tal como está y modelo de datos | La plantilla `03-arquitectura-y-datos`, que se rellena a mano, y desde la ola B el Archivero: cobertura por faceta con el documento que lo dice y lo que falta. | Que proponga los huecos por el flujo de «aceptar cambios»; rellenar la plantilla a partir de lo que encuentra. |
 | Usuarios y roles | Desde la ola B, el Archivero extrae los perfiles y roles de la solución que digan los documentos (nunca personas). Las secciones de contactos se excluyen a propósito del contexto de la IA. | Interlocutores del proyecto, sin enviar datos personales al modelo. |
-| Planificación de sesiones | Plan de varias sesiones con Gantt, objetivos y checks, pero el JSON se escribe a mano fuera de la app. | Crear y editar el plan en la app; proponerlo a partir del arranque y el alcance. |
-| Agentes | Muchos dentro de la reunión. Fuera de ella, la preparación sugerida, el contexto de la reunión y el Archivero (a mano, desde la ficha). | Agentes de proyecto: planificador y redactor de entregables. |
+| Planificación de sesiones | Plan de varias sesiones con Gantt, objetivos y checks. Desde la ola C se crea y se edita en la ficha del proyecto (sesiones, fecha, hora, objetivos, checks, dependencias, fichero prioritario), se guarda sin perder el Gantt ni lo que el editor no conoce, y «Proponer plan con Claude» da un borrador a partir del arranque, el alcance y la planificación. | Editar el Gantt y la ficha del plan desde la app (se conservan, pero hoy solo se cambian en el JSON); caché de la propuesta; fechas de hitos. |
+| Agentes | Muchos dentro de la reunión. Fuera de ella, la preparación sugerida, el contexto de la reunión, el Archivero y el Planificador («Proponer plan»), los dos a mano desde la ficha. | Agente de proyecto: redactor de entregables. |
 | Empaquetado | Clonar, crear el entorno, instalar dependencias y lanzar; un acceso directo. | Instalador, comprobación de requisitos al primer arranque y ajustes que hoy solo se cambian en el fichero. |
 | Datos internos | Todo en ficheros (JSON, JSONL y Markdown) a través de `Guardian`, con escritura atómica. No hay base de datos. | Versión de esquema y migraciones, identificadores estables y copia de seguridad. |
 | Entregables | Acta y resumen en Markdown; borrador de correo. | Exportar a Word o PDF con plantilla. |
@@ -20,7 +20,7 @@ Estado a 9 de noviembre de 2026. Recoge el análisis de punta a punta de la herr
 
 - **Proyecto**: una carpeta bajo la raíz de proyectos o una entrada de `proyectos_extra`. No hay ficha persistida: se deduce de la carpeta.
 - **Sesión**: identificador corto, proyecto (o Bandeja), tema, fecha, segmentos, tarjetas, objetivos, checks, acciones y cobertura. Se guarda como Markdown en la carpeta `02. Sesiones (transcripciones)` del proyecto.
-- **Plan de sesiones**: un JSON por plan en la carpeta `planes`, de solo lectura para la app.
+- **Plan de sesiones**: un JSON por plan en la carpeta `planes` (local, fuera de git). La app lo lee y, desde la ola C, lo escribe solo desde el editor de la ficha (`Guardian.escribir_plan`: atómico, con copia `.bak`). Un plan que ya existe se localiza por el proyecto que declara dentro; uno nuevo se guarda como `plan-<hash>.json`.
 - **Pendientes, decisiones y riesgos**: se extraen de las sesiones; su identificador se calcula con el texto, así que cambia si el texto cambia.
 - **Seguimiento, métricas, glosario y reglas**: ficheros propios en la carpeta de datos de la app.
 - **Usuarios**: no hay cuentas ni roles. La app es de un solo usuario, escucha solo en la máquina local y protege cada arranque con un token.
@@ -55,7 +55,25 @@ El plan original, como referencia:
 - El mapa de documentos entra en la preparación sugerida y en el resumen del proyecto.
 - Hecho cuando: en un proyecto de prueba con documentos ficticios, el agente da la cobertura de las cinco facetas con su fuente y la propuesta de huecos se puede aceptar o rechazar.
 
-### Ola C — Planificación de sesiones en la app
+### Ola C — Planificación de sesiones en la app (hecha)
+
+Se puede crear un plan desde cero sin tocar un JSON y una reunión nueva queda enlazada a su sesión del plan.
+
+- Editor del plan en la ficha del proyecto: crear el plan, y añadir, editar, reordenar (con botones, también con el teclado) y quitar sesiones, con su nombre, fecha, hora, objetivos, checks, dependencias y fichero prioritario. «Cambios sin guardar» visible, Guardar y Descartar, aviso al salir de la ficha, errores de validación junto a su campo y quitar con confirmación en línea.
+- Guardado por `Guardian.escribir_plan`: atómico, confinado a `planes\`, con copia `.bak` del anterior; conserva `ficha`, `gantt` y cualquier clave que el editor no conozca (también dentro de cada sesión). Control de concurrencia: el `PUT` lleva la versión (hash del fichero) y, si el fichero cambió fuera de la app, responde 409 y no escribe. Los ids de sesión los pone la app, son estables y no se reutilizan.
+- «Proponer plan con Claude»: una llamada a `claude -p` (sonnet), a mano, sobre arranque, oferta y alcance, planificación y funcional (misma selección y lectura segura que el Archivero). Devuelve un borrador que entra en el editor; nada se guarda hasta pulsar «Guardar»; con un plan existente solo añade sesiones. Las fechas solo se proponen si están escritas en los documentos.
+- Piezas: `apuntes/plan_editor.py`, `apuntes/plan_propuesto.py`, `apuntes/api_plan.py`, `web/plan-editor.js`, `GET/PUT /api/proyectos/{nombre}/plan`, `GET/POST .../plan/proponer`, `pruebas/probar_plan_propuesto.py`.
+
+Lo que quedó fuera de esta ola:
+- Editar el Gantt (semanas, fases, hitos) y la ficha del plan desde la app: se conservan al guardar, pero se siguen cambiando en el JSON.
+- Caché de la propuesta de «Proponer plan»: cada propuesta es una llamada nueva (gasta tokens), aunque nada haya cambiado.
+- Enseñar y editar las sesiones del fichero que la app no puede leer (sin id, id repetido o no válido, sin nombre, más de 20): el editor avisa de cuántas hay (también al crear un plan) y las conserva tal cual al final del fichero al guardar, pero no se ven ni se editan aquí.
+- Un `.json` ilegible en la carpeta de planes: el editor solo avisa (con su nombre) cuando el proyecto no tiene plan; no sabe de qué proyecto es, así que no impide crear uno nuevo al lado.
+- Los límites de «Proponer plan»: las fechas solo se comprueban contra el conjunto de los documentos enviados (que la fecha esté escrita en alguno, no que sea la de esa sesión) y los nombres de personas no se filtran al validar la salida; dependen de la regla del prompt y de haber quitado antes las secciones de contactos.
+- Marcar una sesión como celebrada o enlazar a mano una reunión pasada con su sesión; la reunión se enlaza al empezarla, como antes.
+- Que el agente rellene participantes: es un campo que el editor conserva pero no edita.
+
+El plan original, como referencia:
 
 - Editor del plan: crear, mover y cerrar sesiones, con sus objetivos y checks, guardado a través de `Guardian`.
 - «Proponer plan»: un agente lee los documentos de arranque y alcance y propone las sesiones; se revisa antes de guardar.

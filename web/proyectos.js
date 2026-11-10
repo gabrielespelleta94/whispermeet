@@ -386,7 +386,7 @@
     finally { P.resCargando = false; }
   }
   AP.hooks.proyectosCargados = () => { pedirResumen(lista().some((p) => !P.res[p.nombre]) && !consulta()); };
-  AP.hooks.alVolverAInicio = () => { cerrarPanel(false); etapa("galeria"); pedirResumen(true); };
+  AP.hooks.alVolverAInicio = () => { if (!(AP.planEditor && AP.planEditor.sucio())) cerrarPanel(false, true); etapa("galeria"); pedirResumen(true); };   // con cambios sin guardar en el plan, la ficha se queda como estaba
 
   // ------------------------------------------------------------ etapas: galería | preparar
   function etapa(e) {
@@ -416,14 +416,15 @@
   function empezarEn(nombre) {
     const p = porNombre(nombre);
     if (!p) return;
-    cerrarPanel(false);
+    if (!cerrarPanel(false)) return;   // con cambios sin guardar en el plan no sigue: el editor pregunta primero
     AP.elegirProyecto(nombre, p);
     etapa("preparar");
     const t = $("#i-tema"); if (t) t.focus({ preventScroll: true });
   }
   $("#i-llamada-si").addEventListener("click", () => {   // llamada de Teams: ir a preparar con el último proyecto usado (o la Bandeja)
     const ult = P.rec.find((n) => porNombre(n)) || (typeof UI.sel === "string" && porNombre(UI.sel) ? UI.sel : null);
-    if (ult) { cerrarPanel(false); AP.elegirProyecto(ult, porNombre(ult)); } else AP.elegirProyecto(null, null);
+    if (!cerrarPanel(false)) return;   // con cambios sin guardar en el plan, el editor pregunta primero
+    if (ult) { AP.elegirProyecto(ult, porNombre(ult)); } else AP.elegirProyecto(null, null);
     etapa("preparar");
     const a = $("#i-aviso"); a.scrollIntoView({ block: "center" }); a.focus({ preventScroll: true });
   });
@@ -474,20 +475,25 @@
   // ------------------------------------------------------------ ficha del proyecto (panel lateral)
   function abrirPanel(nombre, opener) {
     P.panel = nombre; P.opener = opener || null; P.confirmar = false; P.errorQuitar = ""; P.expandido = {};
+    if (AP.planEditor) AP.planEditor.abrir(nombre);
     cargarPanel(nombre);
     $("#i-scrim").hidden = false; $("#i-panel").hidden = false;
     $("#i-galeria").inert = true;
     pintarPanel();
     const f = $("#pp-cerrar"); if (f) f.focus();
   }
-  function cerrarPanel(devolverFoco = true) {
-    if (!P.panel) return;
+  /** Cierra la ficha. Con cambios sin guardar en el plan no cierra: enseña la confirmación del editor y devuelve false (con `forzar` cierra igual). */
+  function cerrarPanel(devolverFoco = true, forzar = false) {
+    if (!P.panel) return true;
+    if (!forzar && AP.planEditor && AP.planEditor.pedirSalir(() => cerrarPanel(devolverFoco, true))) return false;
+    if (AP.planEditor) AP.planEditor.cerrar();
     const op = P.opener;
     P.panel = null; P.opener = null; P.n++; P.ctx = P.doc = P.ses = P.pen = P.arch = P.aru = null;
     $("#i-panel").hidden = true; $("#i-scrim").hidden = true; $("#i-panel").replaceChildren();
     $("#i-galeria").inert = false;
     if (devolverFoco && op && op.isConnected) op.focus({ preventScroll: true });
     else if (devolverFoco && typeof UI.sel === "string") document.querySelector(`#i-lista .item[data-clave="${CSS.escape(UI.sel)}"]`)?.focus({ preventScroll: true });
+    return true;
   }
   $("#i-scrim").addEventListener("click", () => cerrarPanel());
   $("#i-panel").addEventListener("keydown", (ev) => {
@@ -532,7 +538,7 @@
     try {
       await AP.carpetas.quitar(nombre);
       olvidar(nombre);
-      cerrarPanel(false);
+      cerrarPanel(false, true);
       UI.sel = undefined; UI.proy = null; P.confirmar = false;
       try { localStorage.removeItem("apuntes_proy"); } catch { /* sin almacenamiento */ }
       await AP.cargarProyectos();
@@ -750,7 +756,7 @@ ${f.motivo}` }, f.nombre, f.carpeta ? h("span", { class: "t-meta soft" }, ` · $
     const l = s.d.sesiones || [];
     if (!l.length) return h("div", { class: "vp-bloque" }, cab, h("p", { class: "t-meta", id: "vp-sin-ses" }, "Todavía no hay sesiones de este proyecto. Aparecerán aquí cuando termines la primera reunión."));
     return h("div", { class: "vp-bloque" }, cab, h("ul", { class: "vp-lista", id: "vp-sesiones" }, l.map((x) => h("li", { class: "vp-fila" },
-      h("button", { type: "button", class: "vp-ses", "data-sesion": x.id, title: "Abrir en «Sesiones»", onclick: () => { if (AP.backlog) { cerrarPanel(false); AP.backlog.abrir(); AP.backlog.abrirSesion(x.id); } } },
+      h("button", { type: "button", class: "vp-ses", "data-sesion": x.id, title: "Abrir en «Sesiones»", onclick: () => { if (AP.backlog && cerrarPanel(false)) { AP.backlog.abrir(); AP.backlog.abrirSesion(x.id); } } },
         h("span", { class: "t-meta", title: x.fecha || "" }, x.fecha || ""), h("span", { class: "vp-n" }, x.tema))))));
   }
   function bloquePendientes() {
@@ -765,7 +771,7 @@ ${f.motivo}` }, f.nombre, f.carpeta ? h("span", { class: "t-meta soft" }, ` · $
     return h("div", { class: "vp-bloque" }, cab, h("ul", { class: "vp-lista", id: "vp-pendientes" }, l.map((x) => h("li", { class: "vp-fila pend-fila" },
       h("span", { class: "vp-n", title: x.texto }, x.texto, x.responsable ? h("span", { class: "t-meta soft" }, ` (${x.responsable})`) : null),
       h("span", { class: "t-meta soft vp-tam", title: x.tema || "" }, (x.veces > 1 ? `${x.veces} sesiones · ` : "") + (x.fecha || ""))))),
-      s.d.total > l.length ? h("button", { type: "button", class: "btn btn-ghost btn-mini vp-mas", onclick: () => { if (AP.backlog) { cerrarPanel(false); AP.backlog.abrir(); } } }, "Ver todos en «Sesiones»") : null);
+      s.d.total > l.length ? h("button", { type: "button", class: "btn btn-ghost btn-mini vp-mas", onclick: () => { if (AP.backlog && cerrarPanel(false)) { AP.backlog.abrir(); } } }, "Ver todos en «Sesiones»") : null);
   }
   function bloqueCalidad(p) {
     const c = calidadDe(p);
@@ -809,11 +815,12 @@ ${f.motivo}` }, f.nombre, f.carpeta ? h("span", { class: "t-meta soft" }, ` · $
     else cuerpo.push(bloqueFicheros(nombre, c.d));
     cuerpo.push(bloqueDocumentos(nombre));
     cuerpo.push(bloqueSesiones());
-    if (p.plan) {
-      const plan = h("div", { class: "contexto pp-plan", id: "pp-plan" });
-      AP.pintarContexto(plan, { proyecto: nombre, plan: p.plan, sesion: null });
-      cuerpo.push(h("div", { class: "vp-bloque" }, h("div", { class: "vp-sub" }, h("span", { class: "caps" }, "Plan de sesiones")), plan));
-    } else cuerpo.push(h("div", { class: "vp-bloque" }, h("div", { class: "vp-sub" }, h("span", { class: "caps" }, "Plan de sesiones")),
+    // Plan de sesiones: el editor (web/plan-editor.js, ola C) lleva el bloque entero; el Gantt de solo lectura de siempre es lo que enseña mientras no se edita
+    let planRO = null;
+    if (p.plan) { planRO = h("div", { class: "contexto pp-plan", id: "pp-plan" }); AP.pintarContexto(planRO, { proyecto: nombre, plan: p.plan, sesion: null }); }
+    if (AP.planEditor) cuerpo.push(AP.planEditor.bloque(nombre, planRO));
+    else if (planRO) cuerpo.push(h("div", { class: "vp-bloque" }, h("div", { class: "vp-sub" }, h("span", { class: "caps" }, "Plan de sesiones")), planRO));
+    else cuerpo.push(h("div", { class: "vp-bloque" }, h("div", { class: "vp-sub" }, h("span", { class: "caps" }, "Plan de sesiones")),
       h("p", { class: "t-meta", id: "pp-sin-plan" }, "Este proyecto no tiene plan. Un plan (un .json en la carpeta planes) añade Gantt, hitos y objetivos para cada sesión.")));
     const pie = h("div", { class: "pp-pie" },
       h("button", { type: "button", class: "btn btn-ghost", id: "vp-abrir-carpeta", onclick: (ev) => abrirCarpeta(nombre, ev.currentTarget) }, AP.icono("carpeta"), "Abrir carpeta"),

@@ -10,7 +10,7 @@ import json
 import re
 from datetime import date, datetime, timedelta
 
-from .rutas import Guardian
+from .rutas import Guardian, clave_declarada
 from .texto import a_segundos, mmss, recortar
 
 SIN_TRATAR, PARCIAL, CUBIERTO = "sin_tratar", "parcial", "cubierto"
@@ -150,21 +150,39 @@ def normalizar_plan(crudo) -> dict | None:
     return plan
 
 
+class PlanesPorProyecto(dict):
+    """clave del proyecto (`rutas.clave_declarada`: NFC y sin mayúsculas) -> plan normalizado. Quien consulta con el nombre del proyecto tal cual (`get`, `[]`, `in`) lo
+    casa con la MISMA función que el editor del plan, aunque la llamada use otra forma del nombre (mayúsculas, NFD)."""
+
+    @staticmethod
+    def _k(k):
+        return clave_declarada(k) if isinstance(k, str) else k
+
+    def get(self, k, default=None):
+        return super().get(self._k(k), default)
+
+    def __getitem__(self, k):
+        return super().__getitem__(self._k(k))
+
+    def __contains__(self, k):
+        return super().__contains__(self._k(k))
+
+
 def cargar_planes(g: Guardian) -> dict[str, dict]:
-    """proyecto (en minúsculas) -> plan normalizado. Un JSON roto se ignora sin afectar al resto."""
-    out: dict[str, dict] = {}
+    """proyecto (clave de `rutas.clave_declarada`, la misma del editor) -> plan normalizado. Un JSON roto se ignora sin afectar al resto."""
+    out = PlanesPorProyecto()
     for _nombre, texto in g.leer_planes():
         try:
             plan = normalizar_plan(json.loads(texto))
         except ValueError:
             continue
         if plan:
-            out[plan["proyecto"].lower()] = plan
+            out[clave_declarada(plan["proyecto"])] = plan
     return out
 
 
 def plan_de(g: Guardian, proyecto: str | None) -> dict | None:
-    return cargar_planes(g).get((proyecto or "").lower()) if proyecto else None
+    return cargar_planes(g).get(clave_declarada(proyecto)) if proyecto else None
 
 
 def sesion_de(plan: dict | None, sesion_id: str | None) -> dict | None:

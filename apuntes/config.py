@@ -46,6 +46,7 @@ MODELOS_POR_DEFECTO = {
     "brief": "haiku",                       # brief de preparación de un proyecto: UNA llamada al abrir la ficha (cacheada por hash de entrada)
     "pregunta_capitan": "haiku",            # pregunta propuesta por el Capitán para cerrar un objetivo sin tratar: una llamada ligera, una vez por objetivo
     "archivero": "sonnet",                  # ola B, Agente Archivero: UNA llamada a mano desde la ficha del proyecto, sin reintentos (manual y poco frecuente)
+    "plan_propuesto": "sonnet",             # ola C, «Proponer plan»: UNA llamada a mano desde la ficha del proyecto, sin reintentos (manual y poco frecuente)
 }
 
 # Proyectos fuera de la raíz. `compartido: true` = carpeta de OneDrive compartida y de otra persona:
@@ -170,6 +171,10 @@ DEFAULTS: dict = {
     "archivero_chars_por_documento": 6000, # caracteres de cada documento que salen de la máquina (tras quitar secretos, «Contactos», correos y teléfonos)
     "archivero_tope_total_chars": 40000,   # tope de caracteres de todos los documentos juntos (es lo que más pesa en los tokens de la llamada)
     "archivero_max_sin_clasificar": 40,    # ficheros «sin clasificar» (solo nombre y carpeta) cuyo tipo se pide a Claude
+    # ola C: «Proponer plan» (apuntes/plan_propuesto.py): lee a mano arranque, alcance, planificación y funcional del proyecto
+    "plan_propuesto_max_documentos": 6,    # documentos que se leen como máximo en una pasada
+    "plan_propuesto_chars_por_documento": 6000,   # caracteres de cada documento que salen de la máquina (tras quitar secretos, «Contactos», correos y teléfonos)
+    "plan_propuesto_tope_total_chars": 30000,     # tope de caracteres de todos los documentos juntos
     # ola 4: confianza y escala (palabras dudosas, silencio, envíos, modo solo local, cartera)
     "whisper_palabras": True,              # word_timestamps: cada segmento lleva sus palabras con probabilidad (algo más de CPU por fragmento)
     "palabra_dudosa_umbral": 0.5,          # una palabra con probabilidad menor que esto se marca como dudosa
@@ -196,7 +201,8 @@ _CLAVES_INT = {"whisper_beam", "whisper_hilos", "timeout_s", "cadencia_min", "mi
                "asesor_consejo_cada_s", "fuentes_max_ficheros", "fuentes_tiempo_s",
                "contexto_md_max_ficheros", "contexto_md_profundidad", "contexto_md_tope_total_chars",
                "objetivo_sin_tratar_min", "brief_max_chars",   # ola 3
-               "archivero_max_documentos", "archivero_chars_por_documento", "archivero_tope_total_chars", "archivero_max_sin_clasificar"}   # ola B
+               "archivero_max_documentos", "archivero_chars_por_documento", "archivero_tope_total_chars", "archivero_max_sin_clasificar",
+               "plan_propuesto_max_documentos", "plan_propuesto_chars_por_documento", "plan_propuesto_tope_total_chars"}   # olas B y C
 _ESFUERZOS = {"low", "medium", "high", "xhigh", "max", ""}
 # ola 4: tipos de sus claves (bloque propio; `Config.actualizar` solo tiene una rama para ellas)
 _OLA4_BOOL = {"whisper_palabras", "modo_local"}

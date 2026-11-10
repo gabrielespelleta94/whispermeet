@@ -1303,3 +1303,47 @@ button.btn-mini, .btn.btn-mini { height: 32px; }
 .ar-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 12px; }
 .ar-pie .ar-acciones { margin-top: 0; }
 .ar-guardado { color: var(--ok); }
+/* ola C: editor del plan de sesiones en la ficha (web/plan-editor.js). Mismos tokens y el mismo ritmo que el bloque del Archivero: un solo nivel de caja, rótulos en versalitas, foco visible. */
+.pe .ar-acciones { margin-top: 12px; }
+.pe .pp-plan { margin-top: 4px; }
+.pe-estado { font-variant-numeric: tabular-nums; }
+.pe-estado.pe-sucio { color: var(--warn); }
+.pe-err { color: var(--err); overflow-wrap: anywhere; }
+.pe-estado.pe-err { color: var(--err); }
+.pe-lista { list-style: none; margin: 8px 0 0; padding: 0; counter-reset: pe; }
+.pe-ses { border-bottom: 1px solid var(--hair); min-width: 0; }
+.pe-ses:last-child { border-bottom: 0; }
+.pe-cab { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pe-toggle { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 10px; min-height: 36px; padding: 4px 0; border: 0; background: transparent; text-align: left; cursor: pointer; color: var(--body); }
+.pe-toggle::before { content: ""; flex: none; width: 6px; height: 6px; margin-right: -2px; border-right: 1.5px solid var(--soft); border-bottom: 1.5px solid var(--soft); transform: translateY(-2px) rotate(-45deg); transition: transform .12s; }
+.pe-toggle[aria-expanded="true"]::before { transform: translateY(-3px) rotate(45deg); }
+.pe-toggle:hover .pe-nom { color: var(--acc-t); }
+.pe-num { flex: none; min-width: 18px; color: var(--soft); font-family: var(--mono); }
+.pe-nom { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }   /* el nombre se parte en líneas: nada de textos cortados */
+.pe-meta { flex: 0 1 40%; min-width: 0; overflow-wrap: anywhere; text-align: right; }
+.pe-mov { flex: none; display: flex; align-items: center; gap: 2px; }
+.pe-cuerpo { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 16px 28px; min-width: 0; }
+.pe-cuerpo[hidden] { display: none; }
+.pe-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; border: 0; margin: 0; padding: 0; }
+.pe-campo .t-label { margin: 0; padding: 0; }
+.pe-campo .btn { align-self: flex-start; }
+.pe-fila2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.pe-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pe-item { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.pe-item .input { flex: 1 1 auto; min-width: 0; }
+.pe-item .btn-icono { flex: none; }
+.pe .input[aria-invalid="true"] { border-color: var(--err); }
+.pe-deps { gap: 6px; }
+.pe-check { display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; }
+.pe-check input { flex: none; width: 16px; height: 16px; margin: 0; accent-color: var(--micro); }
+.pe-confirma { margin: 0 0 8px 28px; }
+.pe-pie { position: sticky; bottom: 0; padding: 8px 0; background: var(--elev-solido); border-top: 1px solid var(--hair); z-index: 1; }
+/* con el editor abierto la barra de acciones es lo último del área de scroll y llega hasta su borde inferior: sin el relleno de 24 px de debajo, por el que se veía pasar el texto */
+.pp-cuerpo:has(.pe-pie) { padding-bottom: 0; }
+.pe-prop { margin-bottom: 8px; }
+.pe-props { list-style: none; margin: 8px 0 0; padding: 0; }
+.pe-propuesta { padding: 8px 0; border-bottom: 1px solid var(--hair); min-width: 0; }
+.pe-propuesta:last-child { border-bottom: 0; }
+.pe-propuesta-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.pe-propuesta-cab .t-body-m { overflow-wrap: anywhere; }
+@media (max-width: 560px) { .pe-fila2 { grid-template-columns: minmax(0, 1fr); } .pe-meta { display: none; } }

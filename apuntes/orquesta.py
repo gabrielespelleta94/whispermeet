@@ -28,6 +28,7 @@ AGENTES = {
     "brief": ("brief", "Brief de preparación"),          # ola 3: al abrir la ficha de un proyecto (cacheado)
     "pregunta_capitan": ("coordinador", "Capitán"),      # ola 3: la pregunta que cerraría un objetivo sin tratar
     "archivero": ("archivero", "Archivero"),             # ola B: lectura manual de los documentos clave de un proyecto (desde la ficha)
+    "plan_propuesto": ("plan_propuesto", "Planificador"),  # ola C: «Proponer plan» a mano desde la ficha de un proyecto (lee arranque, alcance y planificación)
     "consulta": ("consultas", "Consultas"),            # «Pregúntale»: una llamada por pregunta, solo si el usuario la lanza
     "consulta_sonnet": ("consultas", "Consultas"),
     # el asesor en directo: respuestas sugeridas, consejos del Estratega y «Profundizar»

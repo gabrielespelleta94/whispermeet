@@ -186,16 +186,17 @@ def topes(cfg) -> dict:
             "tope_texto": max(1000, int(cfg["tope_fichero_bytes"]))}
 
 
-def seleccionar(m: dict, t: dict) -> dict:
+def seleccionar(m: dict, t: dict, tipos_a_leer: tuple[str, ...] = TIPOS_A_LEER) -> dict:
     """Qué se leerá y qué no, a partir del mapa de la ola A (`inventario.mapa`) y los topes `t` (`topes(cfg)`). Determinista y SIN abrir nada. Por cada tipo de
     `TIPOS_A_LEER`, primero el documento más reciente de cada uno y, si queda sitio, el segundo más reciente (2 por tipo como máximo), hasta `max_documentos` y
     `total` caracteres. Devuelve `{leer, omitidos, mas_omitidos, chars, sin_clasificar, sin_clasificar_total, sesiones}` (`leer` y `sin_clasificar` llevan la `ruta`
-    absoluta del mapa: solo para uso interno, `publico()` la quita)."""
+    absoluta del mapa: solo para uso interno, `publico()` la quita). `tipos_a_leer`: los tipos que se leen (el Archivero, todos los de `TIPOS_A_LEER`; el agente «Proponer
+    plan» de la ola C reutiliza esta misma selección restringida a arranque, oferta, planificación y funcional)."""
     por_tipo = {x["clave"]: x for x in m["tipos"]}
     omitidos: list[dict] = []
     sesiones = 0
     en_contexto: list[dict] = []
-    candidatos: dict[str, list[dict]] = {k: [] for k in TIPOS_A_LEER}
+    candidatos: dict[str, list[dict]] = {k: [] for k in tipos_a_leer}
     for x in m["tipos"]:
         for f in x["ficheros"]:
             partes = f["rel"].split("/")
@@ -215,7 +216,7 @@ def seleccionar(m: dict, t: dict) -> dict:
     leer: list[dict] = []
     chars = 0
     for ronda in (0, 1):
-        for tipo in TIPOS_A_LEER:
+        for tipo in tipos_a_leer:
             lista = candidatos[tipo]
             if ronda >= len(lista):
                 continue
@@ -231,7 +232,7 @@ def seleccionar(m: dict, t: dict) -> dict:
             chars += asignado
             leer.append({**f, "asignado": asignado})
     ya = {f["rel"] for f in leer} | {o["rel"] for o in omitidos}
-    for tipo in TIPOS_A_LEER:
+    for tipo in tipos_a_leer:
         for f in candidatos[tipo]:
             if f["rel"] not in ya:
                 omitidos.append({"nombre": f["nombre"], "rel": f["rel"], "tipo": tipo, "motivo": "hay otros documentos más recientes de su tipo"})
@@ -243,7 +244,7 @@ def seleccionar(m: dict, t: dict) -> dict:
     if sesiones:
         omitidos.append({"nombre": CARPETA_SESIONES, "rel": CARPETA_SESIONES, "tipo": "seguimiento", "n": sesiones,
                          "motivo": f"{sesiones} {'sesión' if sesiones == 1 else 'sesiones'}: ya entran por el backlog"})
-    orden = {k: i for i, k in enumerate(TIPOS_A_LEER)}
+    orden = {k: i for i, k in enumerate(tipos_a_leer)}
     leer.sort(key=lambda f: (orden[f["tipo"]], -f["mtime"], f["rel"].lower()))
     sin = [f for f in por_tipo["otros"]["ficheros"]]
     return {"leer": leer, "omitidos": omitidos[:MAX_OMITIDOS], "mas_omitidos": max(0, len(omitidos) - MAX_OMITIDOS), "chars": chars,
@@ -380,6 +381,31 @@ def _tokens(consumo, desde: int) -> int | None:
     return t or None
 
 
+def leer_documentos(g, proyecto: str, sel: dict, t: dict) -> tuple[list[dict], list[dict]]:
+    """Lee (SOLO por `Guardian.leer_para_archivero`) lo que `seleccionar` eligió y lo deja listo para salir de la máquina (`preparar_texto`). Devuelve
+    `(docs, fuera)`: los documentos numerados y los que no se pudieron leer, con su motivo. Lo usan el Archivero y el agente «Proponer plan»."""
+    docs, fuera, restante = [], [], t["total"]
+    for n, f in enumerate(sel["leer"]):
+        if restante < 200:   # sin cupo: lo que queda no se lee y se dice
+            fuera += [{"nombre": x["nombre"], "rel": x["rel"], "tipo": x["tipo"], "motivo": "se alcanzó el tope de caracteres de la pasada"} for x in sel["leer"][n:]]
+            break
+        try:
+            crudo = g.leer_para_archivero(proyecto, f["ruta"], tope_bytes=t["tope_texto"], tope_chars=t["por_documento"] * 4)
+        except (RutaProhibida, DOC.Indisponible) as e:
+            fuera.append({"nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "motivo": f"no se pudo leer: {e}"})
+            continue
+        except OSError as e:
+            fuera.append({"nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "motivo": f"no se pudo leer ({type(e).__name__})"})
+            continue
+        texto = preparar_texto(crudo, min(t["por_documento"], restante))
+        if len(texto) < 20:
+            fuera.append({"nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "motivo": "no tiene texto legible"})
+            continue
+        restante -= len(texto)
+        docs.append({"i": len(docs) + 1, "nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "tipo_titulo": f["tipo_titulo"], "texto": texto})
+    return docs, fuera
+
+
 class ResultadoCambiado(Exception):
     """Entre la vista previa y la confirmación cambió lo que se guardaría. `vista` es la vista previa nueva (la misma forma que `guardar(confirmar=False)`)."""
 
@@ -461,26 +487,7 @@ class ServicioArchivero:
 
     # ---------- análisis
     def _leer_documentos(self, proyecto: str, sel: dict, t: dict) -> tuple[list[dict], list[dict]]:
-        docs, fuera, restante = [], [], t["total"]
-        for n, f in enumerate(sel["leer"]):
-            if restante < 200:   # sin cupo: lo que queda no se lee y se dice
-                fuera += [{"nombre": x["nombre"], "rel": x["rel"], "tipo": x["tipo"], "motivo": "se alcanzó el tope de caracteres de la pasada"} for x in sel["leer"][n:]]
-                break
-            try:
-                crudo = self.g.leer_para_archivero(proyecto, f["ruta"], tope_bytes=t["tope_texto"], tope_chars=t["por_documento"] * 4)
-            except (RutaProhibida, DOC.Indisponible) as e:
-                fuera.append({"nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "motivo": f"no se pudo leer: {e}"})
-                continue
-            except OSError as e:
-                fuera.append({"nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "motivo": f"no se pudo leer ({type(e).__name__})"})
-                continue
-            texto = preparar_texto(crudo, min(t["por_documento"], restante))
-            if len(texto) < 20:
-                fuera.append({"nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "motivo": "no tiene texto legible"})
-                continue
-            restante -= len(texto)
-            docs.append({"i": len(docs) + 1, "nombre": f["nombre"], "rel": f["rel"], "tipo": f["tipo"], "tipo_titulo": f["tipo_titulo"], "texto": texto})
-        return docs, fuera
+        return leer_documentos(self.g, proyecto, sel, t)
 
     def analizar(self, proyecto: str, refrescar: bool = False) -> dict:
         m, t, sel = self._plan(proyecto)

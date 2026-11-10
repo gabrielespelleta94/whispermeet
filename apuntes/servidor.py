@@ -22,6 +22,7 @@ from . import contexto as CX
 from . import inventario as INV
 from . import aviso as AV
 from . import api_archivero
+from . import api_plan
 from . import api_ola3
 from . import api_ola4
 from . import backlog as BL
@@ -202,13 +203,13 @@ class CheckIn(BaseModel):
 
 def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
               al_cambiar_captura=None, ventana=None, al_avisar_llamada=None, vigilar_llamadas_activo=False, aviso=None,
-              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None, fabrica_archivero=None) -> FastAPI:
+              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None, fabrica_archivero=None, fabrica_plan_propuesto=None) -> FastAPI:
     """`ventana`: función sin argumentos que devuelve la `Ventana` nativa (o None con `--sin-ventana`).
     `backlog`: el `Backlog` (pruebas: con tiempos, reloj y abridor propios); por defecto uno sobre el Guardian.
     `vigilar_llamadas_activo`: solo la app real vigila el micro de Teams (los tests no leen el registro).
     `aviso`: el `AvisoLlamada` flotante (None con `--sin-ventana`: entonces solo banner y parpadeo). `leer_micro` e `intervalo_llamadas`
     sustituyen la lectura del registro y el intervalo (pruebas con una llamada simulada). `fabrica_archivero`: devuelve el `Analista` del Agente
-    Archivero (pruebas: un modelo falso); por defecto, uno propio sobre el modelo del gestor."""
+    Archivero (pruebas: un modelo falso); por defecto, uno propio sobre el modelo del gestor. `fabrica_plan_propuesto`: lo mismo para «Proponer plan» (ola C)."""
     hosts_ok = {f"{HOST}:{puerto}", f"localhost:{puerto}"}
     bl = backlog if backlog is not None else BL.Backlog(guardian, cfg)
     gestor.fuentes.backlog = bl   # las sesiones anteriores del mismo proyecto entran en las fuentes del asesor por backlog.py
@@ -300,7 +301,7 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         excluir = (APP_DIR,)
         planes = await asyncio.to_thread(PL.cargar_planes, guardian)
         ahora = datetime.now()
-        planes = {k: PL.enriquecer(v, ahora) for k, v in planes.items()}  # estados del Gantt: sin llamar a ningún modelo
+        planes = PL.PlanesPorProyecto((k, PL.enriquecer(v, ahora)) for k, v in planes.items())  # estados del Gantt: sin llamar a ningún modelo
         lista = CX.listar_proyectos(guardian, q, excluir, planes)
         # n_sesiones, ultima_sesion y n_md: acotado y en caché; un proyecto lento (OneDrive) sale sin ellos en vez de bloquear la lista
         lista = await asyncio.to_thread(CX.enriquecer_proyectos, guardian, lista, CX.limites_md(cfg))
@@ -324,7 +325,7 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         (`parcial`), nunca bloquea."""
         planes = await asyncio.to_thread(PL.cargar_planes, guardian)
         ahora = datetime.now()
-        planes = {k: PL.enriquecer(v, ahora) for k, v in planes.items()}
+        planes = PL.PlanesPorProyecto((k, PL.enriquecer(v, ahora)) for k, v in planes.items())
         lista = CX.listar_proyectos(guardian, "", (APP_DIR,), planes)
         por_proyecto, r = await asyncio.gather(
             _backlog_por_proyecto(),
@@ -836,6 +837,7 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
     app.include_router(api_ola3.crear_router(gestor, cfg, guardian, bl, abridor=abridor_ola3))   # ola 3: acciones, autonomía, brief, seguimiento, Outlook
     app.include_router(api_ola4.crear_router(gestor, cfg, guardian, bl, envolver))   # ola 4: confianza y escala (api_ola4.py, demo/api-ola4.md)
     app.include_router(api_archivero.crear_router(gestor, cfg, guardian, envolver, fabrica_analista=fabrica_archivero))   # ola B: Agente Archivero (api_archivero.py)
+    app.include_router(api_plan.crear_router(gestor, cfg, guardian, envolver, fabrica_analista=fabrica_plan_propuesto))   # ola C: editor del plan y «Proponer plan» (api_plan.py)
 
     # ------------------------------------------------------------ WebSocket
     @app.websocket("/ws")
