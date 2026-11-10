@@ -29,6 +29,7 @@ instalar.bat [--comprobar] [--dev] [--si] [--sin-modelo] [--sin-acceso-directo] 
 .venv\Scripts\python.exe pruebas\probar_plan_propuesto.py       # «Proponer plan» con claude -p REAL (UNA llamada a sonnet) sobre un proyecto ficticio en carpeta temporal; no guarda ningún plan; --salida RUTA.json opcional
 .venv\Scripts\python.exe pruebas\comparar_equipo.py            # tokens, turnos, tarjetas, definiciones y decisiones de la lista: antes frente a después
 ```
+Los tests corren con prioridad baja y se niegan a arrancar si hay una reunión en marcha (micrófono en uso por cualquier aplicación, o `apuntes.log`/`consumo.jsonl` escritos hace menos de 120 s; `tests/guarda_reunion.py`): se fuerza con `WHISPERMEET_TESTS_EN_REUNION=1` y se mantiene la prioridad normal con `WHISPERMEET_TESTS_PRIORIDAD_NORMAL=1`.
 Para ver la interfaz sin tocar nada real: `app.py --sin-ventana --simular … --raiz pruebas\proyectos --planes <carpeta> --sesiones <carpeta> --checks <carpeta> --extra "NOMBRE=<carpeta ficticia>"` (`--extra` sustituye `proyectos_extra`: así el plan real de Planificador se ve sin abrir OneDrive).
 
 Stack: Python 3.12 en `.venv`, FastAPI + WebSocket (solo `127.0.0.1`, token por ejecución), pywebview, UI en `web/` sin build, `pyaudiowpatch`, `faster-whisper` (CPU, int8).

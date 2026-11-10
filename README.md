@@ -91,7 +91,7 @@ esultado_adaptativo.json   # la reunión real TR2 con el disparo adaptativo
 ```
 
 Opciones: `--raiz <carpeta>` (raíz de proyectos), `--puerto N`, `--mostrar-en-captura`. Solo para pruebas: `--config FICHERO.json` (configuración alternativa, no toca `datos\config.json`), `--extra NOMBRE=RUTA` (proyecto compartido que sustituye a `proyectos_extra` sin tocar `datos\config.json`), `--planes <carpeta>`, `--sesiones <carpeta>`, `--checks <carpeta>`.
-Tests (antes, `instalar.bat --dev` para tener pytest): `.venv\Scripts\python.exe -m pytest tests -q`.
+Tests (antes, `instalar.bat --dev` para tener pytest): `.venv\Scripts\python.exe -m pytest tests -q`. Corren con prioridad baja y no arrancan si hay una reunión en marcha (micrófono en uso o la app acaba de escribir en `datos`); se fuerza con `WHISPERMEET_TESTS_EN_REUNION=1`, y `WHISPERMEET_TESTS_PRIORIDAD_NORMAL=1` desactiva la prioridad baja.
 
 ## Requisitos
 

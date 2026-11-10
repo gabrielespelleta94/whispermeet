@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -6,6 +8,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from apuntes.rutas import Guardian  # noqa: E402
+import guarda_reunion  # noqa: E402
+
+
+def pytest_sessionstart(session):
+    """Antes de recoger tests: prioridad baja (la heredan Edge y los servidores de prueba) y no arrancar con una reunión en marcha."""
+    guarda_reunion.bajar_prioridad()
+    from apuntes.config import DATOS_DIR
+    guarda_reunion.exigir_sin_reunion(os.environ, guarda_reunion.leer_microfono_registro if sys.platform == "win32" else (lambda: []), time.time, DATOS_DIR)
 
 
 @pytest.fixture
@@ -26,7 +36,7 @@ def _no_tocar_el_consumo_real():
     antes = ruta.stat().st_size if ruta.exists() else 0
     yield
     despues = ruta.stat().st_size if ruta.exists() else 0
-    assert despues == antes, "un test ha escrito en datos/consumo.jsonl"
+    assert despues == antes, "un test ha escrito en datos/consumo.jsonl (o la app real estuvo en uso mientras corrían los tests)"
 
 
 @pytest.fixture(scope="session", autouse=True)
