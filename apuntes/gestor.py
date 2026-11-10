@@ -80,7 +80,8 @@ def acumular_resumen(previo: str, nuevo: str, tope: int) -> str:
 FALLOS_SEGUIDOS_GRAVE = 10      # pasadas seguidas fallando de un mismo tipo: el aviso pasa a decirlo claramente
 AVISO_FALLO_CADA_S = 300.0      # como máximo un aviso por tipo de fallo cada 5 min
 RETRASO_A_REGISTRAR_S = 15.0    # retraso de la transcripción a partir del cual se deja una línea de diagnóstico en datos\apuntes.log…
-REGISTRO_RETRASO_CADA_S = 30.0  # …como mucho cada tanto
+REGISTRO_RETRASO_CADA_S = 30.0  # …como mucho cada tanto (también si hay audio rezagado, aunque el retraso ya sea bajo)
+ACTUALIZAR_ECO_CADA_S = 60.0    # la incidencia del eco descartado se reescribe como mucho una vez por minuto (y siempre al terminar)
 TEXTO_AUDIO_PERDIDO = "No se ha podido transcribir parte del audio. La grabación sigue."
 ESPERA_COLA_MAX_S = 600.0       # al terminar: tope absoluto de espera a que el transcriptor vacíe su cola…
 ESPERA_COLA_SIN_AVANCE_S = 60.0  # …y se deja de esperar si en este tiempo la cola no baja (antes: 180 s fijos y descarte sin aviso)
@@ -110,6 +111,7 @@ class Gestor:
         self._perdidos_avisados = 0.0     # segundos de audio perdidos por el transcriptor de los que ya se avisó
         self._perdida_avisada_en = None   # cuándo (monotónico) se avisó por última vez de audio perdido (None = nunca en esta reunión)
         self._retraso_registrado = 0.0    # última vez (monotónico) que se anotó el retraso de la transcripción en el registro
+        self._reiniciar_descartes()
         self._vocabulario_contexto: list[str] = []
         self.captura = None
         self.digest = ""
@@ -179,6 +181,16 @@ class Gestor:
             return ""
         return " ".join([x.texto for x in s.nuevos_desde_ultimo_analisis()] + [s.notas_para_modelo()])
 
+    def _reiniciar_descartes(self) -> None:
+        """Lo que el transcriptor descartó por presupuesto y aún no está dicho en el .md, y la incidencia única del eco descartado."""
+        self._descartes_sat: list = []         # (fuente, t_inicio, segundos, motivo) de audio rezagado perdido por saturación, aún sin decir
+        self._descartes_eco: list = []         # lo mismo del eco aplazado que no se transcribió, aún sin pasar a la incidencia
+        self._eco_total_s = 0.0                # eco descartado en esta reunión
+        self._eco_t_min = self._eco_t_max = None   # intervalo de la reunión que abarca ese eco (segundos)
+        self._eco_desde = None                 # mm:ss de la primera vez que se dijo
+        self._eco_texto = None                 # la incidencia tal como está escrita en `sesion.incidencias` (se sustituye en su sitio)
+        self._eco_anotado_en = None            # cuándo (monotónico) se actualizó por última vez
+
     def estado_ligero(self) -> dict:
         s = self.sesion
         tr = self.transcriptor
@@ -214,7 +226,10 @@ class Gestor:
                                                       "velocidad_x": None if tr.velocidad_x is None else round(tr.velocidad_x, 2),
                                                       "rapido": bool(getattr(tr, "alcance", False)),   # modo rápido: hay cola y se decodifica más barato hasta vaciarla
                                                       "perdidos_s": round(float(getattr(tr, "perdidos_s", 0.0) or 0.0), 1),
-                                                      "aplazado_s": round(float(getattr(tr, "aplazado_s", 0.0) or 0.0), 1)},   # audio de Micro que parece solo eco y espera su turno
+                                                      "aplazado_s": round(float(getattr(tr, "aplazado_s", 0.0) or 0.0), 1),   # audio de Micro que parece solo eco y espera su turno
+                                                      "retraso_reunion_s": round(float(getattr(tr, "retraso_reunion_s", 0.0) or 0.0), 1),   # el retraso de lo que dicen los demás
+                                                      "rezagado_s": round(float(getattr(tr, "rezagado_s", 0.0) or 0.0), 1),   # audio que no llegó a tiempo y espera un hueco
+                                                      "eco_descartado_s": round(float(getattr(tr, "eco_descartado_s", 0.0) or 0.0), 1)},   # eco del micro que no se transcribió
             "captura": None if self.captura is None else {"errores": {k: str(v) for k, v in dict(self.captura.errores).items()}},
             "avisos": list(self.avisos), "consumo": self.consumo.resumen(),
             "revision": self.revision_publica(),
@@ -227,7 +242,9 @@ class Gestor:
         d["llamada"] = self.llamada
         d["llamada_flotante"] = self.llamada_flotante
         s = self.sesion
-        d["segmentos"] = [x.publico() for x in s.segmentos if x.texto.strip()] if s else []
+        # por su minuto: la cola con prioridades puede entregar un tramo de Reunión antes que otro anterior del Micro. `sesion.segmentos` sigue
+        # en orden de llegada (los análisis, las correcciones y `estables` cuentan con él): solo lo que se enseña se ordena
+        d["segmentos"] = [x.publico() for x in sorted((x for x in s.segmentos if x.texto.strip()), key=lambda x: (x.t, x.id))] if s else []
         d["notas"] = s.notas if s else ""
         d["tarjetas"] = list(s.tarjetas) if s else []
         d["resumen_acumulado"] = s.resumen_acumulado if s else ""
@@ -359,6 +376,7 @@ class Gestor:
         from .transcripcion import Transcriptor
         self.transcriptor = Transcriptor(self.cfg, self._on_texto)
         self._perdidos_avisados, self._retraso_registrado, self._perdida_avisada_en = 0.0, 0.0, None
+        self._reiniciar_descartes()
         self.transcriptor.idioma = self.idioma
         self.transcriptor.prompt = prompt_tema(recortar(tema, 80), "es")       # initial_prompt coherente con el idioma de cada tramo
         self.transcriptor.prompt_ca = prompt_tema(recortar(tema, 80), "ca")
@@ -528,28 +546,82 @@ class Gestor:
         if tr is None:
             return False
         hecho = False
+        self._recoger_descartes(tr)   # antes de leer `perdidos_s`: así lo recogido nunca supera lo contado
         perdidos = float(getattr(tr, "perdidos_s", 0.0) or 0.0)
         toca = forzar or self._perdida_avisada_en is None or time.monotonic() - self._perdida_avisada_en >= AVISO_FALLO_CADA_S
         if perdidos > self._perdidos_avisados + 0.5 and toca:
             nuevo, self._perdidos_avisados = perdidos - self._perdidos_avisados, perdidos
             self._perdida_avisada_en = time.monotonic()
+            sat, self._descartes_sat = self._descartes_sat, []
+            sat_s = sum(d[2] for d in sat)
+            por_fallo = max(0.0, nuevo - sat_s)
             tipo = getattr(tr, "ultimo_fallo", "") or "sin modelo"
-            self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] transcripción: {int(round(nuevo))} s de audio sin transcribir ({tipo})")
+            if not sat:
+                detalle = tipo
+            else:   # la saturación lleva su tramo de la reunión; si se mezcla con fallos, cada cosa dice cuánto es
+                tramo = f"entre {mmss(min(d[1] for d in sat))} y {mmss(max(d[1] + d[2] for d in sat))}"
+                if por_fallo >= 0.5:
+                    fallo = f"fallo del tipo {tipo}" if tipo != "saturación" else "fallo"
+                    detalle = f"{int(round(sat_s))} s por saturación, {tramo}, y {int(round(por_fallo))} s por {fallo}"
+                else:
+                    detalle = f"saturación, {tramo}"
+            self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] transcripción: {int(round(nuevo))} s de audio sin transcribir ({detalle})")
             if TEXTO_AUDIO_PERDIDO not in self.avisos:
                 self.avisos.append(TEXTO_AUDIO_PERDIDO)
             self.emitir("aviso", mensaje=TEXTO_AUDIO_PERDIDO, componente="transcripcion", grave=False, prioridad="normal")
-            registrar_linea(f"transcripcion audio_perdido={nuevo:.1f}s total={perdidos:.1f}s tipo={tipo}")
+            registrar_linea(f"transcripcion audio_perdido={nuevo:.1f}s total={perdidos:.1f}s tipo={tipo} saturacion={sat_s:.1f}s")
+            hecho = True
+        if self._descartes_eco and (forzar or self._eco_anotado_en is None or time.monotonic() - self._eco_anotado_en >= ACTUALIZAR_ECO_CADA_S):
+            self._anotar_eco_descartado()
             hecho = True
         retraso = float(getattr(tr, "retraso_s", 0.0) or 0.0)
+        rezagado = float(getattr(tr, "rezagado_s", 0.0) or 0.0)
         ahora = time.monotonic()
-        if retraso >= RETRASO_A_REGISTRAR_S and ahora - self._retraso_registrado >= REGISTRO_RETRASO_CADA_S:
+        # con audio rezagado hay que dejar rastro aunque el retraso ya sea bajo: el retraso solo cuenta lo que llega a tiempo
+        if (retraso >= RETRASO_A_REGISTRAR_S or rezagado > 0) and ahora - self._retraso_registrado >= REGISTRO_RETRASO_CADA_S:
             self._retraso_registrado = ahora
             vel = getattr(tr, "velocidad_x", None)
+            lat = getattr(tr, "latencias", None)
+            lat = lat if isinstance(lat, dict) else {}
+            lat_r, lat_m = lat.get("reunion"), lat.get("yo")
             registrar_linea(f"transcripcion retraso={retraso:.0f}s cola={tr.pendiente_s:.0f}s vel={'-' if vel is None else f'{vel:.1f}x'} "
                             f"rapido={bool(getattr(tr, 'alcance', False))} reintentos={getattr(tr, 'reintentos', 0)} perdidos={perdidos:.0f}s "
-                            f"aplazado={float(getattr(tr, 'aplazado_s', 0.0) or 0.0):.0f}s")
+                            f"aplazado={float(getattr(tr, 'aplazado_s', 0.0) or 0.0):.0f}s "
+                            f"ret_reunion={float(getattr(tr, 'retraso_reunion_s', 0.0) or 0.0):.0f}s rezagado={rezagado:.0f}s "
+                            f"eco_descartado={float(getattr(tr, 'eco_descartado_s', 0.0) or 0.0):.0f}s "
+                            f"lat_reunion={'-' if lat_r is None else f'{lat_r:.0f}s'} lat_micro={'-' if lat_m is None else f'{lat_m:.0f}s'}")
             hecho = True
         return hecho
+
+    def _recoger_descartes(self, tr) -> None:
+        """Pasa a las listas pendientes del gestor lo que el transcriptor descartó por presupuesto: saturación (audio perdido) y eco."""
+        tomar = getattr(tr, "tomar_descartes", None)
+        if not callable(tomar):
+            return
+        for d in list(tomar() or []):
+            (self._descartes_eco if d[3] == "eco" else self._descartes_sat).append(d)
+
+    def _anotar_eco_descartado(self) -> None:
+        """UNA incidencia en el .md con el eco del micro que no se transcribió (acumulado e intervalo de toda la reunión), que se sustituye en su
+        sitio al actualizarla. Sin aviso en la interfaz: perder un eco no es perder lo que se dijo. Solo medidas."""
+        nuevos, self._descartes_eco = self._descartes_eco, []
+        nuevo_s = sum(d[2] for d in nuevos)
+        self._eco_total_s += nuevo_s
+        ini, fin = min(d[1] for d in nuevos), max(d[1] + d[2] for d in nuevos)
+        self._eco_t_min = ini if self._eco_t_min is None else min(self._eco_t_min, ini)
+        self._eco_t_max = fin if self._eco_t_max is None else max(self._eco_t_max, fin)
+        if self._eco_desde is None:
+            self._eco_desde = mmss(self.reloj.ahora())
+        texto = (f"[{self._eco_desde}] transcripción: {int(round(self._eco_total_s))} s de audio del micro que parecía eco de los altavoces "
+                 f"no se han transcrito (entre {mmss(self._eco_t_min)} y {mmss(self._eco_t_max)})")
+        inc = self.sesion.incidencias
+        if self._eco_texto in inc:
+            inc[inc.index(self._eco_texto)] = texto
+        else:
+            inc.append(texto)
+        self._eco_texto = texto
+        self._eco_anotado_en = time.monotonic()
+        registrar_linea(f"transcripcion eco_descartado={nuevo_s:.1f}s total={self._eco_total_s:.1f}s")
 
     def _emitir_tick(self) -> None:
         self.emitir("tick", **{k: v for k, v in self.estado_ligero().items() if k in ("t", "analisis", "transcripcion", "consumo", "avisos", "equipo", "asesor")})
@@ -1225,10 +1297,28 @@ class Gestor:
                 self._vigilar_transcripcion(forzar=True)
         resto = tr.pendiente_s
         if resto > 1.0 and self.sesion:
-            self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] transcripción incompleta: {int(round(resto))} s de audio sin transcribir al terminar")
-            texto = f"La transcripción está incompleta: quedaron {int(round(resto))} s de audio sin transcribir al terminar."
+            eco = min(resto, float(getattr(tr, "aplazado_s", 0.0) or 0.0))
+            de_eco = f", de los que {int(round(eco))} s eran audio del micro que parecía eco de los altavoces" if eco > 1.0 else ""
+            self.sesion.incidencias.append(f"[{mmss(self.reloj.ahora())}] transcripción incompleta: {int(round(resto))} s de audio sin transcribir al terminar{de_eco}")
+            texto = f"La transcripción está incompleta: quedaron {int(round(resto))} s de audio sin transcribir al terminar{de_eco}."
             self.avisos.append(texto)
             self.emitir("aviso", mensaje=texto, componente="transcripcion", grave=True, prioridad="fijo")
+        self._registrar_resumen_transcripcion(tr)
+
+    @staticmethod
+    def _registrar_resumen_transcripcion(tr) -> None:
+        """Una línea al registro con las medidas de toda la reunión (nunca contenido): lo que hace falta para saber si la máquina daba para ella."""
+        def n(nombre: str) -> float:
+            return float(getattr(tr, nombre, 0.0) or 0.0)
+        audio, calculo = n("audio_total_s"), n("calculo_total_s")
+        if audio <= 0:
+            return
+        lat = getattr(tr, "latencia_max", None)
+        lat = lat if isinstance(lat, dict) else {}
+        registrar_linea(f"transcripcion resumen audio={audio:.0f}s calculo={calculo:.0f}s vel_media={'-' if calculo <= 0 else f'{audio / calculo:.1f}x'} "
+                        f"lat_max_reunion={float(lat.get('reunion', 0.0)):.0f}s lat_max_micro={float(lat.get('yo', 0.0)):.0f}s "
+                        f"rezagado_total={n('rezagado_total_s'):.0f}s perdidos={n('perdidos_s'):.0f}s eco_descartado={n('eco_descartado_s'):.0f}s "
+                        f"aplazados={int(n('tramos_aplazados'))} rezagados={int(n('tramos_rezagados'))} reintentos={int(n('reintentos'))}")
 
     async def lanzar_agentes_cierre(self) -> dict:
         """ola 4: el usuario confirma, en la revisión de una reunión en modo solo local, que SÍ se lancen los agentes del cierre (resumen final y cambios de contexto).

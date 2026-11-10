@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import gc
-import queue
 import re
 import threading
 import time
@@ -178,7 +177,8 @@ def decidir_idioma(probs, duracion_s: float, ultimo: str | None, idiomas_auto=("
 #    tramos frente a la ventana de 30 s con beam 5: con beam 2 aún se pierde un 4,8 % en tramos largos; con beam 3, nada, y cuesta lo mismo.
 # 3. TOPE DE TOKENS proporcional a la duración (`tope_tokens`): corta los bucles antes de que llenen la ventana.
 # 4. UN REINTENTO, en rápido, si una pasada falla (p. ej. sin memoria): el tramo no se pierde a la primera.
-# Los tramos se transcriben de uno en uno y en orden de llegada: cada texto es de SU tramo y la sesión los recibe en el orden de siempre.
+# Los tramos se transcriben de uno en uno: cada texto es de SU tramo y lleva su minuto (`t_inicio`). Cuál se toma después lo decide la cola
+# con prioridades de más abajo; por eso el texto puede llegar a la sesión fuera de orden, y quien lo enseña lo ordena por su minuto.
 # (Se probó juntar varios tramos en una pasada: con la ventana ajustada ya no ahorra nada y reparte mal el texto entre los tramos.)
 # Constantes, no preferencias: el usuario no tiene que elegir entre directo y calidad.
 COLA_ALCANCE_S = 6.0      # audio esperando en la cola (sin contar el tramo que se toma) a partir del cual se pasa al modo rápido
@@ -195,12 +195,23 @@ TOKENS_POR_S = 10         # holgura sobre el habla rápida (medido con el tokeni
 TOKENS_MARGEN = 24        # suelo para tramos muy cortos («sí, vale, de acuerdo, lo vemos el lunes»)
 MAX_TOKENS_WHISPER = 448  # faster-whisper rechaza la llamada si prompt + max_new_tokens pasa de aquí
 TOPE_TOKENS_SEGURO = 120  # sin tokenizador para contar el prompt (peor caso ≈330 tokens), por encima de esto no se pasa tope
-# Cola de baja prioridad: los tramos que `encolar(..., aplazar=True)` marca (p. ej. un Micro que probablemente solo es eco de Reunión) se
-# transcriben igualmente, pero solo cuando no hay ningún tramo normal esperando: el texto útil no se retrasa por ellos.
-APLAZADO_MAX_S = 20.0     # tope de espera de un tramo aplazado: con la cola normal siempre llena (reunión muy cargada) nunca le tocaría, y
-                          # un tramo aplazado ha de salir tarde, pero salir; pasado esto se atiende antes que los normales
-_DESPERTAR = object()     # marca que `encolar` deja en la cola normal al aplazar un tramo: despierta al hilo si espera en ella, para que el
-                          # aplazado salga enseguida y no tras el `timeout` de la cola normal. No es audio ni cuenta para nada
+# COLA CON PRIORIDADES. Un solo hilo y un solo modelo atienden los dos canales y un tramo no se interrumpe a medias: lo único que se decide
+# es cuál se toma después. La regla busca que lo que se lee en directo sea lo último que se ha dicho, aunque la máquina no dé para todo:
+#   1. NORMALES: lo que acaba de llegar. Primero Reunión (lo que dicen los demás) y después el Micro (lo que ha dicho uno mismo es lo que
+#      menos urge leer); dentro de cada canal, en orden de llegada.
+#   2. REZAGADOS: un normal que lleva más de RETRASO_TOPE_S esperando ya no sirve en directo: deja de frenar a los que vienen detrás y se
+#      transcribe en los huecos (pausas, final de la reunión), del más reciente al más antiguo y siempre en modo rápido.
+#   3. APLAZADOS: los tramos que `encolar(..., aplazar=True)` marca (un Micro que probablemente solo es eco de Reunión). Solo cuando no
+#      queda nada de lo anterior. NUNCA se adelantan a un normal: una versión anterior los atendía antes que los normales al cumplir 20 s
+#      de espera y, con eco continuo, el hilo solo transcribía ecos mientras Reunión se retrasaba un segundo por cada segundo de reunión.
+# Las dos colas de baja prioridad tienen un presupuesto de audio. Lo que no cabe se descarta empezando por lo más antiguo y SE CUENTA, con
+# su minuto (`tomar_descartes`): un rezagado descartado es audio perdido (`perdidos_s`); un aplazado descartado, eco sin transcribir.
+RETRASO_TOPE_S = 30.0     # espera a partir de la cual un tramo normal pasa a rezagado: el retraso que se ve en directo no crece más allá
+REZAGADO_TOPE_S = 480.0   # audio rezagado que se guarda para después; a la velocidad habitual cabe en la espera del cierre (600 s)
+APLAZADO_TOPE_S = 120.0   # audio aplazado (eco probable) que se guarda; lo que pase de aquí se descarta, el más antiguo primero
+ESPERA_HILO_S = 0.3       # sin nada que transcribir, cada cuánto mira el hilo si debe parar
+NORMAL, REZAGADO, APLAZADO = "normal", "rezagado", "aplazado"   # clase de un tramo en el momento de tomarlo
+FUENTE_PRIORITARIA = "reunion"
 
 
 def ventana_frames(duracion_s: float, margen_s: float = MARGEN_VENTANA_S) -> int:
@@ -340,19 +351,29 @@ def es_copia_del_prompt(texto: str, prompt: str, vocabulario=(), continuidad: st
 
 
 class Transcriptor:
+    tope_retraso_s: float | None = RETRASO_TOPE_S   # None = orden de llegada estricto, sin prioridad entre fuentes ni rezagados (el dictado)
+
     def __init__(self, config, on_texto):
         """`on_texto(fuente, t_inicio, texto)` se llama desde el hilo del transcriptor."""
         self.config, self.on_texto = config, on_texto
         self.estado = "sin_cargar"  # sin_cargar | cargando | listo | error
         self.error = ""
         self._modelo = None
-        self._cola: queue.Queue = queue.Queue()
-        self._pendiente_s = 0.0     # TODO el audio pendiente o en curso: normal + aplazado
+        # Las tres colas guardan (fuente, audio, t_inicio, instante de encolado) en orden de llegada y solo se tocan con `_lock` cogido.
+        self._normales: deque = deque()    # lo que toca transcribir ya
+        self._rezagados: deque = deque()   # normales que superaron `tope_retraso_s`: se atienden del final (el más reciente) al principio
+        self._aplazados: deque = deque()   # baja prioridad (eco probable)
+        self._pendiente_s = 0.0     # TODO el audio pendiente o en curso: normal + rezagado + aplazado
+        self._rezagado_s = 0.0      # la parte rezagada de `_pendiente_s`
         self._aplazado_s = 0.0      # la parte aplazada de `_pendiente_s`
-        self._aplazados: deque = deque()   # (fuente, audio, t_inicio, instante de encolado), en orden de llegada; bajo `_lock`
-        self._n_normales = 0        # tramos normales en `_cola` (sin contar marcas de despertar), bajo `_lock`: para `vacio`
+        self._en_curso = None       # (clase, fuente, instante de encolado, segundos de audio) del tramo que se está transcribiendo
+        self._descartes: deque = deque(maxlen=1000)   # (fuente, t_inicio, segundos, motivo) de lo descartado por presupuesto
         self.tramos_aplazados = 0   # tramos encolados como aplazados en esta ejecución (diagnóstico)
+        self.tramos_rezagados = 0   # tramos normales que pasaron a rezagados (diagnóstico)
+        self.rezagado_total_s = 0.0   # audio que pasó a rezagado en esta ejecución, se transcribiera después o no
+        self.eco_descartado_s = 0.0   # audio aplazado descartado sin transcribir por no caber en su presupuesto
         self._lock = threading.Lock()
+        self._hay = threading.Condition(self._lock)   # despierta al hilo cuando entra un tramo o hay que parar
         self._parar = threading.Event()
         self._hilo: threading.Thread | None = None
         self.prompt = ""            # tema de la reunión («Reunión de trabajo: X.»); con vocabulario y continuidad forma el initial_prompt
@@ -375,8 +396,11 @@ class Transcriptor:
         self.reintentos = 0      # pasadas que fallaron y se repitieron en rápido
         self.perdidos_s = 0.0    # segundos de audio que no se pudieron transcribir (fallo también en el reintento, o modelo sin cargar)
         self.ultimo_fallo = ""   # tipo de la última excepción que hizo perder un tramo (sin mensaje: puede llevar texto)
-        self.latencia_s = None   # del último tramo: segundos entre que se cerró (se encoló) y que su texto quedó entregado
-        self._espera: deque = deque()               # instante en que se encoló cada tramo pendiente, en orden (para `retraso_s`)
+        self.latencia_s = None   # del último tramo normal: segundos entre que se cerró (se encoló) y que su texto quedó entregado
+        self.latencias: dict[str, float] = {}       # lo mismo, por fuente (yo / reunion)
+        self.latencia_max: dict[str, float] = {}    # la mayor de esta ejecución, por fuente
+        self.audio_total_s = 0.0     # audio transcrito en esta ejecución y lo que costó calcularlo: la velocidad media, sin el ruido
+        self.calculo_total_s = 0.0   # de un tramo suelto
         self._t_deteccion: dict[str, float] = {}    # cuándo se detectó por última vez el idioma de cada fuente
         self._frames_ventana = 0                    # ventana del codificador para la llamada en curso (0 = los 30 s de Whisper)
 
@@ -397,11 +421,42 @@ class Transcriptor:
         return max(0.0, self._aplazado_s)
 
     @property
-    def retraso_s(self) -> float:
-        """Cuánto lleva esperando el tramo pendiente más antiguo (0 si no hay ninguno): lo que va la transcripción por detrás del directo.
-        `pendiente_s` suma el audio de los dos canales; esto es tiempo de reloj. Solo cuenta los tramos normales: un eco aplazado no es retraso."""
+    def rezagado_s(self) -> float:
+        """Audio que no llegó a tiempo para el directo y espera un hueco (o está en curso); `pendiente_s` lo incluye."""
         with self._lock:
-            return max(0.0, time.monotonic() - self._espera[0]) if self._espera else 0.0
+            self._ordenar(time.monotonic())   # un normal que ya pasó del tope cuenta aquí aunque nadie haya encolado ni preguntado el retraso
+            return max(0.0, self._rezagado_s)
+
+    @property
+    def retraso_s(self) -> float:
+        """Cuánto lleva esperando el tramo normal más antiguo, contando el que está en curso (0 si no hay ninguno): lo que va la transcripción
+        por detrás del directo. `pendiente_s` suma el audio de los dos canales; esto es tiempo de reloj. No cuentan los rezagados (ya se dan
+        por tardíos: `rezagado_s`) ni los aplazados (un eco no es retraso)."""
+        return self.retraso_de(None)
+
+    @property
+    def retraso_reunion_s(self) -> float:
+        """`retraso_s` solo de Reunión: lo que van por detrás del directo las palabras de los demás."""
+        return self.retraso_de(FUENTE_PRIORITARIA)
+
+    def retraso_de(self, fuente: str | None) -> float:
+        """`retraso_s` de una sola fuente (yo / reunion); None = la que más retraso lleve."""
+        with self._lock:
+            ahora = time.monotonic()
+            self._ordenar(ahora)   # lo que ya pasa del tope deja de contar aquí y pasa a `rezagado_s`: la cifra y la cola dicen lo mismo
+            viejo = next((x[3] for x in self._normales if fuente is None or x[0] == fuente), None)
+            c = self._en_curso
+            if c and c[0] == NORMAL and c[2] is not None and (fuente is None or c[1] == fuente):
+                viejo = c[2] if viejo is None else min(viejo, c[2])
+            return max(0.0, ahora - viejo) if viejo is not None else 0.0
+
+    def tomar_descartes(self) -> list[tuple[str, float, float, str]]:
+        """Lo descartado por presupuesto desde la última llamada: (fuente, t_inicio, segundos, motivo), motivo `saturacion` (un rezagado:
+        audio perdido) o `eco` (un aplazado). Quien lo recoge lo deja escrito con su minuto: nada se pierde en silencio."""
+        with self._lock:
+            d = list(self._descartes)
+            self._descartes.clear()
+        return d
 
     def iniciar(self) -> None:
         self._parar.clear()
@@ -448,54 +503,106 @@ class Transcriptor:
             ventana.frames = frames
 
     def encolar(self, fuente: str, audio: np.ndarray, t_inicio: float, aplazar: bool = False) -> None:
-        """`aplazar`: tramo de baja prioridad (probable eco): se transcribe cuando no hay normales esperando, o al cumplir `APLAZADO_MAX_S`."""
+        """`aplazar`: tramo de baja prioridad (probable eco): se transcribe solo cuando no queda ningún otro esperando."""
         dur = audio.size / SR_WHISPER
         if self.estado == "error":   # sin modelo no hay quien vacíe la cola: no se acumula audio en memoria, se cuenta como perdido
             self.perdidos_s += dur
             return
-        with self._lock:   # la cola, `_espera` y los contadores cambian juntos: con dos hilos de captura, el mismo orden en todos
+        with self._hay:   # las colas y los contadores cambian juntos: con dos hilos de captura, el mismo orden en todos
+            ahora = time.monotonic()
             self._pendiente_s += dur
             if aplazar:
                 self._aplazado_s += dur
                 self.tramos_aplazados += 1
-                self._aplazados.append((fuente, audio, t_inicio, time.monotonic()))   # no toca `_espera`: no es retraso
-                self._cola.put(_DESPERTAR)   # tras añadirlo a `_aplazados`: si el hilo despierta, ya lo encuentra
+                self._aplazados.append((fuente, audio, t_inicio, ahora))
             else:
-                self._espera.append(time.monotonic())
-                self._n_normales += 1
-                self._cola.put((fuente, audio, t_inicio))
+                self._normales.append((fuente, audio, t_inicio, ahora))
+            self._ordenar(ahora)   # también aquí: si el hilo se queda atascado en un tramo, las colas no crecen sin límite en memoria
+            self._hay.notify()
 
     def vacio(self) -> bool:
         with self._lock:
-            return self._n_normales <= 0 and not self._aplazados and self._pendiente_s <= 0.01
+            return not (self._normales or self._rezagados or self._aplazados) and self._pendiente_s <= 0.01
+
+    def _ordenar(self, ahora: float) -> None:
+        """Con `_lock` cogido: pasa a rezagados los normales que ya no llegan a tiempo y recorta las colas de baja prioridad a su presupuesto."""
+        tope = self.tope_retraso_s
+        if tope is not None:
+            while self._normales and ahora - self._normales[0][3] > tope:
+                item = self._normales.popleft()
+                dur = item[1].size / SR_WHISPER
+                self._rezagados.append(item)
+                self._rezagado_s += dur
+                self.rezagado_total_s += dur
+                self.tramos_rezagados += 1
+        # el tramo en curso ya no está en su cola: cuenta en `_rezagado_s`/`_aplazado_s` pero no contra el presupuesto (no se puede descartar)
+        while self._rezagados and self._rezagado_s - self._en_vuelo_s(REZAGADO) > REZAGADO_TOPE_S:
+            self._descartar(self._rezagados.popleft(), "saturacion")
+        while self._aplazados and self._aplazado_s - self._en_vuelo_s(APLAZADO) > APLAZADO_TOPE_S:
+            self._descartar(self._aplazados.popleft(), "eco")
+
+    def _en_vuelo_s(self, clase: str) -> float:
+        """Con `_lock` cogido: segundos del tramo en curso si es de esa clase, 0 si no."""
+        c = self._en_curso
+        return c[3] if c is not None and c[0] == clase else 0.0
+
+    def _descartar(self, item, motivo: str) -> None:
+        """Con `_lock` cogido: un tramo que no cabe en su presupuesto deja la cola sin transcribirse, y queda apuntado."""
+        fuente, audio, t0, _instante = item
+        dur = audio.size / SR_WHISPER
+        self._pendiente_s -= dur
+        if motivo == "eco":
+            self._aplazado_s -= dur
+            self.eco_descartado_s += dur
+        else:
+            self._rezagado_s -= dur
+            self.perdidos_s += dur
+            if self.estado != "error":   # con el modelo caído el fallo real (el que se muestra) no se tapa con la saturación
+                self.ultimo_fallo = "saturación"
+        self._descartes.append((fuente, t0, dur, motivo))
+
+    def _tomar(self):
+        """Con `_lock` cogido: saca de las colas el próximo tramo, (fuente, audio, t0, clase, instante), o devuelve None si no hay.
+        El orden es el de COLA CON PRIORIDADES: normales (Reunión antes que Micro), rezagados del más reciente al más antiguo y aplazados."""
+        self._ordenar(time.monotonic())
+        if self._normales:
+            i = 0
+            if self.tope_retraso_s is not None:
+                i = next((k for k, x in enumerate(self._normales) if x[0] == FUENTE_PRIORITARIA), 0)
+            item, clase = self._normales[i], NORMAL
+            del self._normales[i]
+        elif self._rezagados:
+            item, clase = self._rezagados.pop(), REZAGADO
+        elif self._aplazados:
+            item, clase = self._aplazados.popleft(), APLAZADO
+        else:
+            return None
+        fuente, audio, t0, instante = item
+        self._en_curso = (clase, fuente, instante, audio.size / SR_WHISPER)
+        return fuente, audio, t0, clase, instante
 
     def _siguiente(self):
-        """Próximo tramo a transcribir, (fuente, audio, t0, aplazado), o None si no hay (tras esperar un poco en la cola normal).
-        Orden: el aplazado más antiguo si ya llegó a `APLAZADO_MAX_S`; si no, el siguiente normal; si no hay normales, el aplazado más antiguo."""
-        with self._lock:
-            if self._aplazados and time.monotonic() - self._aplazados[0][3] >= APLAZADO_MAX_S:
-                return (*self._aplazados.popleft()[:3], True)
-        while True:   # normales ya esperando; las marcas de despertar no son tramos y se descartan
-            try:
-                item = self._cola.get_nowait()
-            except queue.Empty:
-                break
-            if item is not _DESPERTAR:
-                return self._tomar_normal(item)
-        with self._lock:
-            if self._aplazados:   # un aplazado que llegue desde aquí deja su marca en `_cola`: el `get` de abajo no lo hace esperar
-                return (*self._aplazados.popleft()[:3], True)
-        try:
-            item = self._cola.get(timeout=0.3)
-        except queue.Empty:
-            self.alcance = False
-            return None
-        return None if item is _DESPERTAR else self._tomar_normal(item)
+        """Próximo tramo a transcribir, (fuente, audio, t0, clase, instante), o None si no hay (tras esperar un poco a que entre alguno)."""
+        with self._hay:
+            tramo = None   # tras `detener()` no se toma nada: nadie usaría el texto y el tramo seguiría ocupando el hilo
+            if not self._parar.is_set():
+                tramo = self._tomar()
+                if tramo is None:
+                    self._hay.wait(ESPERA_HILO_S)
+                    if not self._parar.is_set():
+                        tramo = self._tomar()
+            if tramo is None:
+                self.alcance = False
+            return tramo
 
-    def _tomar_normal(self, item):
-        with self._lock:
-            self._n_normales -= 1
-        return (*item, False)
+    def _cargas(self, clase: str, dur: float) -> tuple[float, float]:
+        """Con `_lock` cogido y el tramo de `clase` y `dur` s ya tomado: (en_cola_s, normal_detras_s). `en_cola_s` es lo que espera detrás y decide
+        el modo rápido: a un normal no le cuenta el audio aplazado (los ecos no bajan la calidad del útil), pero el rezagado sí cuenta (es texto
+        útil que falta, y mientras lo haya se trabaja en rápido para recuperarlo antes). `normal_detras_s` es solo el audio NORMAL que espera:
+        el tramo en curso ya sale de las cuentas de su clase al acabar, así que solo se resta si es normal; nunca negativo."""
+        en_cola_s = self._pendiente_s - dur - (0.0 if clase == APLAZADO else self._aplazado_s)
+        normal_detras_s = self._pendiente_s - self._aplazado_s - self._rezagado_s - (dur if clase == NORMAL else 0.0)
+        return en_cola_s, max(0.0, normal_detras_s)
 
     def _bucle(self) -> None:
         self.estado = "cargando"
@@ -516,27 +623,27 @@ class Transcriptor:
             tramo = self._siguiente()
             if tramo is None:
                 continue
-            fuente, audio, t0, aplazado = tramo
+            fuente, audio, t0, clase, instante = tramo
             dur = audio.size / SR_WHISPER
             with self._lock:
-                # lo que espera DETRÁS del tramo que se toma; a un normal no le cuenta el audio aplazado (los ecos no bajan la calidad del útil)
-                en_cola_s = self._pendiente_s - dur - (0.0 if aplazado else self._aplazado_s)
-                normal_detras_s = self._pendiente_s - self._aplazado_s - (0.0 if aplazado else dur)
-            rapido = en_cola_s >= COLA_ALCANCE_S
-            self.alcance = normal_detras_s >= COLA_ALCANCE_S   # «alcanzando el directo» habla del texto útil: una cola de ecos no lo enciende
+                en_cola_s, normal_detras_s = self._cargas(clase, dur)
+            rapido = clase == REZAGADO or en_cola_s >= COLA_ALCANCE_S
+            self.alcance = normal_detras_s >= COLA_ALCANCE_S   # «alcanzando el directo» habla del texto en directo: ni un eco ni un atraso ya aceptado lo encienden
             if rapido:
                 self.tramos_rapidos += 1
-            self._procesar(fuente, audio, t0, rapido, aplazado)
+            self._procesar(fuente, audio, t0, rapido, clase, instante)
             del audio
             if self.vacio():
                 self.alcance = False
 
-    def _procesar(self, fuente: str, audio: np.ndarray, t0: float, rapido: bool, aplazado: bool = False) -> None:
-        """Transcribe un tramo y entrega su texto. Si la pasada falla se repite UNA vez en rápido; si vuelve a fallar, el tramo cuenta como perdido."""
+    def _procesar(self, fuente: str, audio: np.ndarray, t0: float, rapido: bool, clase: str = NORMAL, instante: float | None = None) -> None:
+        """Transcribe un tramo y entrega su texto. Si la pasada falla se repite UNA vez en rápido; si vuelve a fallar, el tramo cuenta como perdido.
+        `clase` e `instante` (cuándo se encoló) vienen de `_siguiente`: deciden qué contadores se tocan al acabar."""
         dur = audio.size / SR_WHISPER
         self._n_tarea += 1
         ident = self._n_tarea
-        etiqueta = {(False, True): "tramo · rápido", (True, False): "eco probable", (True, True): "eco probable · rápido"}.get((aplazado, rapido))
+        etiqueta = {(NORMAL, True): "tramo · rápido", (APLAZADO, False): "eco probable", (APLAZADO, True): "eco probable · rápido",
+                    (REZAGADO, False): "tramo atrasado", (REZAGADO, True): "tramo atrasado · rápido"}.get((clase, rapido))
         self._avisar("inicio", ident, fuente=fuente, audio_s=dur, **({"etiqueta": etiqueta} if etiqueta else {}))
         ini = time.perf_counter()
         try:
@@ -551,22 +658,32 @@ class Transcriptor:
             calc = time.perf_counter() - ini
             if calc > 0:
                 self.velocidad_x = dur / calc
-            texto = self._entregar(fuente, t0, " ".join(t for _i, t, _p in segmentos), [w for _i, _t, p in segmentos for w in p])
+            self.audio_total_s += dur
+            self.calculo_total_s += calc
+            # un rezagado se transcribe fuera de su sitio: su última frase no sirve de continuidad al tramo que venga después
+            texto = self._entregar(fuente, t0, " ".join(t for _i, t, _p in segmentos), [w for _i, _t, p in segmentos for w in p],
+                                   continuidad=clase != REZAGADO)
             self._avisar("fin", ident, ok=True, ms=int(calc * 1000), palabras=len(texto.split()))
         except Exception as e:  # noqa: BLE001
             self.error = f"Fallo al transcribir un tramo: {e}"
-            self.perdidos_s += dur
-            self.ultimo_fallo = type(e).__name__
+            with self._lock:   # `perdidos_s` también lo sube `_descartar`, desde los hilos de captura
+                self.perdidos_s += dur
+                self.ultimo_fallo = type(e).__name__
             self._avisar("fin", ident, ok=False, error=self.error, ms=int((time.perf_counter() - ini) * 1000))
         finally:
             with self._lock:   # el buffer lo descarta quien llama
                 self._pendiente_s -= dur
-                if aplazado:
-                    self._aplazado_s -= dur   # ni `_espera` ni `latencia_s`: miden solo los tramos normales
-                elif self._espera:
-                    self.latencia_s = round(time.monotonic() - self._espera.popleft(), 2)
+                self._en_curso = None
+                if clase == APLAZADO:
+                    self._aplazado_s -= dur   # la latencia mide solo los tramos normales: ni un eco ni un rezagado son «el directo»
+                elif clase == REZAGADO:
+                    self._rezagado_s -= dur
+                elif instante is not None:
+                    lat = round(max(0.0, time.monotonic() - instante), 2)
+                    self.latencia_s = self.latencias[fuente] = lat
+                    self.latencia_max[fuente] = max(lat, self.latencia_max.get(fuente, 0.0))
 
-    def _entregar(self, fuente: str, t0: float, texto: str, palabras_whisper: list) -> str:
+    def _entregar(self, fuente: str, t0: float, texto: str, palabras_whisper: list, continuidad: bool = True) -> str:
         """Filtra, corrige y entrega el texto de un tramo. Devuelve el texto entregado ("" si se descartó)."""
         texto = filtrar_texto(texto)
         if texto and es_copia_del_prompt(texto, self.prompt_para(fuente), self.vocabulario, self._ultima.get(fuente, "")):
@@ -574,7 +691,8 @@ class Transcriptor:
         if not texto or self._parar.is_set():   # tras `detener` no se entrega nada: la sesión ya está cerrada (o es otra)
             return ""
         texto = corregir_glosario(texto, self.vocabulario, self.vocabulario_curado)   # mayúsculas y acentos del glosario, antes de entrar en la sesión
-        self._ultima[fuente] = ultima_frase(texto)
+        if continuidad:
+            self._ultima[fuente] = ultima_frase(texto)
         pal = alinear_palabras(palabras_whisper, texto, self._umbral_dudosa()) if (self.entrega_palabras and palabras_whisper) else []
         if pal:
             self.on_texto(fuente, t0, texto, palabras=pal)
@@ -723,5 +841,7 @@ class Transcriptor:
 
     def detener(self) -> None:
         self._parar.set()
+        with self._hay:
+            self._hay.notify_all()   # si el hilo espera un tramo, que vea ya que debe parar
         if self._hilo:
             self._hilo.join(timeout=3)

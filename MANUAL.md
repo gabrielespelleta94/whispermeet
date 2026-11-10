@@ -26,6 +26,14 @@ Durante la reunión ves la transcripción en directo (el micrófono se llama «M
 - **Modo reunión**: compacta la app en dos paneles laterales, siempre encima, para dejar el centro a Teams.
 - Si Teams empieza una llamada, la app te lo propone con un aviso; nunca graba sola.
 
+Si tu equipo no da abasto para transcribir todo lo que se dice, la app prioriza: primero lo que dicen los demás («Reunión») y después tu micro. Lo que lleva más de medio minuto esperando se transcribe después, en cuanto hay un hueco, y aparece en su minuto, entre las líneas que ya había (el orden de la transcripción es siempre el del reloj de la reunión, no el de llegada). El eco de los altavoces que recoge tu micro se deja para el final y, si se acumula, no se transcribe. El aviso de la cabecera dice qué pasa:
+
+- «Transcripción saturada: N s de audio se transcribirán más tarde.» Hay audio atrasado esperando su hueco; el texto en directo va al día, y lo atrasado llegará en su minuto. Si el atraso acumulado supera los ocho minutos, lo más antiguo se pierde y se avisa.
+- «El texto del micro va con N s de retraso; el de la reunión va al día.» Lo que dicen los demás se lee casi en directo; tu micro espera.
+- «Transcripción con N s de retraso · alcanzando el directo». Van atrasados los dos canales y la app transcribe en modo rápido, algo menos preciso, para recuperar.
+
+Lo que se pierde por saturación y el eco que no se llegó a transcribir quedan anotados en las **Incidencias** del acta, con su tramo horario.
+
 Pulsa **Terminar** al acabar. En la **revisión** ves el resumen final, los cambios propuestos al contexto del proyecto y un borrador de correo de cierre (se copia; la app no envía nada). Los cambios se aceptan o se rechazan uno a uno, y solo entonces se escribe algo en el contexto.
 
 ## 3. Proyectos y contexto
@@ -84,7 +92,7 @@ El botón **Sesiones** de la cabecera reúne todas las sesiones pasadas y la lis
 - **El panel «Antes de la primera reunión» dice que falta algo.** Lee «Qué hacer» en esa fila, arréglalo y pulsa «Volver a comprobar». Si es el modelo, ejecuta `instalar.bat` y acepta la descarga.
 - **«claude» no se encuentra, o el análisis falla por la sesión.** Abre una terminal nueva (para que vea el PATH actualizado), escribe `claude` y entra con tu cuenta. Después, «Volver a comprobar».
 - **No se transcribe lo que dicen los demás.** Falta el audio del sistema: el panel avisa si Windows no muestra ninguna salida de audio. Revisa en Ajustes que «Audio de la reunión» apunta a los altavoces o auriculares que usas.
-- **La transcripción va con retraso.** Baja la precisión en Ajustes o el ancho de búsqueda, y cierra lo que gaste procesador. Añadir la jerga del proyecto al vocabulario mejora el acierto sin cambiar la velocidad.
+- **La transcripción va con retraso.** Baja la precisión en Ajustes o el ancho de búsqueda, y cierra lo que gaste procesador. Añadir la jerga del proyecto al vocabulario mejora el acierto sin cambiar la velocidad. Con auriculares no hay eco de altavoces que transcribir, y el equipo se dedica a lo que dicen los demás y a tu voz. Qué significa cada aviso de retraso, en el apartado 2.
 - **Un término se transcribe mal una y otra vez.** Añádelo al vocabulario de Ajustes tal como quieres verlo escrito.
 - **Mi carpeta de Knowledge «no existe» aunque está en OneDrive.** Puede estar sin conexión o sin sincronizar; la app no abre los ficheros que están solo en la nube. Espera a que se sincronice o vacía el campo.
 - **Ajustes no me deja cambiar la carpeta de proyectos, el modelo de transcripción o la carpeta de Knowledge.** Hay una reunión en curso: termínala y repite el cambio. El resto de los ajustes sí se guardan mientras dura.

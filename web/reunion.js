@@ -33,6 +33,7 @@
   AP.hooks.pintarTrans = () => {
     const c = $("#r-trans");
     T.lineas.clear(); T.sep = null;
+    S.segmentos.sort(AP.ordenSegmento);   // por minuto, no por orden de llegada; S.segmentos se queda ordenado y `anadirSegmento` lo mantiene así
     const nodos = [];
     if (!S.segmentos.length) nodos.push(h("div", { class: "trans-vacio t-body" }, "Esperando a que alguien hable…"));
     S.segmentos.forEach((s, i) => nodos.push(lineaTrans(s, S.segmentos[i - 1])));
@@ -41,16 +42,48 @@
     $("#r-trans-n").textContent = "";
     if (UI.seguir) c.scrollTop = c.scrollHeight;
   };
+  // Las líneas se ordenan por minuto (`t`) y, a igualdad, por `id`: los textos llegan en el orden en que se transcriben, y un tramo atrasado llega
+  // minutos después con su minuto original. Las vecinas se miran en pantalla (`.lin`): el separador y las líneas que quitó el eco no cuentan.
+  const clave = (l) => ({ t: Number(l.dataset.t), id: Number(l.dataset.id) });
+  const lineaAnterior = (l) => { let p = l.previousElementSibling; while (p && !p.classList.contains("lin")) p = p.previousElementSibling; return p; };
+  const fuenteDeLinea = (l) => (l.classList.contains("yo") ? "yo" : "reunion");
+  const marcarCambia = (l) => { if (!l) return; const p = lineaAnterior(l); l.classList.toggle("cambia", !!p && fuenteDeLinea(p) !== fuenteDeLinea(l)); };
+  // Primera línea que se ve, al menos en parte (búsqueda binaria: están en orden en pantalla): ancla para no mover lo que el usuario lee
+  function primeraVisible(c) {
+    const ls = c.getElementsByClassName("lin");
+    let a = 0, b = ls.length - 1, r = null;
+    while (a <= b) { const m = (a + b) >> 1, l = ls[m]; if (l.offsetTop + l.offsetHeight > c.scrollTop) { r = l; b = m - 1; } else a = m + 1; }
+    return r;
+  }
   AP.hooks.anadirSegmento = (s) => {
     const c = $("#r-trans");
-    if (!S.segmentos.some((x) => x.id === s.id)) S.segmentos.push(s);
+    if (!S.segmentos.some((x) => x.id === s.id)) {
+      let i = S.segmentos.length;   // lo normal es que sea el último: se compara con él antes de buscar, y si no, de atrás hacia delante
+      while (i > 0 && AP.ordenSegmento(s, S.segmentos[i - 1]) < 0) i--;
+      S.segmentos.splice(i, 0, s);
+    }
     if (T.lineas.has(s.id)) return;
     const vacio = $(".trans-vacio", c); if (vacio) vacio.remove();
-    const previa = S.segmentos[S.segmentos.length - 2];
-    const el = lineaTrans(s, previa && previa.id !== s.id ? previa : null);
+    const el = lineaTrans(s, null);
     if (UI.seguir && !reducido()) el.classList.add("nueva");
-    c.append(el);
-    if (UI.seguir) c.scrollTop = c.scrollHeight; else $("#r-alfinal").hidden = false;
+    // Dónde va: delante de la primera línea en pantalla que debe ir detrás de esta (si no hay, al final, que es lo habitual). El separador «Analizado
+    // hasta» cuelga detrás de su línea y no se mueve: lo que cae por encima de la analizada queda encima de él y lo que cae justo después, debajo.
+    let sig = null;
+    for (let p = c.lastElementChild; p; p = p.previousElementSibling) {
+      if (!p.classList.contains("lin")) continue;
+      const k = clave(p);
+      if (k.t < s.t || (k.t === s.t && k.id < s.id)) break;
+      sig = p;
+    }
+    const leyendo = !UI.seguir && sig;
+    const ancla = leyendo ? primeraVisible(c) : null, y0 = ancla ? ancla.getBoundingClientRect().top : 0;
+    if (sig) c.insertBefore(el, sig); else c.append(el);
+    marcarCambia(el); marcarCambia(sig);   // la línea que queda justo después también cambia de vecina
+    if (UI.seguir) c.scrollTop = c.scrollHeight;
+    else {
+      if (ancla) c.scrollTop += ancla.getBoundingClientRect().top - y0;   // lo insertado por encima de lo que se lee no lo mueve (si el navegador ya lo compensó, la diferencia es 0)
+      if (el.getBoundingClientRect().top >= c.getBoundingClientRect().bottom) $("#r-alfinal").hidden = false;   // solo lo que queda por debajo de lo que se ve
+    }
   };
 
   // «Analizado hasta 30:00»: separador con filete que se mueve tras cada análisis (nunca atenúa lo ya leído)

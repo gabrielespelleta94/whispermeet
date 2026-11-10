@@ -6,7 +6,7 @@ Estado a 10 de noviembre de 2026. Recoge el análisis de punta a punta de la her
 
 | Área | Qué hay | Qué falta |
 |---|---|---|
-| Reunión en directo | Transcripción local con Whisper, tarjetas, objetivos, checks, asesor, equipo de agentes y eco aplazado en origen. | Validar el eco con sonido real de sala. |
+| Reunión en directo | Transcripción local con Whisper, tarjetas, objetivos, checks, asesor, equipo de agentes y eco aplazado en origen. Retraso acotado: cola con prioridades (Reunión primero, lo atrasado y el eco después), transcripción ordenada por minuto y aviso de estado con los tres casos. | Validar el eco con sonido real de sala y los límites de «Transcripción: retraso acotado». |
 | Documentos del proyecto | Lee `.md`, `.txt`, `.docx`, `.pptx` y `.pdf` como contexto. Mapa de documentos por tipo y aviso de los tipos que faltan (ola A); tipo corregible a mano, resumen de una línea de los documentos clave y tipo propuesto para lo ambiguo (ola B). | Leer `.xlsx`; que el mapa entre en la preparación sugerida y en el resumen del proyecto. |
 | Solución tal como está y modelo de datos | La plantilla `03-arquitectura-y-datos`, que se rellena a mano, y desde la ola B el Archivero: cobertura por faceta con el documento que lo dice y lo que falta. | Que proponga los huecos por el flujo de «aceptar cambios»; rellenar la plantilla a partir de lo que encuentra. |
 | Usuarios y roles | Desde la ola B, el Archivero extrae los perfiles y roles de la solución que digan los documentos (nunca personas). Las secciones de contactos se excluyen a propósito del contexto de la IA. | Interlocutores del proyecto, sin enviar datos personales al modelo. |
@@ -152,6 +152,20 @@ Medido en un portátil sin GPU, con 6 hilos y voz sintética en español con jer
 - `large-v3-turbo` es el que mejor reconoce la jerga, sobre todo en llamada, y queda como opción en Ajustes para equipos libres. Si aparece retraso, se vuelve a `small`.
 - `medium` queda descartado en este tipo de equipo: no sigue el ritmo de la conversación.
 - Con el micrófono lejos de quien habla fallan todos (entre el 27 % y más del 100 % de errores): ahí manda el micrófono, no el modelo.
+
+## Transcripción: retraso acotado
+
+Hecho el 10 de noviembre. En una reunión real la transcripción llegó a ir 561 s por detrás del directo y las líneas salían desordenadas: un solo hilo transcribe los dos canales y la regla anterior atendía el audio del micro que parecía eco de los altavoces antes que el de la reunión en cuanto llevaba 20 s esperando, de modo que con eco continuo el canal Reunión se quedaba sin turno. Ahora la cola tiene tres clases: lo normal (primero Reunión, después el Micro), lo atrasado (un tramo que lleva más de 30 s esperando: deja de contar como retraso del directo, se transcribe cuando no hay nada normal, el más reciente primero, hasta 480 s de audio; lo que pase se pierde y se avisa) y el eco probable (solo cuando no hay nada más, hasta 120 s; lo que pase se descarta y queda anotado en las incidencias del acta). La transcripción se pinta y se escribe por minuto, y el aviso de estado distingue saturación, retraso solo del micro y retraso de siempre. En una simulación con el código real y reloj falso (12 minutos de reunión hablando sin parar y eco en el micro, a 1,2× de capacidad), con la regla anterior el retraso llegaba a 499 s en el minuto 11 y solo se transcribían 168 de los 720 s; con la nueva, los 720 s de la reunión salen en directo con 7 s de latencia mediana (9 s de máxima) y no se pierde nada de ese canal.
+
+Lo que quedó fuera:
+- El hilo no interrumpe un tramo ya empezado: un tramo largo en curso retrasa lo que viene detrás.
+- Con la máquina por debajo de 1× para el canal Reunión, el directo ronda los 35-45 s y el resto llega después.
+- Si la máquina no da abasto ni siquiera para el canal Reunión, el Micro se queda sin turno (prioridad estricta de Reunión, sin reparto).
+- Mientras queda audio atrasado por transcribir, la transcripción sigue en modo rápido (algo menos precisa) aunque el texto en directo vaya al día.
+- El eco que el detector no reconoce compite como voz del micro y, si llena los 480 s, se da por perdido.
+- El eco detectado que pasa de 120 s en espera no se transcribe. Antes nunca se descartaba: solo cambiaba el orden.
+- La detección de eco no está validada con acústica real.
+- No hay marca visible de «llegó tarde» en la línea: una línea atrasada aparece en su minuto, entre las que ya estaban.
 
 ## Principios que no cambian
 

@@ -37,6 +37,20 @@
   // Retraso de la transcripción en segundos de reloj: lo que lleva esperando el tramo más antiguo (`retraso_s`). Un servidor anterior solo
   // manda `pendiente_s` (audio en cola, suma de los dos canales), que queda de respaldo.
   AP.retrasoDe = (tr) => (!tr ? 0 : tr.retraso_s != null ? tr.retraso_s : tr.pendiente_s || 0);
+  // Qué dice el aviso de la transcripción cuando va por detrás ("" si va al día). `retraso_s` ya solo cuenta lo que se transcribe en directo y
+  // rara vez pasa de unos 45 s: lo que se atrasa más pasa a `rezagado_s` y llega después, con su minuto. Con un servidor anterior (sin los campos
+  // nuevos) queda el texto de siempre. `umbral`: retraso a partir del cual se avisa de un retraso (la línea del equipo espera más que el respaldo).
+  AP.avisoRetraso = (tr, umbral = 3) => {
+    if (!tr) return "";
+    if (tr.rezagado_s > 1) return `Transcripción saturada: ${Math.round(tr.rezagado_s)} s de audio se transcribirán más tarde.`;
+    const r = AP.retrasoDe(tr);
+    if (r <= umbral) return "";
+    if (tr.retraso_reunion_s != null && tr.retraso_reunion_s <= 3) return `El texto del micro va con ${Math.round(r)} s de retraso; el de la reunión va al día.`;
+    return `Transcripción con ${Math.round(r)} s de retraso${tr.rapido ? " · alcanzando el directo" : ""}`;
+  };
+  // Orden cronológico de la transcripción: por minuto y, a igualdad, por `id` (que va por orden de llegada y no cambia). Los textos no llegan en orden:
+  // un tramo atrasado llega minutos después con su minuto original y Micro y Reunión se intercalan.
+  AP.ordenSegmento = (a, b) => (a.t - b.t) || (a.id - b.id);
   const UI = { proyectos: [], sel: undefined, proy: null, sesionPlan: undefined, temaAuto: "", cad: 5, decisiones: {}, info: null, ultimoSeg: 0, seguir: true };
 
   // Movimiento reducido: las animaciones hechas con la Web Animations API (avisos que vuelan, trazos…) duran 0 ms; el CSS ya las desactiva por su lado.
@@ -538,15 +552,21 @@
     if (AP.hooks.pintarTrans) return AP.hooks.pintarTrans();
     const c = $("#r-trans");
     c.replaceChildren();
+    S.segmentos.sort(AP.ordenSegmento);   // S.segmentos queda ordenado por minuto: quien lo lea no depende del orden de llegada
     if (!S.segmentos.length) c.append(h("div", { class: "trans-vacio" }, "Esperando a que alguien hable…"));
     S.segmentos.forEach((s) => c.append(lineaTrans(s)));
   }
   function añadirSegmento(s) {
     if (AP.hooks.anadirSegmento) return AP.hooks.anadirSegmento(s);
     const c = $("#r-trans");
-    if (!S.segmentos.some((x) => x.id === s.id)) S.segmentos.push(s);
+    let i = S.segmentos.length;
+    if (!S.segmentos.some((x) => x.id === s.id)) {
+      while (i > 0 && AP.ordenSegmento(s, S.segmentos[i - 1]) < 0) i--;   // lo normal es el final; si no, su sitio por minuto
+      S.segmentos.splice(i, 0, s);
+    } else return;
     const vacio = $(".trans-vacio", c); if (vacio) vacio.remove();
-    c.append(lineaTrans(s));
+    const sig = S.segmentos[i + 1], ref = sig && $(`[data-id="${sig.id}"]`, c);
+    if (ref) c.insertBefore(lineaTrans(s), ref); else c.append(lineaTrans(s));
     if (UI.seguir) c.scrollTop = c.scrollHeight; else $("#r-alfinal").hidden = false;
   }
   $("#r-trans").addEventListener("scroll", () => {
@@ -643,7 +663,7 @@
     if (S.simulacion) t = "Simulación sin audio";
     else if (tr) t = tr.estado === "cargando" ? "Cargando el modelo de transcripción…" : tr.estado === "error" ? tr.error
       : S.estado === "terminando" && tr.pendiente_s > 1 ? `Transcribiendo lo que queda: ${Math.round(tr.pendiente_s)} s de audio…`
-      : AP.retrasoDe(tr) > 3 ? `Transcripción con ${Math.round(AP.retrasoDe(tr))} s de retraso${tr.rapido ? " · alcanzando el directo" : ""}` : "";
+      : AP.avisoRetraso(tr);
     $("#r-estado-trans").textContent = t;
     pie();
   }

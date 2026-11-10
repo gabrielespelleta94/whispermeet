@@ -350,7 +350,9 @@ class Sesion:
                     L.append(f"- [{t.get('minuto') or '--:--'}] **{nombre}:** {t['texto']}{resp}{ref}")
                 L.append("")
             L += ["## Transcripción", ""]
-            for s in self.segmentos:
+            # por su minuto: la cola del transcriptor puede entregar un tramo de Reunión antes que otro anterior del Micro (`segmentos` queda
+            # en orden de llegada: los análisis cuentan con él)
+            for s in sorted(self.segmentos, key=lambda x: (x.t, x.id)):
                 if s.texto.strip():   # un Micro que era todo eco de Reunión no se escribe
                     L.append(f"[{mmss(s.t)}] **{NOMBRE_FUENTE.get(s.fuente, s.fuente)}:** {s.texto}")
             return "\n".join(L) + "\n"

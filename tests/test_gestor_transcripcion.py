@@ -189,7 +189,7 @@ def test_vigilar_primera_perdida_deja_incidencia_aviso_evento_y_linea_de_registr
     (ev,) = avisos_ev(gestor)
     assert ev["componente"] == "transcripcion" and ev["mensaje"] == G.TEXTO_AUDIO_PERDIDO and ev["grave"] is False
     (linea,) = lineas_log()
-    assert linea.endswith("transcripcion audio_perdido=7.4s total=7.4s tipo=RuntimeError")
+    assert linea.endswith("transcripcion audio_perdido=7.4s total=7.4s tipo=RuntimeError saturacion=0.0s")
 
 
 def test_vigilar_sin_tipo_de_fallo_dice_sin_modelo(gestor, reloj):
@@ -218,7 +218,7 @@ def test_vigilar_segunda_perdida_espera_su_turno_acumula_y_no_duplica_el_aviso(g
     assert gestor.sesion.incidencias[1].endswith("transcripción: 5 s de audio sin transcribir (OSError)")   # todo lo nuevo junto: 12,0 - 7,4
     assert gestor.avisos == [G.TEXTO_AUDIO_PERDIDO]                                                        # una sola vez en la lista
     assert len(avisos_ev(gestor)) == 2
-    assert lineas_log()[1].endswith("transcripcion audio_perdido=4.6s total=12.0s tipo=OSError")
+    assert lineas_log()[1].endswith("transcripcion audio_perdido=4.6s total=12.0s tipo=OSError saturacion=0.0s")
 
 
 def test_vigilar_con_el_modelo_caido_no_avisa_en_cada_pasada(gestor, reloj):
@@ -254,7 +254,8 @@ def test_vigilar_linea_de_retraso_con_sus_medidas_y_sin_texto_de_la_reunion(gest
     gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.4, pendiente_s=33.0, velocidad_x=0.83, alcance=True, reintentos=2, perdidos_s=0.0)
     assert gestor._vigilar_transcripcion() is True
     (linea,) = lineas_log()
-    assert linea.endswith("transcripcion retraso=20s cola=33s vel=0.8x rapido=True reintentos=2 perdidos=0s aplazado=0s")
+    assert linea.endswith("transcripcion retraso=20s cola=33s vel=0.8x rapido=True reintentos=2 perdidos=0s aplazado=0s "
+                          "ret_reunion=0s rezagado=0s eco_descartado=0s lat_reunion=- lat_micro=-")
     assert gestor.sesion.incidencias == [] and gestor.avisos == [] and avisos_ev(gestor) == []             # el retraso solo se registra, no se avisa
     assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
 
@@ -314,7 +315,7 @@ def test_estado_ligero_lleva_los_campos_nuevos_de_la_transcripcion(gestor, reloj
     gestor.transcriptor = Transcriptor2(reloj, pendiente_s=12.34, retraso_s=3.26, velocidad_x=1.234, alcance=True, perdidos_s=5.44)
     tr = gestor.estado_ligero()["transcripcion"]
     assert tr == {"estado": "listo", "error": "", "pendiente_s": 12.3, "retraso_s": 3.3, "velocidad_x": 1.23, "rapido": True, "perdidos_s": 5.4,
-                  "aplazado_s": 0.0}
+                  "aplazado_s": 0.0, "retraso_reunion_s": 0.0, "rezagado_s": 0.0, "eco_descartado_s": 0.0}
 
 
 def test_estado_ligero_valores_por_defecto_y_sin_transcriptor(gestor, reloj):
@@ -414,3 +415,191 @@ def test_iniciar_audio_conecta_el_detector_de_eco_solo_con_el_filtro_activo(tmp_
 def test_estado_ligero_lleva_el_audio_aplazado(gestor, reloj):
     gestor.transcriptor = Transcriptor2(reloj, aplazado_s=7.26)
     assert gestor.estado_ligero()["transcripcion"]["aplazado_s"] == 7.3
+
+
+# ================================================================ cola con prioridades: rezagados, saturación y eco descartado
+class Transcriptor3(Transcriptor2):
+    """Como el doble de siempre, pero con `tomar_descartes` (se vacía al leerlo, como el real)."""
+
+    def __init__(self, *a, descartes=(), **k):
+        super().__init__(*a, **k)
+        self.descartes = list(descartes)
+
+    def tomar_descartes(self):
+        d, self.descartes = self.descartes, []
+        return d
+
+
+def incidencias_eco(gestor):
+    return [i for i in gestor.sesion.incidencias if "eco de los altavoces" in i]
+
+
+def test_estado_ligero_lleva_retraso_de_reunion_rezagado_y_eco_descartado(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, retraso_reunion_s=4.26, rezagado_s=33.33, eco_descartado_s=7.77)
+    tr = gestor.estado_ligero()["transcripcion"]
+    assert tr["retraso_reunion_s"] == 4.3 and tr["rezagado_s"] == 33.3 and tr["eco_descartado_s"] == 7.8
+
+
+def test_estado_ligero_con_un_doble_sin_los_campos_de_la_cola_nueva_los_deja_a_cero(gestor):
+    gestor.transcriptor = SimpleNamespace(estado="listo", error="", pendiente_s=1.0, velocidad_x=None)
+    tr = gestor.estado_ligero()["transcripcion"]
+    assert tr["retraso_reunion_s"] == 0.0 and tr["rezagado_s"] == 0.0 and tr["eco_descartado_s"] == 0.0
+
+
+def test_snapshot_ordena_los_segmentos_por_minuto_y_no_toca_el_orden_de_llegada(gestor):
+    s = gestor.sesion
+    a = s.agregar_segmento(30.0, "reunion", "Segunda cosa que se dijo, llegada primero.")
+    b = s.agregar_segmento(10.0, "reunion", "Primera cosa que se dijo, llegada después.")
+    c = s.agregar_segmento(10.0, "yo", "Micro en el mismo minuto que la anterior.")
+    assert [x["id"] for x in gestor.snapshot()["segmentos"]] == [b.id, c.id, a.id]   # por (t, id)
+    assert [x.id for x in s.segmentos] == [a.id, b.id, c.id]                          # la sesión sigue en orden de llegada
+    assert (a.id, b.id, c.id) == (1, 2, 3)                                            # y los id no cambian
+
+
+def test_vigilar_saturacion_dice_el_tramo_de_la_reunion_y_vacia_los_descartes_pendientes(gestor, reloj):
+    gestor.transcriptor = Transcriptor3(reloj, perdidos_s=30.0, ultimo_fallo="saturación",
+                                        descartes=[("reunion", 125.0, 20.0, "saturacion"), ("yo", 160.0, 10.0, "saturacion")])
+    assert gestor._vigilar_transcripcion() is True
+    assert gestor.sesion.incidencias[0].endswith("transcripción: 30 s de audio sin transcribir (saturación, entre 02:05 y 02:50)")
+    assert gestor._descartes_sat == [] and gestor.avisos == [G.TEXTO_AUDIO_PERDIDO] and len(avisos_ev(gestor)) == 1
+    (linea,) = lineas_log()
+    assert linea.endswith("transcripcion audio_perdido=30.0s total=30.0s tipo=saturación saturacion=30.0s")
+    gestor.transcriptor.perdidos_s = 34.0   # un fallo posterior ya no arrastra el tramo de la saturación anterior
+    gestor.transcriptor.ultimo_fallo = "RuntimeError"
+    gestor._vigilar_transcripcion(forzar=True)
+    assert gestor.sesion.incidencias[1].endswith("transcripción: 4 s de audio sin transcribir (RuntimeError)")
+
+
+def test_vigilar_saturacion_y_fallo_a_la_vez_dicen_cuanto_es_de_cada_cosa(gestor, reloj):
+    gestor.transcriptor = Transcriptor3(reloj, perdidos_s=40.0, ultimo_fallo="MemoryError", descartes=[("reunion", 300.0, 30.0, "saturacion")])
+    assert gestor._vigilar_transcripcion() is True
+    assert gestor.sesion.incidencias[0].endswith(
+        "transcripción: 40 s de audio sin transcribir (30 s por saturación, entre 05:00 y 05:30, y 10 s por fallo del tipo MemoryError)")
+    assert lineas_log()[0].endswith("tipo=MemoryError saturacion=30.0s")
+
+
+def test_vigilar_saturacion_espera_su_turno_y_acumula_el_intervalo(gestor, reloj):
+    tr = gestor.transcriptor = Transcriptor3(reloj, perdidos_s=10.0, ultimo_fallo="saturación", descartes=[("reunion", 60.0, 10.0, "saturacion")])
+    gestor._vigilar_transcripcion()
+    tr.perdidos_s, tr.descartes = 25.0, [("reunion", 90.0, 15.0, "saturacion")]
+    assert gestor._vigilar_transcripcion() is False and len(gestor.sesion.incidencias) == 1   # dentro de AVISO_FALLO_CADA_S
+    tr.descartes.append(("reunion", 200.0, 0.0, "saturacion"))
+    gestor._vigilar_transcripcion(forzar=True)
+    assert gestor.sesion.incidencias[1].endswith("transcripción: 15 s de audio sin transcribir (saturación, entre 01:30 y 03:20)")
+
+
+def test_vigilar_eco_descartado_deja_una_incidencia_sin_aviso_y_la_actualiza_en_su_sitio(gestor, reloj):
+    tr = gestor.transcriptor = Transcriptor3(reloj, descartes=[("yo", 100.0, 20.0, "eco")])
+    assert gestor._vigilar_transcripcion() is True
+    (inc,) = incidencias_eco(gestor)
+    assert inc.endswith("transcripción: 20 s de audio del micro que parecía eco de los altavoces no se han transcrito (entre 01:40 y 02:00)")
+    assert gestor.avisos == [] and avisos_ev(gestor) == [] and gestor.transcriptor.perdidos_s == 0.0   # no es audio perdido: sin aviso de interfaz
+    assert lineas_log()[-1].endswith("transcripcion eco_descartado=20.0s total=20.0s")
+    prefijo = inc.split("]")[0]
+    gestor.sesion.incidencias.insert(0, "[00:01] otra: cosa")   # la incidencia se localiza por su texto, no por su posición
+    tr.descartes = [("yo", 200.0, 10.0, "eco")]
+    assert gestor._vigilar_transcripcion() is False and incidencias_eco(gestor) == [inc]   # como mucho una vez por minuto
+    reloj.t += G.ACTUALIZAR_ECO_CADA_S
+    assert gestor._vigilar_transcripcion() is True
+    (nueva,) = incidencias_eco(gestor)
+    assert nueva.startswith(prefijo + "]") and "30 s de audio del micro" in nueva and nueva.endswith("(entre 01:40 y 03:30)")
+    assert gestor.sesion.incidencias[0] == "[00:01] otra: cosa" and len(gestor.sesion.incidencias) == 2   # sustituida, no repetida
+    assert lineas_log()[-1].endswith("transcripcion eco_descartado=10.0s total=30.0s")
+
+
+def test_vigilar_eco_forzado_actualiza_ya_y_si_la_incidencia_ya_no_esta_la_vuelve_a_poner(gestor, reloj):
+    tr = gestor.transcriptor = Transcriptor3(reloj, descartes=[("yo", 10.0, 5.0, "eco")])
+    gestor._vigilar_transcripcion()
+    gestor.sesion.incidencias.clear()
+    tr.descartes = [("yo", 40.0, 5.0, "eco")]
+    assert gestor._vigilar_transcripcion() is False and gestor.sesion.incidencias == []   # dentro del minuto: queda pendiente
+    assert gestor._vigilar_transcripcion(forzar=True) is True
+    (inc,) = incidencias_eco(gestor)
+    assert "10 s de audio del micro" in inc and inc.endswith("(entre 00:10 y 00:45)")
+
+
+def test_un_doble_sin_tomar_descartes_no_rompe_la_vigilancia(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, perdidos_s=2.0, ultimo_fallo="ValueError")
+    assert gestor._vigilar_transcripcion() is True
+    assert gestor.sesion.incidencias[0].endswith("(ValueError)") and incidencias_eco(gestor) == []
+
+
+def test_vigilar_linea_de_diagnostico_con_los_campos_de_la_cola_nueva(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.4, pendiente_s=33.0, velocidad_x=0.83, alcance=True, reintentos=2, perdidos_s=0.0,
+                                        retraso_reunion_s=18.2, rezagado_s=40.0, eco_descartado_s=12.0, aplazado_s=3.0,
+                                        latencias={"reunion": 6.4, "yo": 11.6})
+    assert gestor._vigilar_transcripcion() is True
+    (linea,) = lineas_log()
+    assert linea.endswith("transcripcion retraso=20s cola=33s vel=0.8x rapido=True reintentos=2 perdidos=0s aplazado=3s "
+                          "ret_reunion=18s rezagado=40s eco_descartado=12s lat_reunion=6s lat_micro=12s")
+
+
+def test_vigilar_con_audio_rezagado_registra_aunque_el_retraso_sea_bajo(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, retraso_s=1.0, rezagado_s=25.0)
+    assert gestor._vigilar_transcripcion() is True
+    assert "retraso=1s" in lineas_log()[0] and "rezagado=25s" in lineas_log()[0]
+    assert gestor._vigilar_transcripcion() is False   # y con el mismo límite de una cada REGISTRO_RETRASO_CADA_S
+    reloj.t += G.REGISTRO_RETRASO_CADA_S
+    assert gestor._vigilar_transcripcion() is True and len(lineas_log()) == 2
+
+
+def test_vigilar_sin_rezagado_y_con_retraso_bajo_sigue_sin_registrar(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, retraso_s=1.0, rezagado_s=0.0)
+    assert gestor._vigilar_transcripcion() is False and lineas_log() == []
+
+
+def test_esperar_deja_una_linea_de_resumen_solo_con_medidas(gestor, reloj):
+    gestor.sesion.agregar_segmento(5.0, "yo", SECRETO)
+    gestor.transcriptor = Transcriptor2(reloj, audio_total_s=300.0, calculo_total_s=250.0, latencia_max={"reunion": 14.2, "yo": 6.0},
+                                        rezagado_total_s=20.0, perdidos_s=0.0, eco_descartado_s=8.0, tramos_aplazados=5, tramos_rezagados=2,
+                                        reintentos=1)
+    esperar(gestor)
+    (linea,) = lineas_log("transcripcion resumen")
+    assert linea.endswith("transcripcion resumen audio=300s calculo=250s vel_media=1.2x lat_max_reunion=14s lat_max_micro=6s rezagado_total=20s "
+                          "perdidos=0s eco_descartado=8s aplazados=5 rezagados=2 reintentos=1")
+    assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
+
+
+def test_esperar_sin_audio_transcrito_no_deja_resumen(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj)
+    esperar(gestor)
+    assert lineas_log("transcripcion resumen") == []
+
+
+def test_esperar_con_resto_de_eco_dice_cuanto_era_eco_en_una_sola_frase(gestor, reloj, monkeypatch):
+    monkeypatch.setattr(G, "ESPERA_COLA_SIN_AVANCE_S", 2.0)
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 12.4, aplazado_s=5.0)
+    esperar(gestor)
+    assert gestor.sesion.incidencias[0].endswith(
+        "transcripción incompleta: 12 s de audio sin transcribir al terminar, de los que 5 s eran audio del micro que parecía eco de los altavoces")
+    assert gestor.avisos == ["La transcripción está incompleta: quedaron 12 s de audio sin transcribir al terminar, "
+                             "de los que 5 s eran audio del micro que parecía eco de los altavoces."]
+    assert "(" not in gestor.avisos[0]
+
+
+def test_esperar_con_resto_sin_eco_importante_deja_el_texto_de_siempre(gestor, reloj, monkeypatch):
+    monkeypatch.setattr(G, "ESPERA_COLA_SIN_AVANCE_S", 2.0)
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 12.4, aplazado_s=1.0)
+    esperar(gestor)
+    assert gestor.sesion.incidencias[0].endswith("transcripción incompleta: 12 s de audio sin transcribir al terminar")
+
+
+def test_reiniciar_la_reunion_borra_los_descartes_y_la_incidencia_de_eco(gestor, reloj):
+    gestor.transcriptor = Transcriptor3(reloj, descartes=[("yo", 10.0, 5.0, "eco")])
+    gestor._vigilar_transcripcion()
+    assert gestor._eco_total_s == 5.0 and gestor._eco_texto
+    gestor._reiniciar_descartes()
+    assert gestor._eco_total_s == 0.0 and gestor._eco_texto is None and gestor._descartes_sat == [] and gestor._descartes_eco == []
+
+
+# ================================================================ sesion.render: la transcripción del .md va por minuto
+def test_render_escribe_la_transcripcion_por_minuto_con_segmentos_llegados_fuera_de_orden(gestor):
+    s = gestor.sesion
+    s.agregar_segmento(125.0, "reunion", "Tercera frase de la reunión ficticia.")
+    s.agregar_segmento(5.0, "reunion", "Primera frase de la reunión ficticia.")
+    s.agregar_segmento(65.0, "yo", "Segunda frase del micro ficticio.")
+    s.agregar_segmento(65.0, "reunion", "Segunda frase de la reunión ficticia.")
+    lineas = s.render().split("## Transcripción\n\n")[1].splitlines()
+    assert [l[:7] for l in lineas] == ["[00:05]", "[01:05]", "[01:05]", "[02:05]"]
+    assert "Micro" in lineas[1] and "Reunión" in lineas[2]                       # mismo minuto: por orden de llegada (id)
+    assert [x.t for x in s.segmentos] == [125.0, 5.0, 65.0, 65.0]               # la sesión no se reordena

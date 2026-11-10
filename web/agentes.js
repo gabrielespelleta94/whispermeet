@@ -106,15 +106,20 @@
       const curso = enCurso("transcriptor"), ult = ultima("transcriptor");
       if (S.simulacion) { res.estado = "omitido"; res.modelo = "local"; res.partes = ["simulación sin audio"]; return res; }
       if (tr && tr.estado === "error") { res.estado = "error"; res.partes = [String(tr.error || "").slice(0, 60)]; return res; }
-      if (curso.length) { res.estado = "trabajando"; res.curso = curso[0]; res.partes = [curso[0].tramo || null].filter(Boolean); return res; }
+      // Estado de la cola. Con la máquina justa el transcriptor casi siempre está trabajando: también se dice entonces, que es cuando importa
+      const cola = [];
+      if (tr && AP.retrasoDe(tr) > 3) cola.push(`retraso ${Math.round(AP.retrasoDe(tr))} s`);
+      if (tr && tr.rapido) cola.push("modo rápido");   // hay cola de texto útil: decodificación más barata hasta vaciarla
+      if (tr && tr.rezagado_s > 1) cola.push(`audio atrasado ${Math.round(tr.rezagado_s)} s`);   // lo que no llegó a tiempo para el directo: se transcribe en los huecos y entra en su minuto
+      if (tr && tr.aplazado_s > 3) cola.push(`eco en espera ${Math.round(tr.aplazado_s)} s`);   // Micro que solo repite a Reunión: se transcribe cuando no hay nada útil esperando
+      if (tr && tr.eco_descartado_s > 1) cola.push(`eco descartado ${Math.round(tr.eco_descartado_s)} s`);   // eco que no cupo en su espera: no se transcribe y el acta lo anota
+      if (curso.length) { res.estado = "trabajando"; res.curso = curso[0]; res.partes = [curso[0].tramo || null, ...cola].filter(Boolean); return res; }
       if (ult) {
         res.estado = ult.estado === "error" ? "error" : "hecho";
         if (ult.ms != null) res.partes.push(seg(ult.ms));
         if (ult.palabras != null) res.partes.push(`${ult.palabras} palabras`);
       }
-      if (tr && AP.retrasoDe(tr) > 3) res.partes.push(`retraso ${Math.round(AP.retrasoDe(tr))} s`);
-      if (tr && tr.rapido) res.partes.push("modo rápido");   // hay cola de texto útil: decodificación más barata hasta vaciarla
-      if (tr && tr.aplazado_s > 3) res.partes.push(`eco en espera ${Math.round(tr.aplazado_s)} s`);   // Micro que solo repite a Reunión: se transcribe cuando no hay nada útil esperando
+      res.partes.push(...cola);
       return res;
     }
     const curso = enCurso(n.id), ult = ultima(n.id);
@@ -380,7 +385,7 @@
     const a = S.analisis || {}, d = DOM.linea, eq = S.equipo, m = eq.monitor || {}, pr = eq.presupuesto || {};
     const ver = estados.verificador, red = estados.redactor, pul = estados.pulidor;
     const trz = O.traza.filter((x) => x.fila === "analisis");
-    const tr = S.transcripcion, retraso = AP.retrasoDe(tr);
+    const tr = S.transcripcion;
     const perfil = eq.perfiles.map((p) => ({ p, t: enCurso(p.id)[0] })).find((x) => x.t);
     let ind = "espera", txt;
     if (pul.estado === "trabajando") { ind = "confirmando"; txt = "Puliendo con opus…"; }
@@ -404,8 +409,8 @@
     }
     d.ind.dataset.estado = ind; d.est.textContent = txt; d.est.dataset.estado = ind;
     d.barra.hidden = d.pal.hidden = d.prox.hidden = true;
-    const retrasado = retraso > 15;
-    d.ult.hidden = !retrasado; d.ult.textContent = retrasado ? `Transcripción con ${Math.round(retraso)} s de retraso${tr && tr.rapido ? " · alcanzando el directo" : ""}` : ""; d.ult.classList.toggle("avisa", retrasado);
+    const aviso = AP.avisoRetraso(tr, 15), retrasado = !!aviso;   // también avisa si hay audio atrasado, aunque el directo vaya casi al día
+    d.ult.hidden = !retrasado; d.ult.textContent = aviso; d.ult.classList.toggle("avisa", retrasado);
     void trz;
   }
 
@@ -415,7 +420,7 @@
     if (s && s.cadencia === "equipo" && S.equipo) return lineaEquipo(estados);
     const an = estados.equipo, ver = estados.verificador, red = estados.redactor, pul = estados.pulidor;
     const trz = O.traza.filter((x) => x.fila === "analisis"), ult = trz[trz.length - 1], ultAny = O.traza[O.traza.length - 1];
-    const tr = S.transcripcion, retraso = AP.retrasoDe(tr);
+    const tr = S.transcripcion;
     let ind = "espera", txt;
     const modeloDe = (e, def) => (e.curso && e.curso.modelo) || e.modelo || def;
     if (pul.estado === "trabajando") { ind = "confirmando"; txt = "Puliendo con opus…"; }
@@ -463,8 +468,9 @@
     } else if (S.estado === "grabando" || S.estado === "pausada") u = "sin análisis todavía";
     if (txt.startsWith("Escuchando")) u = "";
     d.ult.hidden = !u; d.ult.textContent = u; d.ult.title = u;
-    d.ult.classList.toggle("avisa", retraso > 15);
-    if (retraso > 15) { d.ult.hidden = false; d.ult.textContent = `Transcripción con ${Math.round(retraso)} s de retraso${tr && tr.rapido ? " · alcanzando el directo" : ""}`; }
+    const aviso = AP.avisoRetraso(tr, 15);
+    d.ult.classList.toggle("avisa", !!aviso);
+    if (aviso) { d.ult.hidden = false; d.ult.textContent = aviso; }
   }
   AP.aplicarPliegueOrq = () => { if (DOM.raiz) aplicarPliegue(); };   // el Modo reunión fuerza la línea plegada sin tocar la preferencia
   AP.hooks.linea = () => render();
@@ -500,7 +506,7 @@
       const p = AP.retrasoDe(tr);
       r.hidden = !(p > 5);
       if (p > 5) r.textContent = `+${Math.round(p)} s`;
-      $("#vu-reunion").classList.toggle("retraso", p > 15);
+      $("#vu-reunion").classList.toggle("retraso", p > 15 || (tr && tr.rezagado_s > 1));   // audio atrasado: el medidor también avisa, aunque `retraso_s` ya no suba de ~45 s
     }
   }
   AP.hooks.medidor = (f, v) => {

@@ -24,6 +24,7 @@ MAX_CHARS = 8000
 class _TranscriptorDictado(Transcriptor):
     """El modelo de Whisper se carga una vez y se reutiliza entre dictados (cargarlo cuesta segundos)."""
     _modelo_compartido = None   # (nombre del modelo, modelo)
+    tope_retraso_s = None       # un dictado es un texto seguido: sus tramos van en orden de llegada y ninguno se deja para después
     _candado = threading.Lock()
 
     def cargar_modelo(self):
