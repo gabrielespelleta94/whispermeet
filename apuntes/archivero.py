@@ -34,7 +34,7 @@ from .texto import recortar
 VERSION = "archivero-v2"   # v2: el nombre del fichero de caché lleva el hash del proyecto, la clave los topes y el resultado el proyecto
 FICHERO_MAPA = "mapa-de-documentacion"
 EXT_LEIBLES = EXT_TEXTO_ARCHIVERO | DOC.EXT_OFICINA | DOC.EXT_PDF
-TOPE_OFICINA_BYTES = 10_000_000       # .docx, .pptx y .pdf: por encima no se abren (el texto plano usa `tope_fichero_bytes` de la configuración)
+TOPE_OFICINA_BYTES = 10_000_000       # .docx, .pptx, .xlsx/.xlsm y .pdf: por encima no se abren (el texto plano usa `tope_fichero_bytes` de la configuración)
 MAX_OMITIDOS = 60                     # filas de «lo que no se lee» que salen en el plan (el resto va en `mas_omitidos`)
 MAX_RESUMEN = 160
 MAX_FRASE = 200
@@ -61,10 +61,13 @@ _TITULO_TIPO = {t["clave"]: t["titulo"] for t in INV.TIPOS}
 
 # ---------------------------------------------------------------- máscara y limpieza del texto que sale de la máquina
 _RE_CORREO = re.compile(r"[\w.+'-]+@[\w-]+(?:\.[\w-]+)+")
-_RE_TELEFONO = re.compile(r"(?<!\d)(?:\+?\(?\d\)?[\s.-]?){9,}(?!\d)")
+# el separador admite espacios de cualquier tipo salvo saltos de línea: un teléfono no se parte en dos líneas (y las filas de una hoja no se funden)
+_RE_TELEFONO = re.compile(r"(?<!\d)(?:\+?\(?\d\)?(?:[^\S\r\n\x0b\x0c\x1c-\x1e\x85\u2028\u2029]|[.-])?){9,}(?!\d)")
+_RE_DECIMAL = re.compile(r"\d+\.\d+")
 _RE_FECHA = re.compile(r"^(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})")
 _RE_CLAVE_DE_DATOS = re.compile(r"\bclaves?\s+(?:primarias?|for[aá]neas?|externas?|ajenas?|candidatas?|naturales?|compuestas?|sustitutas?|de negocio)\b|\bprimary key\b|\bforeign key\b", re.I)
 _RE_TITULO_CONTACTOS = re.compile(r"^\W*(?:\d+(?:\.\d+)*[.)]?\s*)?(?:contactos?|(?:datos|personas|informaci[oó]n|directorio)\s+de\s+contactos?)(?:\s+(?:del?|de la)\s+\w+(?:\s+\w+)?)?\W*$", re.I)
+_RE_PREFIJO_HOJA = re.compile(r"^hoja:\s*", re.I)
 _RE_ENCABEZADO = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
 _RE_DIAPOSITIVA = re.compile(r"^\[Diapositiva \d+\]$")
 LINEA_OMITIDA = "[línea omitida: posible secreto]"
@@ -76,13 +79,16 @@ def _telefono(m: re.Match) -> str:
     """Un trozo que casa con el patrón de teléfono. Si empieza por una fecha, la fecha se conserva y se mira el resto: con 9 o más dígitos es un teléfono (se tapa
     el resto); con menos (una hora, un número corto) se deja tal cual."""
     s = m.group(0)
+    if _RE_DECIMAL.fullmatch(s.strip()):   # un decimal simple («0.153846», «1250000.75») es un número de una hoja, no un teléfono (un entero de 9 cifras o más sí se tapa)
+        return s
+    cola = s[len(s.rstrip()):]   # el espacio que el patrón se traga detrás del último dígito se conserva: «600123456 | x» no pasa a «[teléfono]| x»
     f = _RE_FECHA.match(s.strip())
     if not f:
-        return "[teléfono]"
+        return "[teléfono]" + cola
     resto = s.strip()[f.end():]
     if sum(c.isdigit() for c in resto) < 9:
         return s
-    return s.strip()[:f.end()] + resto[:len(resto) - len(resto.lstrip())] + "[teléfono]"
+    return s.strip()[:f.end()] + resto[:len(resto) - len(resto.lstrip())] + "[teléfono]" + cola
 
 
 def enmascarar(texto: str) -> str:
@@ -91,11 +97,12 @@ def enmascarar(texto: str) -> str:
 
 
 def _es_titulo_contactos(titulo: str) -> bool:
-    s = titulo.strip()
+    """Un título de apartado que es de contactos. El «Hoja: » con que el lector de hojas de cálculo encabeza cada hoja no cuenta: «Hoja: Contactos» es una hoja de contactos."""
+    s = _RE_PREFIJO_HOJA.sub("", titulo.strip())
     return len(s) <= 60 and bool(_RE_TITULO_CONTACTOS.match(s) or CX.SECCIONES_PERSONALES.search(s))
 
 
-def _sin_contactos_md(texto: str) -> str:
+def sin_contactos_md(texto: str) -> str:
     """Los apartados `#` de contactos (de cualquier nivel: «Contactos», «Contacto», «Datos de contacto», «Personas de contacto», «Información de contacto»,
     «Contactos del cliente/proyecto/equipo», «Directorio de contactos»…) se quitan hasta el siguiente encabezado del mismo nivel o superior; en su lugar queda UNA
     línea `LINEA_CONTACTOS` para que el modelo sepa que ahí había algo."""
@@ -116,9 +123,9 @@ def _sin_contactos_md(texto: str) -> str:
 
 
 def _sin_contactos_planos(texto: str) -> str:
-    """Un título de contactos en texto sin marcas de Markdown (.docx sin estilo de título, .pptx, .pdf, .txt): se quita y se salta lo que sigue hasta una línea en
+    """Un título de contactos en texto sin marcas de Markdown (.docx sin estilo de título, .pptx, .xlsx, .pdf, .txt): se quita y se salta lo que sigue hasta una línea en
     blanco, un encabezado `#`, la diapositiva siguiente o `MAX_LINEAS_CONTACTOS` líneas (se prefiere quitar de más que dejar pasar datos personales). En su lugar
-    queda UNA línea `LINEA_CONTACTOS`. Los apartados `#` los quita `_sin_contactos_md`."""
+    queda UNA línea `LINEA_CONTACTOS`. Los apartados `#` los quita `sin_contactos_md`."""
     out, saltando, n = [], False, 0
     for linea in texto.split("\n"):
         s = linea.strip()
@@ -141,7 +148,7 @@ def preparar_texto(texto: str, tope: int) -> str:
     """Lo que de un documento puede salir de la máquina, en orden: secciones «Contactos» fuera (las de `contexto.py` y los títulos sueltos), líneas con pinta
     de secreto fuera (las de `rutas.limpiar_secretos` ya vienen quitadas por el Guardian; aquí además el patrón laxo de `resumen.py`, salvo «clave primaria» y
     similares, que es vocabulario de modelos de datos), correos y teléfonos enmascarados, líneas en blanco colapsadas y tope de caracteres. FUNCIÓN PURA."""
-    t = _sin_contactos_md((texto or "").replace("\r\n", "\n"))
+    t = sin_contactos_md((texto or "").replace("\r\n", "\n"))
     t = _sin_contactos_planos(CX.quitar_secciones(t, CX.SECCIONES_PERSONALES))
     lineas = []
     for linea in t.split("\n"):

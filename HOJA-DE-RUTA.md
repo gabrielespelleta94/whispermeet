@@ -100,10 +100,23 @@ Lo que quedó fuera de esta ola:
 - El panel no sale en Modo reunión ni durante la reunión (con una reunión en curso, el audio ni se enumera); el vocabulario se edita como texto con un término por línea, no como lista de etiquetas.
 - Cambiar la carpeta de Knowledge reindexa las fuentes en segundo plano, pero un cambio hecho mientras una reunión graba se rechaza y hay que repetirlo al terminar; lo mismo vale para la carpeta de proyectos y el modelo de transcripción, y el resto de Ajustes sí se guarda durante la reunión.
 
-### Ola E — Entregables
+### Ola E — Entregables (hojas de cálculo hecha; exportación a Word pendiente)
 
-- Exportar acta, resumen y estado del proyecto a Word o PDF con plantilla.
-- Hojas de cálculo (`.xlsx`) como fuente de contexto.
+- Exportar acta, resumen y estado del proyecto a Word o PDF con plantilla. (Pendiente.)
+- Hojas de cálculo (`.xlsx` y `.xlsm`) como fuente de contexto. (Hecho.)
+
+Hecho (hojas de cálculo): lector `documentos.texto_xlsx` (solo biblioteca estándar: `zipfile` y `expat` en streaming) que saca el texto de las hojas visibles, una línea por fila con las celdas unidas por « | », las fechas como `AAAA-MM-DD` (con ` HH:MM` si llevan hora; sistema 1904 y error histórico del 29-02-1900 incluidos) y de las fórmulas solo el valor guardado; topes de 20 hojas, 2.000 filas por hoja, 40 columnas, 300 caracteres por celda y el tope total de los demás lectores, con una línea que dice cada recorte; las hojas ocultas no se leen y se cuentan al final; se rechaza cualquier parte con `<!DOCTYPE` o `<!ENTITY`, un libro cifrado, ajeno o sin hojas legibles da el error limpio de siempre y no se ejecuta nada del libro. Lo consumen el Archivero y «Proponer plan» (mismo tratamiento de datos personales: una hoja «Contactos» no sale y las columnas de correo o teléfono llegan tapadas), la carpeta de Knowledge y el asesor (`.xlsx` y `.xlsm` en `EXT_KNOWLEDGE`; una carpeta ya indexada incorpora las hojas en la pasada siguiente sin tocar el arranque de la reunión) y la ayuda de Ajustes y los manuales lo dicen. Piezas: `apuntes/documentos.py`, `apuntes/archivero.py`, `tests/test_hojas_calculo.py`.
+
+Lo que quedó fuera de esta parte:
+- Los formatos antiguos o ajenos (`.xls`, `.ods`, `.vsdx`, `.mpp`…): siguen marcados «formato sin lector» en el Archivero.
+- Gráficos, imágenes, comentarios, celdas combinadas, tablas dinámicas y el formato visual de las celdas: solo se lee el valor de cada celda.
+- Más allá de los topes (hojas, filas, columnas, cadenas compartidas): el resto no se lee y el texto lo dice.
+- Una hoja de más de 12 MB de XML se lee solo hasta ese tamaño; las demás partes del libro (cadenas, estilos…) por encima de él hacen el libro ilegible.
+- Los nombres de personas de una hoja que no se llame «Contactos» no se filtran (solo correos y teléfonos), igual que en el resto de formatos.
+- Knowledge y el asesor indexan las hojas sin las de contactos (misma regla que el Archivero), pero no enmascaran correos ni teléfonos de las demás hojas.
+- Un entero de 9 cifras o más (un identificador, un importe sin decimales) se enmascara como teléfono al salir hacia el modelo: no se distingue de un teléfono guardado como número. Un decimal simple (`1250000.75`) no se toca, y el lector redondea los no enteros a 6 decimales (los porcentajes salen por 100 con `%`).
+- Un teléfono partido en dos líneas ya no se enmascara (el patrón no cruza saltos de línea, para no fundir las filas de una hoja).
+- El libro tiene que traer `xl/workbook.xml`; las cadenas y los estilos se localizan por las relaciones, con el nombre habitual como alternativa. Una hoja visible cuya parte falta se cuenta al final; más de 200.000 celdas en una hoja o 24 MB descomprimidos entre todas las hojas cortan la lectura y se dice.
 
 ### Ola F — Datos internos
 

@@ -46,7 +46,7 @@ EXT_SECRETAS = {".pem", ".key", ".pfx", ".p12", ".pkcs12", ".kdbx", ".jks", ".ke
 NOMBRES_PROTEGIDOS = {"claude.md", "agents.md"}
 DIRS_SOLO_LECTURA = {"docs"}
 EXT_LEGIBLES = {".md", ".txt"}
-EXT_TEXTO_ARCHIVERO = frozenset({".md", ".txt", ".sql", ".dbml", ".csv"})   # texto plano que el Archivero puede leer (además de .docx, .pptx y .pdf, por documentos.py)
+EXT_TEXTO_ARCHIVERO = frozenset({".md", ".txt", ".sql", ".dbml", ".csv"})   # texto plano que el Archivero puede leer (además de .docx, .pptx, .xlsx, .xlsm y .pdf, por documentos.py)
 RESERVADOS_WIN = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10))}
 
 _RE_NOMBRE_SECRETO = re.compile(
@@ -1080,7 +1080,7 @@ class Guardian:
         return limpiar_secretos(texto.replace("\r\n", "\n"))  # se trabaja con LF; al escribir se respeta el EOL original
 
     def leer_documento(self, ruta: os.PathLike | str, base: os.PathLike | str, tope_bytes: int = 200_000, tope_chars: int = 120_000) -> str:
-        """Como `leer`, pero además admite .docx, .pptx y .pdf (este solo si hay librería instalada) para la recuperación de fuentes (SOLO LECTURA).
+        """Como `leer`, pero además admite .docx, .pptx, .xlsx, .xlsm y .pdf (este solo si hay librería instalada) para la recuperación de fuentes (SOLO LECTURA).
         Mismas reglas: dentro de `base`, sin nombre de secreto, con tope de tamaño; el texto sale sin líneas con pinta de secreto. Lanza
         `RutaProhibida` o `documentos.Indisponible`."""
         from . import documentos as DOC
@@ -1088,7 +1088,7 @@ class Guardian:
         if p.suffix.lower() in EXT_LEGIBLES:
             return self.leer(p, base, tope_bytes)
         if p.suffix.lower() not in DOC.EXT_OFICINA | DOC.EXT_PDF:
-            raise RutaProhibida("solo se leen .md, .txt, .docx, .pptx y .pdf")
+            raise RutaProhibida("solo se leen .md, .txt, .docx, .pptx, .xlsx, .xlsm y .pdf")
         if not esta_dentro(base, p):
             raise RutaProhibida("lectura fuera de la carpeta permitida")
         if es_secreto(p):
@@ -1107,8 +1107,8 @@ class Guardian:
         """ÚNICA lectura del Agente Archivero (SOLO LECTURA): un documento de la carpeta del proyecto, en texto. Mismo confinamiento que
         `_comprobar_documento_proyecto` (dentro del proyecto, sin nombre de secreto ni carpetas ocultas o generadas, fichero normal) y además: nunca de
         `02. Sesiones` (esas entran por el backlog), nunca un fichero que OneDrive tenga solo en la nube (abrirlo lo descargaría; se comprueba en
-        TODOS los formatos, también el texto plano), con tope de tamaño (`tope_bytes` para texto plano, `tope_oficina_bytes` para .docx/.pptx/.pdf) y el
-        texto sale sin las líneas con pinta de secreto. Formatos: `EXT_TEXTO_ARCHIVERO` y .docx, .pptx y .pdf (extractores de `documentos.py`).
+        TODOS los formatos, también el texto plano), con tope de tamaño (`tope_bytes` para texto plano, `tope_oficina_bytes` para .docx/.pptx/.xlsx/.xlsm/.pdf) y el
+        texto sale sin las líneas con pinta de secreto. Formatos: `EXT_TEXTO_ARCHIVERO` y .docx, .pptx, .xlsx, .xlsm y .pdf (extractores de `documentos.py`).
         Lanza `RutaProhibida` o `documentos.Indisponible`."""
         from . import documentos as DOC
         pdir = self.proyecto_dir(proyecto)

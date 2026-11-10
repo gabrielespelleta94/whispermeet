@@ -779,7 +779,7 @@ PLAN_BASE = [_s("S1", "Revisión del alcance", fecha_iso="2026-11-10", fecha="ma
 PREVIA_PLAN = {"modelo": "sonnet", "chars": 4200, "topes": {"max_documentos": 6, "por_documento": 6000, "total": 30000}, "mas_omitidos": 0,
                "leer": [{"nombre": "Kickoff.md", "rel": "Kickoff.md", "tipo": "arranque", "tipo_titulo": "Arranque (kick-off)", "tam": 1800, "mtime": time.time(), "asignado": 1800},
                         {"nombre": "Oferta alcance.md", "rel": "Oferta alcance.md", "tipo": "oferta", "tipo_titulo": "Oferta y alcance", "tam": 2400, "mtime": time.time(), "asignado": 2400}],
-               "omitidos": [{"nombre": "Plan.xlsx", "rel": "Plan.xlsx", "tipo": "planificacion", "motivo": "formato sin lector en la app (.xlsx)"}]}
+               "omitidos": [{"nombre": "Plan.xls", "rel": "Plan.xls", "tipo": "planificacion", "motivo": "formato sin lector en la app (.xls)"}]}
 PROPUESTA = {"version": "plan-propuesto-v1", "proyecto": "Compartida Demo", "origen": "modelo", "modelo": "sonnet", "leidos": 2, "tokens": 9876, "descartadas": 0, "no_leidos": [], "aviso": "", "aviso_detalle": "",
              "sesiones": [{"nombre": "Alcance propuesto", "objetivos": ["Cerrar el alcance", "Fijar entregables"], "checks": ["Revisar la oferta"], "fecha_iso": "2026-11-12", "hora": "09:00", "depende_de": [],
                            "fuente": {"nombre": "Kickoff.md", "rel": "Kickoff.md"}},

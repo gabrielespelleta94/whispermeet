@@ -3,7 +3,7 @@
 Sobre qué busca:
 - el contexto del proyecto elegido (`00. CONTEXTO (IA)` o, sin él, CLAUDE.md, README.md y docs/: solo lectura);
 - el «Contexto de la reunión» que el usuario preparó antes de empezar (en memoria, nunca se persiste aquí);
-- la carpeta Knowledge (config `knowledge`, SOLO LECTURA: .md, .txt, .docx, .pptx y .pdf si hay librería instalada);
+- la carpeta Knowledge (config `knowledge`, SOLO LECTURA: .md, .txt, .docx, .pptx, .xlsx, .xlsm y .pdf si hay librería instalada);
 - las sesiones anteriores del MISMO proyecto, leídas con `backlog.py` (resumen, elementos y transcripción).
 
 Cómo: el índice se construye en segundo plano al arrancar (Knowledge) y al empezar una reunión (proyecto y sesiones), es incremental por fecha de
@@ -383,6 +383,9 @@ def indexar_knowledge(g, raiz_knowledge: str | os.PathLike | None, previo: dict[
                 except (RutaProhibida, DOC.Indisponible, OSError):
                     inf.sin_formato += 1
                     continue
+                if ext in DOC.EXT_HOJAS:   # las hojas de contactos no se indexan (misma regla que el Archivero; sin enmascarar correos ni teléfonos de las demás)
+                    from .archivero import sin_contactos_md
+                    texto = sin_contactos_md(texto)
                 trozos = trocear(texto)
                 if not trozos:
                     continue

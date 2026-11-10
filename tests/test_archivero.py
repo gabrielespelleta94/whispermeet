@@ -72,7 +72,7 @@ def arbol(tmp_path):
              "## Procesos\nLa cotización pasa por Revenue.\npassword: abc123456789xyz\nclave de acceso: zzz987654321\nLa clave primaria de la cotización es su número.\n", antes=5)
     pptx(p / "Técnico" / "Arquitectura.pptx", [["Arquitectura del portal", "Front web y API sobre Fabric"], ["Integraciones", "SAP queda fuera"]], antes=3)
     escribir(p / "Datos" / "reservas.sql", "CREATE TABLE reserva (id INT PRIMARY KEY, grupo_id INT, fecha DATE);\nCREATE TABLE grupo (id INT PRIMARY KEY, nombre TEXT);\n", antes=2)
-    escribir(p / "Matriz de roles.xlsx", antes=2)
+    escribir(p / "Matriz de roles.xls", antes=2)
     escribir(p / "Plan de sesiones.txt", "Sesión 1: alcance. Sesión 2: datos. Sesión 3: piloto.\n", antes=1)
     pptx(p / "Kickoff.pptx", [["Reunión de arranque del proyecto", "Objetivo: portal de grupos"]], antes=60)
     docx(p / "Varios" / "Cosas.docx", ["Texto suelto sin pista en el nombre."], antes=4)
@@ -161,7 +161,7 @@ def test_seleccion_por_tipo_recientes_y_con_motivo(tmp_path):
     assert "Funcional/Diseño funcional.md" in leer and "Técnico/Arquitectura.pptx" in leer and "Datos/reservas.sql" in leer
     assert "Plan de sesiones.txt" in leer and "Kickoff.pptx" in leer
     motivos = {o["rel"]: o["motivo"] for o in sel["omitidos"]}
-    assert "formato sin lector" in motivos["Matriz de roles.xlsx"]                 # sin lector para .xlsx
+    assert "formato sin lector" in motivos["Matriz de roles.xls"]                 # sin lector para .xls (las hojas .xlsx y .xlsm ya se leen: ola E)
     assert not any(x in leer for x in ("Sin pistas.md", "Varios/Cosas.docx", f"{CARPETA_CONTEXTO}/01-ficha-del-proyecto.md"))
     ses = next(o for o in sel["omitidos"] if o["rel"] == CARPETA_SESIONES)
     assert ses["n"] == 1 and "backlog" in ses["motivo"]                            # las sesiones ya entran por el backlog
@@ -188,7 +188,7 @@ def test_seleccion_respeta_maximos_y_topes(tmp_path):
     sv, g, cfg, _m, _p = servicio(tmp_path, archivero_max_documentos=3)
     sel = AR.seleccionar(mapa_de(g), AR.topes(cfg))
     assert len(sel["leer"]) == 3
-    assert {o["motivo"] for o in sel["omitidos"] if o["rel"] not in ("Matriz de roles.xlsx", "Manual de instalacion.docm", CARPETA_SESIONES)} >= {"se alcanzó el máximo de documentos por pasada"}
+    assert {o["motivo"] for o in sel["omitidos"] if o["rel"] not in ("Matriz de roles.xls", "Manual de instalacion.docm", CARPETA_SESIONES)} >= {"se alcanzó el máximo de documentos por pasada"}
     # tope total de caracteres: cada documento ocupa lo que le toca y se corta al llegar
     sv, g, cfg, _m, _p = servicio(tmp_path / "otro", archivero_chars_por_documento=1000, archivero_tope_total_chars=1500)
     sel = AR.seleccionar(mapa_de(g), AR.topes(cfg))
@@ -233,7 +233,7 @@ def test_leer_para_archivero_confinamiento(tmp_path):
     ajeno = escribir(tmp_path / "fuera.md")
     escribir(p / "foto.png")
     escribir(p / "Grande.md", "z" * 3000)
-    malos = [ajeno, p / "credenciales.md", p / ".oculta" / "x.md", p / "node_modules" / "x" / "y.md", p / "~$Oferta v2.docx", p / "Matriz de roles.xlsx",
+    malos = [ajeno, p / "credenciales.md", p / ".oculta" / "x.md", p / "node_modules" / "x" / "y.md", p / "~$Oferta v2.docx", p / "Matriz de roles.xls",
              p / "foto.png", p / "Manual de instalacion.docm", p / CARPETA_SESIONES / "2026-11-01-reunion.md", p / "NoExiste.md", p / "Funcional"]
     for malo in malos:
         with pytest.raises(RutaProhibida):
@@ -433,7 +433,7 @@ def test_local_con_licencia_ausente_o_llamada_fallida(tmp_path):
     por = {f["clave"]: f for f in r["facetas"]}
     assert por["solucion"]["estado"] == "parcial" and all(f.get("sin_leer") for f in r["facetas"])
     assert any("sin leer" in s for s in por["solucion"]["sabemos"]) and por["solucion"]["fuentes"]
-    assert por["usuarios"]["estado"] == "parcial"                                    # hay una matriz de roles (.xlsx) y un diseño funcional, aunque sin leer
+    assert por["usuarios"]["estado"] == "parcial"                                    # hay una matriz de roles (.xls) y un diseño funcional, aunque sin leer
     assert not list((tmp_path / "cache").glob("archivero-*"))                        # lo local no se cachea
     # sin analista
     sv2 = AR.ServicioArchivero(sv.g, sv.cfg, lambda: None)
@@ -456,7 +456,7 @@ def test_local_a_partir_del_mapa():
 
 def test_sin_nada_legible_no_se_llama(tmp_path):
     raiz = tmp_path / "proyectos"
-    escribir(raiz / PROY / "Matriz de roles.xlsx")
+    escribir(raiz / PROY / "Matriz de roles.xls")
     g = guardian(tmp_path, raiz)
     cfg = configuracion(tmp_path, raiz)
     modelo = Modelo()
