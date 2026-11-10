@@ -1,11 +1,17 @@
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# Los servidores de prueba son subprocesos que arrancan la app de verdad: su registro va a un fichero temporal (lo heredan por el entorno),
+# nunca a datos/apuntes.log. Tiene que estar puesto ANTES de importar `apuntes.registro`. En este proceso lo aparta además `_registro_aparte`.
+_REGISTRO_PRUEBAS = Path(tempfile.gettempdir()) / f"whispermeet-pruebas-{os.getpid()}.log"
+os.environ["WHISPERMEET_REGISTRO"] = str(_REGISTRO_PRUEBAS)
 
 from apuntes.rutas import Guardian  # noqa: E402
 import guarda_reunion  # noqa: E402
@@ -16,6 +22,30 @@ def pytest_sessionstart(session):
     guarda_reunion.bajar_prioridad()
     from apuntes.config import DATOS_DIR
     guarda_reunion.exigir_sin_reunion(os.environ, guarda_reunion.leer_microfono_registro if sys.platform == "win32" else (lambda: []), time.time, DATOS_DIR)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """El registro temporal de los subprocesos de prueba no se queda en el equipo."""
+    try:
+        _REGISTRO_PRUEBAS.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+_revision_reunion = None
+
+
+def pytest_runtest_setup(item):
+    """Durante la batería: como mucho cada 20 s vuelve a mirar si ha empezado una reunión (la guarda de arriba solo mira al arrancar) y, si es así, corta."""
+    global _revision_reunion
+    if _revision_reunion is None:
+        from apuntes.config import DATOS_DIR
+        lector = guarda_reunion.leer_microfono_registro if sys.platform == "win32" else (lambda: [])
+        _revision_reunion = guarda_reunion.RevisionPeriodica(
+            lambda: guarda_reunion.comprobar_reunion_iniciada(os.environ, lector, time.time, DATOS_DIR))
+    mensaje = _revision_reunion.revisar()
+    if mensaje:
+        pytest.exit(mensaje, returncode=3)
 
 
 @pytest.fixture

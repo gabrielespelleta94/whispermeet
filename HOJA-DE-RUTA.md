@@ -167,6 +167,14 @@ Lo que quedó fuera:
 - La detección de eco no está validada con acústica real.
 - No hay marca visible de «llegó tarde» en la línea: una línea atrasada aparece en su minuto, entre las que ya estaban.
 
+## Cierre, versión en disco, eco y energía (cuatro piezas pequeñas)
+
+Hecho el 10 de noviembre, sin medidas nuevas; falta comprobarlas en una reunión real.
+- Latido durante el cierre: `transcripcion cierre pendiente=… espera=…` cada 30 s en `datos/apuntes.log`, y la guarda de los tests vuelve a mirar cada 20 s durante la batería.
+- Aviso «hay una versión nueva en disco»: huella del código (`apuntes/huella.py`), `codigo_cambiado` en `/api/info` y aviso en la portada (y una nota en reunión). No reinicia la app.
+- Diagnóstico numérico del detector de eco: contadores por criterio e histogramas de correlación, dispersión y exceso, en una línea al cerrar la reunión.
+- Sin freno de energía de Windows (`apuntes/energia.py`): la línea `energia sin_freno=…` del arranque dice si Windows lo aceptó.
+
 ## Principios que no cambian
 
 - Todo en local. La IA se usa solo con `claude -p`.

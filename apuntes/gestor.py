@@ -85,6 +85,7 @@ ACTUALIZAR_ECO_CADA_S = 60.0    # la incidencia del eco descartado se reescribe 
 TEXTO_AUDIO_PERDIDO = "No se ha podido transcribir parte del audio. La grabación sigue."
 ESPERA_COLA_MAX_S = 600.0       # al terminar: tope absoluto de espera a que el transcriptor vacíe su cola…
 ESPERA_COLA_SIN_AVANCE_S = 60.0  # …y se deja de esperar si en este tiempo la cola no baja (antes: 180 s fijos y descarte sin aviso)
+LATIDO_CIERRE_CADA_S = 30.0     # durante esa espera, una línea al registro cada tanto: sin ella el cierre parece una app parada (y la guarda de las pruebas no lo ve)
 TEXTO_FALLO = "El análisis automático ha fallado. La grabación sigue."
 TEXTO_FALLO_GRAVE = ("El análisis automático lleva varias pasadas seguidas fallando. La grabación sigue y se sigue intentando; "
                      "usa «Analizar ahora» y revisa datos\\apuntes.log.")
@@ -589,9 +590,38 @@ class Gestor:
                             f"aplazado={float(getattr(tr, 'aplazado_s', 0.0) or 0.0):.0f}s "
                             f"ret_reunion={float(getattr(tr, 'retraso_reunion_s', 0.0) or 0.0):.0f}s rezagado={rezagado:.0f}s "
                             f"eco_descartado={float(getattr(tr, 'eco_descartado_s', 0.0) or 0.0):.0f}s "
-                            f"lat_reunion={'-' if lat_r is None else f'{lat_r:.0f}s'} lat_micro={'-' if lat_m is None else f'{lat_m:.0f}s'}")
+                            f"lat_reunion={'-' if lat_r is None else f'{lat_r:.0f}s'} lat_micro={'-' if lat_m is None else f'{lat_m:.0f}s'}"
+                            + self._sufijo_eco())
             hecho = True
         return hecho
+
+    def _diagnostico_eco(self) -> dict | None:
+        """Los contadores del detector de eco por niveles (`EcoAudio.diagnostico`), o None si no hay detector o no los da. Nunca lanza."""
+        try:
+            det = self._eco_audio
+            d = det.diagnostico() if det is not None else None
+            return d if isinstance(d, dict) else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _sufijo_eco(self) -> str:
+        """` eco_eval=N eco_marc=N` para la línea periódica de la transcripción (vacío sin detector): solo dos enteros."""
+        d = self._diagnostico_eco()
+        return "" if d is None else f" eco_eval={int(d.get('eval', 0))} eco_marc={int(d.get('eco', 0))}"
+
+    def _registrar_diagnostico_eco(self) -> None:
+        """Al cerrar: UNA línea con los contadores del detector de eco (por qué criterio se descartó cada tramo, histogramas de rho, dispersión y
+        exceso). Solo números y claves fijas, nunca texto de la reunión; solo si el filtro de eco estaba activo y se evaluó algún tramo."""
+        d = self._diagnostico_eco()
+        if d is None or int(d.get("eval", 0)) <= 0:
+            return
+        motivos = d.get("motivos") if isinstance(d.get("motivos"), dict) else {}
+        txt = ",".join(f"{k}:{int(v)}" for k, v in sorted(motivos.items(), key=lambda kv: (-kv[1], kv[0]))) or "-"
+
+        def hist(nombre: str) -> str:
+            return "/".join(str(int(v)) for v in d.get(nombre, ()))
+        registrar_linea(f"eco diagnostico eval={int(d['eval'])} eco={int(d.get('eco', 0))} fuertes={int(d.get('fuertes', 0))} sin_ref={int(d.get('sin_ref', 0))} "
+                        f"motivos={txt} rho={hist('rho')} disp={hist('disp')} exceso={hist('exceso')}")
 
     def _recoger_descartes(self, tr) -> None:
         """Pasa a las listas pendientes del gestor lo que el transcriptor descartó por presupuesto: saturación (audio perdido) y eco."""
@@ -1280,10 +1310,14 @@ class Gestor:
         cola parada), el .md lleva una incidencia con los segundos de audio que quedaron sin transcribir y la interfaz un aviso."""
         tr = self.transcriptor
         ini = ultimo_avance = ultimo_estado = time.monotonic()
+        ultimo_latido = None   # None: aún no ha habido latido; el primero sale nada más empezar a esperar si hay algo pendiente
         menor = tr.pendiente_s
         while not tr.vacio() and tr.estado != "error":
             ahora = time.monotonic()
             p = tr.pendiente_s
+            if ultimo_latido is None or ahora - ultimo_latido >= LATIDO_CIERRE_CADA_S:
+                ultimo_latido = ahora
+                registrar_linea(f"transcripcion cierre pendiente={p:.0f}s espera={ahora - ini:.0f}s")   # solo medidas, nunca texto de la reunión
             if p < menor - 0.05:
                 menor, ultimo_avance = p, ahora
             if ahora - ini > ESPERA_COLA_MAX_S or ahora - ultimo_avance > ESPERA_COLA_SIN_AVANCE_S:
@@ -1304,6 +1338,7 @@ class Gestor:
             self.avisos.append(texto)
             self.emitir("aviso", mensaje=texto, componente="transcripcion", grave=True, prioridad="fijo")
         self._registrar_resumen_transcripcion(tr)
+        self._registrar_diagnostico_eco()
 
     @staticmethod
     def _registrar_resumen_transcripcion(tr) -> None:

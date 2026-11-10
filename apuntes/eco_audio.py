@@ -70,6 +70,32 @@ HISTORIAL_MIN = 3           # con menos, no hay referencia de ganancia
 HISTORIAL_CADUCA_S = 300.0  # un volumen o una sala que cambian no deben quedar fijados: se olvida lo de hace más de 5 minutos
 GANANCIA_TOL_DB = 3.0       # un eco dudoso debe estar a menos de esto de la ganancia recordada (el eco real varía ±1,5 dB)
 
+# --- Diagnóstico (solo contadores; no cambia ninguna decisión) ---------------------------------------------------------------------------
+# Cubos fijos: límites superiores (exclusivos salvo el último, abierto) de la correlación, la dispersión y el exceso. Sirven para ver, en una
+# reunión real, POR QUÉ umbral se cae casi todo (RHO_MIN, DISPERSION_MAX_DB y EXCESO_MAX son los de arriba).
+CUBOS_RHO = (0.3, 0.5, 0.65, 0.75)
+CUBOS_DISPERSION_DB = (2.0, 3.0, 4.5, 7.0)
+CUBOS_EXCESO = (0.02, 0.05, 0.1, 0.2)
+RHO_PARA_DETALLE = 0.5      # la dispersión y el exceso solo se cuentan donde ya hay algo parecido a un eco
+CLAVES_MOTIVO = {"sin audio": "sin_audio", "sin datos de Reunión": "sin_datos_reunion", "faltan datos de Reunión": "faltan_datos_reunion",
+                 "tramo corto": "tramo_corto", "Reunión sin actividad": "reunion_sin_actividad", "correlación baja": "correlacion_baja",
+                 "voz no explicada": "voz_no_explicada", "ganancia inestable": "ganancia_inestable",
+                 "ganancia distinta a la de los ecos anteriores": "ganancia_distinta", "sin ganancia de referencia": "sin_ganancia_ref",
+                 "error": "error"}
+MOTIVOS_SIN_REFERENCIA = ("sin datos de Reunión", "faltan datos de Reunión", "Reunión sin actividad")   # Reunión no dio base suficiente
+MOTIVOS_SIN_MEDIDA = ("sin audio", "sin datos de Reunión", "faltan datos de Reunión", "tramo corto", "error")   # no llegó a medirse la correlación
+
+
+def _cubo(valor: float, limites: tuple) -> int:
+    """Índice del cubo (0..len(limites)) de `valor`: el primero cuyo límite no alcanza. Un valor no finito cae en el primero."""
+    if not math.isfinite(valor):
+        return 0
+    for i, lim in enumerate(limites):
+        if valor < lim:
+            return i
+    return len(limites)
+
+
 _DESFASES = np.arange(DESFASE_MIN_TRAMAS, DESFASE_MAX_TRAMAS + 1)
 _N_DESFASES = int(_DESFASES.size)
 _PAD = DESFASE_MAX_TRAMAS + PREVIAS_TRAMAS   # tramas de Reunión anteriores al inicio del tramo de Micro que pide `decidir_eco`
@@ -199,6 +225,12 @@ class EcoAudio:
         self._anillo = np.full(self._n, SUELO_DB, np.float32)
         self._cabeza = None   # número de la última trama escrita (None = ninguna)
         self._ganancias: list = []   # [(t0, ganancia_db)] de los tramos «muy claros»; solo números
+        self._poner_a_cero()
+
+    def _poner_a_cero(self) -> None:
+        """Contadores de diagnóstico de la reunión (solo enteros)."""
+        self._diag = {"eval": 0, "eco": 0, "fuertes": 0, "sin_ref": 0, "motivos": {},
+                      "rho": [0] * (len(CUBOS_RHO) + 1), "disp": [0] * (len(CUBOS_DISPERSION_DB) + 1), "exceso": [0] * (len(CUBOS_EXCESO) + 1)}
 
     def reiniciar(self) -> None:
         with self._cerrojo:
@@ -206,6 +238,46 @@ class EcoAudio:
             self._cabeza = None
             self._ganancias = []
             self.ultimo = {}
+            self._poner_a_cero()
+
+    def diagnostico(self) -> dict:
+        """Contadores acumulados desde `reiniciar` (una reunión): tramos evaluados, marcados como eco, «fuertes», sin referencia suficiente de
+        Reunión, motivos por los que se descartó cada tramo no marcado (clave → tramos) e histogramas de la correlación máxima (`rho`), y, con
+        rho ≥ 0,5, de la dispersión en dB (`disp`) y del exceso. Solo enteros: una copia, sin audio ni texto. Nunca lanza."""
+        try:
+            with self._cerrojo:
+                d = self._diag
+                return {"eval": int(d["eval"]), "eco": int(d["eco"]), "fuertes": int(d["fuertes"]), "sin_ref": int(d["sin_ref"]),
+                        "motivos": {k: int(v) for k, v in d["motivos"].items()}, "rho": [int(v) for v in d["rho"]],
+                        "disp": [int(v) for v in d["disp"]], "exceso": [int(v) for v in d["exceso"]]}
+        except Exception:  # noqa: BLE001
+            return {"eval": 0, "eco": 0, "fuertes": 0, "sin_ref": 0, "motivos": {}, "rho": [0] * 5, "disp": [0] * 5, "exceso": [0] * 5}
+
+    def _contar(self, res: dict) -> None:
+        """Suma un tramo evaluado a los contadores. Nunca lanza ni cambia `res`."""
+        try:
+            with self._cerrojo:
+                d = self._diag
+                d["eval"] += 1
+                motivo = str(res.get("motivo", ""))
+                if res.get("eco"):
+                    d["eco"] += 1
+                else:
+                    clave = CLAVES_MOTIVO.get(motivo, "otro")
+                    d["motivos"][clave] = d["motivos"].get(clave, 0) + 1
+                if res.get("fuerte"):
+                    d["fuertes"] += 1
+                if motivo in MOTIVOS_SIN_REFERENCIA:
+                    d["sin_ref"] += 1
+                if motivo in MOTIVOS_SIN_MEDIDA:
+                    return
+                rho = float(res.get("rho", 0.0))
+                d["rho"][_cubo(rho, CUBOS_RHO)] += 1
+                if rho >= RHO_PARA_DETALLE:
+                    d["disp"][_cubo(float(res.get("dispersion_db", 0.0)), CUBOS_DISPERSION_DB)] += 1
+                    d["exceso"][_cubo(float(res.get("exceso", 0.0)), CUBOS_EXCESO)] += 1
+        except Exception:  # noqa: BLE001
+            return
 
     # -- escritura (hilo de captura de cada canal) --------------------------------------------------------------------------------
     def bloque(self, fuente: str, x: np.ndarray, t: float) -> None:
@@ -278,6 +350,7 @@ class EcoAudio:
 
     def _anotar(self, eco: bool, motivo: str) -> None:
         self.ultimo = {"eco": eco, "motivo": motivo, "rho": 0.0, "exceso": 1.0, "desfase_s": 0.0}
+        self._contar(self.ultimo)
 
     def _resolver(self, res: dict, t0: float) -> dict:
         """Completa la decisión de un tramo con la ganancia recordada de los tramos muy claros (ver HISTORIAL_*)."""
@@ -310,6 +383,7 @@ class EcoAudio:
                 self._anotar(False, "sin datos de Reunión")
                 return False
             self.ultimo = self._resolver(decidir_eco(micro, reunion), t0)
+            self._contar(self.ultimo)
             return bool(self.ultimo["eco"])
         except Exception:  # noqa: BLE001
             self._anotar(False, "error")

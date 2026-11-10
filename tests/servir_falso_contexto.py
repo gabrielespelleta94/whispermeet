@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -25,6 +27,8 @@ import numpy as np
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "pruebas"))
+# Antes de importar la app: su registro, a un fichero temporal y nunca a datos/apuntes.log (pytest ya lo deja puesto; esto cubre el uso a mano).
+os.environ.setdefault("WHISPERMEET_REGISTRO", str(Path(tempfile.gettempdir()) / "whispermeet-pruebas.log"))
 
 import app as aplicacion  # noqa: E402
 import servir_modelo_falso as base  # noqa: E402

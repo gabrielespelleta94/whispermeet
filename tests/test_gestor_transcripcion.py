@@ -2,6 +2,7 @@
 retraso (`_vigilar_transcripcion`), orden emitir/guardar en `_agregar`, campos nuevos de `estado_ligero` y `vaciar_al_parar` de la captura.
 Transcriptor doble y reloj simulado (nada duerme de verdad): ni audio real, ni Whisper, ni modelo, ni red. Todo en `tmp_path`."""
 import asyncio
+import re
 import time
 from types import SimpleNamespace
 
@@ -167,6 +168,40 @@ def test_esperar_con_cola_ya_vacia_vuelve_sin_emitir_nada(gestor, reloj):
     assert gestor.eventos == [] and gestor.sesion.incidencias == [] and reloj.t == gestor.transcriptor.t0
 
 
+def test_esperar_deja_un_latido_nada_mas_empezar_y_otro_cada_treinta_segundos(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 100.0 - t)          # 100 s de espera simulada con la cola bajando
+    esperar(gestor)
+    lineas = lineas_log("transcripcion cierre ")
+    assert 4 <= len(lineas) <= 5                                             # a los 0, 30, 60 y 90 s (y, a lo sumo, uno más por redondeo del ciclo)
+    assert lineas[0].endswith("transcripcion cierre pendiente=100s espera=0s")   # el primero, nada más empezar
+    esperas = [int(l.rsplit("espera=", 1)[1].rstrip("s")) for l in lineas]
+    assert esperas[1] in (30, 31) and esperas[2] in (60, 61) and esperas == sorted(esperas)
+
+
+def test_esperar_con_el_latido_cada_30_s_sigue_la_constante_del_modulo(gestor, reloj, monkeypatch):
+    monkeypatch.setattr(G, "LATIDO_CIERRE_CADA_S", 10.0)
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 50.0 - t)
+    esperar(gestor)
+    assert len(lineas_log("transcripcion cierre ")) in (5, 6)                # 0, 10, 20, 30, 40 (y 50 si el último ciclo cae justo)
+    assert G.LATIDO_CIERRE_CADA_S == 10.0
+
+
+def test_esperar_sin_nada_pendiente_no_escribe_latido(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 0.0)
+    esperar(gestor)
+    assert lineas_log("transcripcion cierre ") == []
+
+
+def test_el_latido_del_cierre_lleva_solo_numeros(gestor, reloj):
+    gestor.sesion.tema = SECRETO
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 70.0 - t)
+    esperar(gestor)
+    lineas = lineas_log("transcripcion cierre ")
+    assert lineas
+    assert all(re.search(r"transcripcion cierre pendiente=\d+s espera=\d+s$", l) for l in lineas)
+    assert not any(SECRETO in l for l in lineas)
+
+
 # ================================================================ _vigilar_transcripcion
 def test_vigilar_sin_transcriptor_devuelve_false_y_no_hace_nada(gestor):
     gestor.transcriptor = None
@@ -251,6 +286,7 @@ def test_esperar_anota_lo_perdido_durante_el_vaciado_final(gestor, reloj):
 
 def test_vigilar_linea_de_retraso_con_sus_medidas_y_sin_texto_de_la_reunion(gestor, reloj):
     gestor.sesion.agregar_segmento(5.0, "yo", SECRETO)
+    gestor._eco_audio = None                                                 # sin detector de eco: la línea no lleva `eco_eval`/`eco_marc`
     gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.4, pendiente_s=33.0, velocidad_x=0.83, alcance=True, reintentos=2, perdidos_s=0.0)
     assert gestor._vigilar_transcripcion() is True
     (linea,) = lineas_log()
@@ -525,6 +561,7 @@ def test_un_doble_sin_tomar_descartes_no_rompe_la_vigilancia(gestor, reloj):
 
 
 def test_vigilar_linea_de_diagnostico_con_los_campos_de_la_cola_nueva(gestor, reloj):
+    gestor._eco_audio = None
     gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.4, pendiente_s=33.0, velocidad_x=0.83, alcance=True, reintentos=2, perdidos_s=0.0,
                                         retraso_reunion_s=18.2, rezagado_s=40.0, eco_descartado_s=12.0, aplazado_s=3.0,
                                         latencias={"reunion": 6.4, "yo": 11.6})
@@ -558,6 +595,61 @@ def test_esperar_deja_una_linea_de_resumen_solo_con_medidas(gestor, reloj):
     assert linea.endswith("transcripcion resumen audio=300s calculo=250s vel_media=1.2x lat_max_reunion=14s lat_max_micro=6s rezagado_total=20s "
                           "perdidos=0s eco_descartado=8s aplazados=5 rezagados=2 reintentos=1")
     assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
+
+
+class EcoConDiagnostico:
+    """Doble del detector con contadores fijos."""
+
+    def __init__(self, diag):
+        self.diag = diag
+
+    def diagnostico(self):
+        return self.diag
+
+
+DIAG_ECO = {"eval": 12, "eco": 3, "fuertes": 2, "sin_ref": 1, "motivos": {"correlacion_baja": 5, "voz_no_explicada": 3, "tramo_corto": 1},
+            "rho": [4, 3, 2, 1, 2], "disp": [0, 1, 1, 1, 0], "exceso": [1, 1, 1, 0, 0]}
+
+
+def test_la_linea_periodica_lleva_al_final_lo_evaluado_y_lo_marcado_si_hay_detector(gestor, reloj):
+    gestor._eco_audio = EcoConDiagnostico(DIAG_ECO)
+    gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.4, pendiente_s=33.0, velocidad_x=0.83, alcance=True, reintentos=2, perdidos_s=0.0)
+    assert gestor._vigilar_transcripcion() is True
+    (linea,) = lineas_log()
+    assert linea.endswith("lat_reunion=- lat_micro=- eco_eval=12 eco_marc=3")
+
+
+def test_la_linea_periodica_no_lleva_eco_si_no_hay_detector_ni_si_este_falla(gestor, reloj):
+    for det in (None, EcoFijo(True)):                                        # EcoFijo no tiene `diagnostico`
+        gestor._eco_audio = det
+        assert gestor._sufijo_eco() == ""
+    assert gestor._diagnostico_eco() is None
+
+
+def test_esperar_deja_una_linea_de_diagnostico_del_eco_solo_con_numeros(gestor, reloj):
+    gestor.sesion.tema = SECRETO
+    gestor._eco_audio = EcoConDiagnostico(DIAG_ECO)
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 0.0)
+    esperar(gestor)
+    (linea,) = lineas_log("eco diagnostico")
+    assert linea.endswith("eco diagnostico eval=12 eco=3 fuertes=2 sin_ref=1 motivos=correlacion_baja:5,voz_no_explicada:3,tramo_corto:1 "
+                          "rho=4/3/2/1/2 disp=0/1/1/1/0 exceso=1/1/1/0/0")
+    assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
+
+
+def test_esperar_no_deja_diagnostico_del_eco_sin_detector_o_sin_tramos_evaluados(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 0.0)
+    gestor._eco_audio = None
+    esperar(gestor)
+    gestor._eco_audio = EcoConDiagnostico({**DIAG_ECO, "eval": 0})
+    esperar(gestor)
+    assert lineas_log("eco diagnostico") == []
+
+
+def test_esperar_con_detector_real_sin_tramos_evaluados_no_deja_diagnostico(gestor, reloj):
+    gestor.transcriptor = Transcriptor2(reloj, lambda t: 0.0)
+    esperar(gestor)
+    assert lineas_log("eco diagnostico") == []
 
 
 def test_esperar_sin_audio_transcrito_no_deja_resumen(gestor, reloj):

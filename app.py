@@ -19,7 +19,9 @@ from apuntes.analisis import crear_modelo
 from apuntes.aviso import AvisoLlamada, limpiar_titulo, titulo_reunion_teams
 from apuntes.config import APP_DIR, BACKLOG_DIR, BANDEJA_DIR, CACHE_DIR, CHECKS_DIR, COPIAS_DIR, DATOS_DIR, PLANES_DIR, SESIONES_DIR, TIPOS_DOC_DIR, Config
 from apuntes.consumo import Consumo
+from apuntes.energia import sin_freno_de_energia
 from apuntes.gestor import Gestor
+from apuntes.registro import RUTA_LOG, registrar_linea
 from apuntes.rutas import Guardian
 from apuntes.servidor import HOST, Difusor, crear_app
 from apuntes.simulador import cargar
@@ -66,8 +68,8 @@ def _asegurar_salida() -> None:
     """Con pythonw.exe no hay consola: sys.stdout y sys.stderr son None y uvicorn falla al mirar isatty. Se redirigen a un registro."""
     if sys.stdout is not None and sys.stderr is not None:
         return
-    DATOS_DIR.mkdir(parents=True, exist_ok=True)
-    log = open(DATOS_DIR / "apuntes.log", "a", encoding="utf-8", errors="replace", buffering=1)
+    RUTA_LOG.parent.mkdir(parents=True, exist_ok=True)
+    log = open(RUTA_LOG, "a", encoding="utf-8", errors="replace", buffering=1)
     if sys.stdout is None:
         sys.stdout = log
     if sys.stderr is None:
@@ -76,6 +78,9 @@ def _asegurar_salida() -> None:
 
 def main(argv=None) -> int:
     _asegurar_salida()
+    # Windows 11 puede frenar (EcoQoS) a un proceso con la ventana tapada, justo lo que pasa en una reunión: se le pide que no, antes de cargar nada
+    # pesado. El registro ya se puede escribir (`registrar_linea` crea `datos/apuntes.log` si falta, el mismo fichero de `_asegurar_salida`).
+    registrar_linea(f"energia sin_freno={'si' if sin_freno_de_energia() else 'no'}")
     ap = argparse.ArgumentParser(description="WhisperMeet: transcripción de reuniones con insights.")
     ap.add_argument("--simular", metavar="FICHERO.txt", help="alimenta una transcripción ficticia (sin audio)")
     ap.add_argument("--velocidad", type=float, default=30.0, help="aceleración de la simulación (por defecto 30x)")

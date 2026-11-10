@@ -4,6 +4,7 @@ Para los bucles que no pueden morir en silencio: se anota el fallo con su traza 
 error repetido no inunda el fichero (como mucho una línea por minuto y mensaje)."""
 from __future__ import annotations
 
+import os
 import threading
 import time
 import traceback
@@ -12,7 +13,9 @@ from pathlib import Path
 
 from .config import DATOS_DIR
 
-RUTA_LOG = DATOS_DIR / "apuntes.log"
+# Las pruebas arrancan la app de verdad en subprocesos (servidores de ayuda): con WHISPERMEET_REGISTRO esos procesos anotan en otro
+# fichero y nunca en el registro real, que además es la señal con la que la guarda de los tests sabe si hay una reunión en marcha.
+RUTA_LOG = Path(os.environ.get("WHISPERMEET_REGISTRO") or DATOS_DIR / "apuntes.log")
 REPETIDO_S = 60.0          # el mismo error (lugar + tipo + mensaje) no se vuelve a anotar antes de este tiempo
 _vistos: dict[str, float] = {}
 _lock = threading.Lock()

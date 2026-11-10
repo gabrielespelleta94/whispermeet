@@ -29,6 +29,7 @@ from . import api_ola4
 from . import backlog as BL
 from . import resumen as RS
 from . import llamadas as LL
+from . import huella as HU
 from . import planes as PL
 from .audio import listar_dispositivos
 from . import requisitos as REQ
@@ -221,15 +222,18 @@ class ErrorCampo(ValueError):
 
 def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
               al_cambiar_captura=None, ventana=None, al_avisar_llamada=None, vigilar_llamadas_activo=False, aviso=None,
-              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None, fabrica_archivero=None, fabrica_plan_propuesto=None) -> FastAPI:
+              leer_micro=None, intervalo_llamadas: float = 5.0, backlog=None, abridor_ola3=None, fabrica_archivero=None, fabrica_plan_propuesto=None,
+              vigia_codigo=None) -> FastAPI:
     """`ventana`: función sin argumentos que devuelve la `Ventana` nativa (o None con `--sin-ventana`).
     `backlog`: el `Backlog` (pruebas: con tiempos, reloj y abridor propios); por defecto uno sobre el Guardian.
     `vigilar_llamadas_activo`: solo la app real vigila el micro de Teams (los tests no leen el registro).
     `aviso`: el `AvisoLlamada` flotante (None con `--sin-ventana`: entonces solo banner y parpadeo). `leer_micro` e `intervalo_llamadas`
     sustituyen la lectura del registro y el intervalo (pruebas con una llamada simulada). `fabrica_archivero`: devuelve el `Analista` del Agente
-    Archivero (pruebas: un modelo falso); por defecto, uno propio sobre el modelo del gestor. `fabrica_plan_propuesto`: lo mismo para «Proponer plan» (ola C)."""
+    Archivero (pruebas: un modelo falso); por defecto, uno propio sobre el modelo del gestor. `fabrica_plan_propuesto`: lo mismo para «Proponer plan» (ola C).
+    `vigia_codigo`: el `VigiaCodigo` que dice si el código en disco ya no es el que cargó este proceso (pruebas: uno falso); por defecto, uno sobre `APP_DIR`."""
     hosts_ok = {f"{HOST}:{puerto}", f"localhost:{puerto}"}
     bl = backlog if backlog is not None else BL.Backlog(guardian, cfg)
+    vigia = vigia_codigo if vigia_codigo is not None else HU.VigiaCodigo(APP_DIR)   # la huella de ESTE arranque: se toma al crear la app
     gestor.fuentes.backlog = bl   # las sesiones anteriores del mismo proyecto entran en las fuentes del asesor por backlog.py
     re_id = re.compile(r"[0-9a-f]{16}")
     re_asesor = re.compile(r"[rc]\d{1,4}")
@@ -295,7 +299,7 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
     @app.get("/api/info")
     async def info():
         return {"version": __version__, "simulacion": gestor.sim is not None, "config": cfg.publico(),
-                "raiz_existe": Path(cfg["raiz_proyectos"]).is_dir()}
+                "raiz_existe": Path(cfg["raiz_proyectos"]).is_dir(), "codigo_cambiado": bool(vigia.cambiado())}
 
     @app.get("/api/requisitos")
     async def requisitos():

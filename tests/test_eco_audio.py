@@ -402,3 +402,98 @@ def test_la_ganancia_recordada_caduca_y_se_adapta_a_un_cambio_de_volumen():
         sola._resolver(_res(gan=-15.0, fuerte=True), 10.0 + i)
     lejos = 10.0 + ea.HISTORIAL_CADUCA_S + 50.0                            # pasado el plazo no hay referencia: vuelve a exigir tramo muy claro
     assert sola._resolver(_res(gan=-15.0), lejos)["motivo"] == "sin ganancia de referencia"
+
+
+# ------------------------------------------------------------------------------------------------------------------ diagnóstico (solo contadores)
+
+
+def _solo_numeros(valor) -> bool:
+    if isinstance(valor, dict):
+        return all(isinstance(k, str) and _solo_numeros(v) for k, v in valor.items())
+    if isinstance(valor, list):
+        return all(_solo_numeros(v) for v in valor)
+    return isinstance(valor, (int, float)) and not isinstance(valor, bool)
+
+
+def test_diagnostico_de_un_eco_puro_cuenta_evaluado_eco_y_histogramas():
+    e = montado(1)
+    assert e.probable_eco(_eco(1), 0.0)
+    d = e.diagnostico()
+    assert d["eval"] == 1 and d["eco"] == 1 and d["motivos"] == {} and d["sin_ref"] == 0
+    assert sum(d["rho"]) == 1 and d["rho"][4] == 1                      # rho >= 0,75: el último cubo
+    assert sum(d["disp"]) == 1 and sum(d["exceso"]) == 1                # rho >= 0,5: entra en los otros dos
+    assert d["disp"][4] == 0 and d["exceso"][4] == 0                    # y no con una dispersión ni un exceso enormes
+
+
+def test_diagnostico_cuenta_por_que_criterio_se_descarto_cada_tramo():
+    e = EcoAudio()
+    assert not e.probable_eco(_eco(1), 0.0)                              # sin datos de Reunión
+    alimentar(e, _reunion(1))
+    mic = _eco(1)
+    i = int(np.argmax(envolvente_db(mic) > -30)) * BL
+    assert not e.probable_eco(mic[i:i + int(0.4 * SR)], i / SR)          # tramo corto
+    assert not e.probable_eco(habla(LARGO_S, 700, -35.0) + ruido(LARGO_S), 0.0)   # voz propia con Reunión sonando
+    d = e.diagnostico()
+    assert d["eval"] == 3 and d["eco"] == 0
+    assert d["motivos"]["sin_datos_reunion"] == 1 and d["motivos"]["tramo_corto"] == 1 and sum(d["motivos"].values()) == 3
+    assert d["sin_ref"] == 1                                             # solo «sin datos de Reunión» es falta de referencia
+    assert sum(d["rho"]) == 1                                            # los dos primeros no llegaron a medirse: solo el tercero tiene rho
+
+
+def test_diagnostico_cuenta_la_falta_de_referencia_de_reunion_muda():
+    e = EcoAudio()
+    alimentar(e, np.zeros(int(LARGO_S * SR), np.float32), saltar_mudos=False)
+    assert not e.probable_eco(habla(LARGO_S, 11, -30.0) + ruido(LARGO_S), 0.0)
+    d = e.diagnostico()
+    assert d["motivos"] == {"reunion_sin_actividad": 1} and d["sin_ref"] == 1 and d["rho"][0] == 1
+
+
+def test_diagnostico_cuenta_los_fuertes_y_los_sin_ganancia_de_referencia():
+    e = EcoAudio()
+    e._contar({"eco": True, "motivo": "eco", "fuerte": True, "rho": 0.9, "dispersion_db": 1.0, "exceso": 0.0})
+    e._contar({"eco": False, "motivo": "sin ganancia de referencia", "fuerte": False, "rho": 0.78, "dispersion_db": 4.0, "exceso": 0.03})
+    e._contar({"eco": False, "motivo": "motivo nuevo que nadie previó", "fuerte": False, "rho": 0.2, "dispersion_db": 9.0, "exceso": 0.9})
+    d = e.diagnostico()
+    assert d["eval"] == 3 and d["eco"] == 1 and d["fuertes"] == 1
+    assert d["motivos"] == {"sin_ganancia_ref": 1, "otro": 1}
+    assert d["rho"] == [1, 0, 0, 0, 2]
+    assert d["disp"] == [1, 0, 1, 0, 0] and d["exceso"] == [1, 1, 0, 0, 0]   # la de rho 0,2 no entra en disp ni exceso
+
+
+def test_los_cubos_de_los_histogramas_son_los_del_encargo():
+    cubo = ea._cubo
+    assert [cubo(v, ea.CUBOS_RHO) for v in (0.29, 0.3, 0.49, 0.5, 0.64, 0.65, 0.74, 0.75, 0.99)] == [0, 1, 1, 2, 2, 3, 3, 4, 4]
+    assert [cubo(v, ea.CUBOS_DISPERSION_DB) for v in (0.0, 1.99, 2.0, 2.99, 3.0, 4.49, 4.5, 6.99, 7.0, 30.0)] == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]
+    assert [cubo(v, ea.CUBOS_EXCESO) for v in (0.0, 0.019, 0.02, 0.049, 0.05, 0.099, 0.1, 0.199, 0.2, 1.0)] == [0, 0, 1, 1, 2, 2, 3, 3, 4, 4]
+    assert cubo(float("nan"), ea.CUBOS_RHO) == 0
+
+
+def test_reiniciar_pone_a_cero_el_diagnostico():
+    e = montado(1)
+    e.probable_eco(_eco(1), 0.0)
+    assert e.diagnostico()["eval"] == 1
+    e.reiniciar()
+    d = e.diagnostico()
+    assert d["eval"] == 0 and d["eco"] == 0 and d["fuertes"] == 0 and d["sin_ref"] == 0 and d["motivos"] == {}
+    assert d["rho"] == [0] * 5 and d["disp"] == [0] * 5 and d["exceso"] == [0] * 5
+
+
+def test_diagnostico_devuelve_solo_numeros_y_es_una_copia():
+    e = montado(1)
+    e.probable_eco(_eco(1), 0.0)
+    e.probable_eco(habla(LARGO_S, 700, -35.0) + ruido(LARGO_S), 0.0)
+    d = e.diagnostico()
+    assert _solo_numeros(d) and set(d) == {"eval", "eco", "fuertes", "sin_ref", "motivos", "rho", "disp", "exceso"}
+    d["rho"][0] = 99
+    d["motivos"]["x"] = 1
+    assert e.diagnostico()["rho"][0] != 99 and "x" not in e.diagnostico()["motivos"]
+
+
+def test_contar_no_cambia_la_decision_ni_lanza_con_resultados_raros():
+    e = montado(1)
+    mic = _eco(1)
+    antes = e.probable_eco(mic, 0.0)
+    e2 = montado(1)
+    e2._contar(None)                                                      # basura: no lanza
+    e2._contar({"rho": "no es un número"})
+    assert e2.probable_eco(mic, 0.0) == antes and e2.ultimo["motivo"] == e.ultimo["motivo"]

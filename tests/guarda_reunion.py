@@ -4,9 +4,11 @@ Las funciones son pequeñas y reciben lo que necesitan (entorno, lector del regi
 para probarse sin tocar el registro real de Windows ni la carpeta de datos real."""
 import os
 import sys
+import time
 
 BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
 UMBRAL_ESCRITURA_S = 120
+REVISION_CADA_S = 20.0   # durante la batería la guarda vuelve a mirar como mucho cada tanto (la comprobación toca el registro de Windows y hace stat)
 FICHEROS_DE_LA_APP = ("apuntes.log", "consumo.jsonl")
 CLAVE_MICROFONO = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone"
 
@@ -97,3 +99,35 @@ def exigir_sin_reunion(entorno, lector_registro, reloj, datos_dir):
     mensaje = comprobar_reunion(entorno, lector_registro, reloj, datos_dir)
     if mensaje:
         pytest.exit(mensaje, returncode=3)
+
+
+# ---- revisión DURANTE la batería (una reunión puede empezar —o estar cerrándose— cuando los tests ya corren) ----
+
+def comprobar_reunion_iniciada(entorno, lector_registro, reloj, datos_dir):
+    """Como `comprobar_reunion` (mismas señales y misma excepción por entorno), pero con el texto de «empezó con la batería en marcha»."""
+    if entorno.get("WHISPERMEET_TESTS_EN_REUNION") == "1":
+        return None
+    motivo = motivo_reunion(lector_registro, reloj, datos_dir)
+    if motivo is None:
+        return None
+    return (f"Ha empezado una reunión con la batería de tests en marcha ({motivo}). Se corta para no retrasar la transcripción en directo: "
+            "relanza los tests cuando termine (o define WHISPERMEET_TESTS_EN_REUNION=1).")
+
+
+class RevisionPeriodica:
+    """Repite una comprobación como mucho cada `cada_s` segundos (reloj monótono inyectable). `revisar()` devuelve el mensaje de la
+    comprobación si toca mirar y hay motivo; en cualquier otro caso (aún no toca, sin motivo, fallo propio) devuelve None."""
+
+    def __init__(self, comprobar, reloj=time.monotonic, cada_s=REVISION_CADA_S):
+        self._comprobar, self._reloj, self._cada_s = comprobar, reloj, cada_s
+        self._ultima = None
+
+    def revisar(self):
+        ahora = self._reloj()
+        if self._ultima is not None and ahora - self._ultima < self._cada_s:
+            return None
+        self._ultima = ahora
+        try:
+            return self._comprobar() or None
+        except Exception:
+            return None

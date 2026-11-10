@@ -138,6 +138,68 @@ def test_la_sesion_sigue_si_no_hay_reunion(tmp_path):
     g.exigir_sin_reunion({}, _lector(), lambda: AHORA, tmp_path)
 
 
+# ---- revisión durante la batería ----
+
+class _Reloj:
+    def __init__(self):
+        self.t = 100.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_revision_no_repite_antes_de_veinte_segundos():
+    llamadas, reloj = [], _Reloj()
+    rev = g.RevisionPeriodica(lambda: llamadas.append(1), reloj=reloj)
+    assert rev.revisar() is None and len(llamadas) == 1          # la primera vez sí mira
+    reloj.t += 19.9
+    assert rev.revisar() is None and len(llamadas) == 1          # antes de 20 s no vuelve a mirar
+    reloj.t += 0.1
+    rev.revisar()
+    assert len(llamadas) == 2
+
+
+def test_revision_corta_cuando_aparece_un_motivo(tmp_path):
+    reloj, lector = _Reloj(), {"datos": []}
+    rev = g.RevisionPeriodica(lambda: g.comprobar_reunion_iniciada({}, lambda: lector["datos"], lambda: AHORA, tmp_path), reloj=reloj)
+    assert rev.revisar() is None                                  # sin reunión
+    lector["datos"] = [("Teams", 0)]                              # empieza una reunión…
+    assert rev.revisar() is None                                  # …pero aún no toca mirar
+    reloj.t += g.REVISION_CADA_S
+    mensaje = rev.revisar()
+    assert mensaje is not None and "micrófono en uso por Teams" in mensaje
+    assert "batería" in mensaje and "relanza" in mensaje
+
+
+def test_revision_no_corta_con_la_excepcion_activada(tmp_path):
+    reloj = _Reloj()
+
+    def no_debe_llamarse():
+        raise AssertionError("se ha consultado el registro")
+    rev = g.RevisionPeriodica(lambda: g.comprobar_reunion_iniciada({"WHISPERMEET_TESTS_EN_REUNION": "1"}, no_debe_llamarse, lambda: AHORA, tmp_path),
+                              reloj=reloj)
+    assert rev.revisar() is None
+    reloj.t += 60
+    assert rev.revisar() is None
+
+
+def test_revision_ve_el_registro_de_la_app_escrito_hace_poco(tmp_path):
+    _fichero(tmp_path, "apuntes.log", hace=5)
+    assert "apuntes.log" in g.comprobar_reunion_iniciada({}, _lector(), lambda: AHORA, tmp_path)
+
+
+def test_un_fallo_de_la_comprobacion_no_corta_la_bateria():
+    def roto():
+        raise RuntimeError("registro roto")
+    assert g.RevisionPeriodica(roto, reloj=_Reloj()).revisar() is None
+
+
+def test_el_conftest_engancha_la_revision_en_cada_test():
+    with open(os.path.join(os.path.dirname(__file__), "conftest.py"), encoding="utf-8") as f:
+        texto = f.read()
+    assert "def pytest_runtest_setup" in texto and "RevisionPeriodica" in texto and "returncode=3" in texto
+
+
 # ---- el vigilante del consumo ----
 
 def test_el_vigilante_menciona_la_otra_causa():
