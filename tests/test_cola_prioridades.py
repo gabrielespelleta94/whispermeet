@@ -17,14 +17,15 @@ CFG = {"idioma": "es", "whisper_beam": 5, "whisper_modelo": "x", "whisper_hilos"
 
 
 class Reloj:
-    """Sustituye al módulo `time` de la transcripción: el módulo solo usa `monotonic` y `perf_counter`."""
+    """Sustituye al módulo `time` de la transcripción: el módulo solo usa `monotonic`, `perf_counter` y `process_time` (aquí la CPU del proceso
+    avanza igual que el reloj: un solo núcleo ocupado todo el cálculo)."""
     def __init__(self):
         self.t = 0.0
 
     def monotonic(self):
         return self.t
 
-    perf_counter = monotonic
+    perf_counter = process_time = monotonic
 
 
 @pytest.fixture
@@ -544,3 +545,29 @@ def test_leer_rezagado_s_tambien_ordena_la_cola(reloj):
     b.en(0.0, "reunion", 4, t0=0.0)
     reloj.t = 31.0
     assert b.tr.rezagado_s == 4.0 and not b.tr._normales
+
+
+# ------------------------------------------------------------------ diagnóstico de capacidad: CPU del cálculo y audio recibido
+def test_el_transcriptor_acumula_el_audio_recibido_y_la_cpu_del_calculo(reloj):
+    b = Banco(reloj, capacidad=2.0)                       # 6 s de audio cuestan 3 s de reloj (y, en el doble, 3 s de CPU)
+    tr = b.tr
+    assert tr.audio_recibido_s == 0 and tr.cpu_total_s == 0 and tr.calculo_total_s == 0
+    b.en(0.0, "reunion", 6)
+    b.en(0.0, "yo", 4, aplazar=True)
+    assert tr.audio_recibido_s == pytest.approx(10.0)      # lo que entra en la cola, sea cual sea su clase
+    b.servir_todo()
+    assert tr.audio_total_s == pytest.approx(10.0) and tr.calculo_total_s == pytest.approx(5.0)
+    assert tr.cpu_total_s == pytest.approx(5.0)            # núcleos = cpu / reloj de cálculo
+    assert tr.cpu_total_s / tr.calculo_total_s == pytest.approx(1.0)
+
+
+def test_un_tramo_que_falla_no_suma_cpu_ni_calculo(reloj):
+    b = Banco(reloj)
+
+    def falla(audio, fuente, rapido=False):
+        reloj.t += 1.0
+        raise RuntimeError("memoria agotada (ficticia)")
+    b.tr._segmentos = falla
+    b.en(0.0, "reunion", 6)
+    b.servir_todo()
+    assert b.tr.cpu_total_s == 0 and b.tr.calculo_total_s == 0 and b.tr.audio_recibido_s == pytest.approx(6.0)

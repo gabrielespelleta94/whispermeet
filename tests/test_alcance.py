@@ -533,15 +533,16 @@ def test_el_tope_que_llega_a_transcribe_respeta_el_tamano_real_del_prompt():
     m = ModeloPorTramos()
     m.hf_tokenizer = TokenizadorFalso(100)
     tr, _, _ = _transcriptor(m, listo=True)
-    tr.vocabulario = ["SAP", "Fiori"]   # con vocabulario hay hotwords: otro texto que cuenta
+    tr.vocabulario = ["SAP", "Fiori"]
     try:
         _uno_a_uno(tr, [("yo", 40, 0.01), ("yo", 3, 0.02)])
     finally:
         _terminar(tr)
-    # 5 marcas + 100 de hotwords + 100 de prompt = 205 tokens; libres = 448 - 205 - 2 = 241
-    assert m.llamadas[0]["max_new_tokens"] == 241 == tope_tokens(40, 205)
-    assert m.llamadas[0]["max_new_tokens"] <= MAX_TOKENS_WHISPER - 205 - 2
-    assert m.llamadas[1]["max_new_tokens"] == tope_tokens(3, 205) == 3 * TOKENS_POR_S + TOKENS_MARGEN   # el tramo corto manda la duración
+    # 5 marcas + 100 de prompt (ya no hay hotwords) = 105 tokens; libres = 448 - 105 - 2 = 341
+    assert m.llamadas[0]["max_new_tokens"] == 341 == tope_tokens(40, 105)
+    assert m.llamadas[0]["max_new_tokens"] <= MAX_TOKENS_WHISPER - 105 - 2
+    assert m.llamadas[1]["max_new_tokens"] == tope_tokens(3, 105) == 3 * TOKENS_POR_S + TOKENS_MARGEN   # el tramo corto manda la duración
+    assert m.hf_tokenizer.textos and all("hotwords" not in c for c in m.llamadas)
     assert all(t.startswith(" ") for t in m.hf_tokenizer.textos)
 
 
@@ -557,7 +558,7 @@ def test_con_tokenizador_un_tramo_largo_lleva_tope_aunque_sin_el_no_lo_llevaria(
     assert m.llamadas[0]["max_new_tokens"] == tope_tokens(25, 15) == 25 * TOKENS_POR_S + TOKENS_MARGEN
 
 
-def test_un_prompt_enorme_se_cuenta_con_el_tope_de_faster_whisper_y_si_no_cabe_va_sin_tope():
+def test_un_prompt_enorme_se_cuenta_con_el_tope_de_faster_whisper():
     m = ModeloPorTramos()
     m.hf_tokenizer = TokenizadorFalso(10 ** 4)   # cada texto cuenta como mucho MAX_TOKENS_WHISPER // 2 - 1 = 223
     tr, _, _ = _transcriptor(m, listo=True)
@@ -566,8 +567,8 @@ def test_un_prompt_enorme_se_cuenta_con_el_tope_de_faster_whisper_y_si_no_cabe_v
         _uno_a_uno(tr, [("yo", 5, 0.01)])
     finally:
         _terminar(tr)
-    # 5 + 223 + 223 = 451 > 448: no cabe nada
-    assert "max_new_tokens" not in m.llamadas[0]
+    # 5 + 223 = 228 (solo el prompt): cabe y deja 448 - 228 - 2 = 218 para generar
+    assert m.llamadas[0]["max_new_tokens"] == tope_tokens(5, 5 + MAX_TOKENS_WHISPER // 2 - 1) == 5 * TOKENS_POR_S + TOKENS_MARGEN
 
 
 def test_si_el_tokenizador_falla_se_usa_el_tope_sin_prompt():

@@ -20,6 +20,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 # Antes de importar la app: su registro, a un fichero temporal y nunca a datos/apuntes.log (con modelo falso no es una sesión real).
 os.environ.setdefault("WHISPERMEET_REGISTRO", str(Path(tempfile.gettempdir()) / "whispermeet-pruebas.log"))
+os.environ.setdefault("WHISPERMEET_SIN_PRIORIDAD", "1")   # una reunión de prueba no sube la prioridad del servidor
 
 import app as aplicacion  # noqa: E402
 from apuntes.analisis import ErrorAnalisis, ModeloLLM, Respuesta, Uso  # noqa: E402

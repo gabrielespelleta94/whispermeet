@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import gc
+import os
 import re
 import threading
 import time
@@ -41,10 +42,14 @@ SUSCRIPCION_CA = re.compile(
 URL = re.compile(r"(?:https?://|www\.)\S+", re.I)
 MAX_PALABRAS_TRAS_URL = 3   # un tramo con URL y a lo sumo estas palabras más es un crédito/dirección, no una frase real
 
-# Prompt de Whisper (initial_prompt): admite ~224 tokens; se usan ~200. Aproximación por caracteres (español con siglas,
-# ~2,4 caracteres por token): 480 caracteres.
-MAX_PROMPT_CHARS = 480
+# Prompt de Whisper (initial_prompt): admite ~224 tokens. Aproximación por caracteres (español con siglas, ~2,4 caracteres por token).
+# El prompt se paga en CADA tramo (medido con `small`, 6 s por tramo, 3 pasadas: 480 caracteres → 3,7×; 240 → 4,3× (+17 %, parecido del texto 98,7 %,
+# ningún término hablado perdido); 120 → 5,4×; sin prompt, 5,9×), así que se recorta: 240 en modo normal y 120 en modo rápido.
+MAX_PROMPT_CHARS = 240
+MAX_PROMPT_CHARS_RAPIDO = 120   # modo rápido: solo tema y primeros términos, sin continuidad
 MAX_PALABRAS_CONTINUIDAD = 30
+MIN_PALABRAS_HUECO = 6          # una continuidad que hay que acortar solo entra si en el hueco que deja el vocabulario caben al menos estas palabras
+RESERVA_CONTINUIDAD = 60         # caracteres que el vocabulario deja siempre libres para la continuidad (si la hay)
 MIN_PALABRAS_CONTINUIDAD = 6    # si la última frase es muy corta («Vale.») se le suma la anterior hasta este mínimo
 ETIQUETA_VOCABULARIO = "Términos:"
 ETIQUETA_VOCABULARIO_CA = "Termes:"
@@ -55,24 +60,24 @@ ETIQUETAS = {"es": ETIQUETA_VOCABULARIO, "ca": ETIQUETA_VOCABULARIO_CA, "en": ET
 IDIOMAS_TRANSCRIPCION = ("es", "ca", "en")
 
 
-# hotwords de faster-whisper (≥1.0): los términos del proyecto también como pista de decodificación, aparte del initial_prompt.
-# Presupuesto propio y corto (el prompt ya gasta sus 480): se recorta por el final, que es lo menos prioritario.
-MAX_HOTWORDS_CHARS = 200
+# Sin `hotwords` de faster-whisper: cada tramo es una sola ventana y el vocabulario ya va en el initial_prompt, así que duplicaban el
+# prompt y costaban cálculo en cada tramo (medido: ver CLAUDE.md).
 
 
-def construir_hotwords(vocabulario=(), tope: int = MAX_HOTWORDS_CHARS) -> str:
-    """«a, b, c» con los primeros términos del vocabulario que caben en `tope` caracteres; vacío si no hay vocabulario."""
-    elegidos, usado = [], 0
-    for term in vocabulario or ():
-        term = " ".join(str(term).split())
-        if not term:
-            continue
-        coste = len(term) + (2 if elegidos else 0)
-        if usado + coste > tope:
-            break
-        elegidos.append(term)
-        usado += coste
-    return ", ".join(elegidos)
+def hilos_efectivos(config, nucleos: int | None = None) -> int:
+    """Hilos de cálculo que usa Whisper. FUNCIÓN PURA (salvo contar los núcleos si no se dan). Con `whisper_hilos_auto` (por defecto):
+    min(whisper_hilos, max(2, núcleos // 2)). Motivo: con prioridad alta hay que dejar la mitad de los núcleos a la videollamada. Con False,
+    `whisper_hilos` tal cual."""
+    def cfg(clave, defecto):
+        try:
+            return config[clave]
+        except (KeyError, TypeError):
+            return defecto
+    pedidos = int(cfg("whisper_hilos", 6))
+    if not cfg("whisper_hilos_auto", True) or pedidos <= 0:
+        return pedidos
+    nucleos = int(nucleos) if nucleos else (os.cpu_count() or 2)
+    return min(pedidos, max(2, nucleos // 2))
 
 
 _VOCALES = {"a": "aáàâä", "e": "eéèêë", "i": "iíìîï", "o": "oóòôö", "u": "uúùûü", "n": "nñ", "c": "cç"}
@@ -194,7 +199,7 @@ TOKENS_POR_S = 10         # holgura sobre el habla rápida (medido con el tokeni
                           # de tiempo también cuentan); si se alcanzara, faster-whisper sigue desde la última marca completa
 TOKENS_MARGEN = 24        # suelo para tramos muy cortos («sí, vale, de acuerdo, lo vemos el lunes»)
 MAX_TOKENS_WHISPER = 448  # faster-whisper rechaza la llamada si prompt + max_new_tokens pasa de aquí
-TOPE_TOKENS_SEGURO = 120  # sin tokenizador para contar el prompt (peor caso ≈330 tokens), por encima de esto no se pasa tope
+TOPE_TOKENS_SEGURO = 120  # sin tokenizador para contar el prompt (peor caso ≈100 tokens), por encima de esto no se pasa tope
 # COLA CON PRIORIDADES. Un solo hilo y un solo modelo atienden los dos canales y un tramo no se interrumpe a medias: lo único que se decide
 # es cuál se toma después. La regla busca que lo que se lee en directo sea lo último que se ha dicho, aunque la máquina no dé para todo:
 #   1. NORMALES: lo que acaba de llegar. Primero Reunión (lo que dicen los demás) y después el Micro (lo que ha dicho uno mismo es lo que
@@ -297,17 +302,17 @@ def ultima_frase(texto: str, max_palabras: int = MAX_PALABRAS_CONTINUIDAD, min_p
 
 def construir_prompt(base: str, vocabulario=(), continuidad: str = "", tope: int = MAX_PROMPT_CHARS,
                      etiqueta: str = ETIQUETA_VOCABULARIO) -> str:
-    """`base` (tema) + «Términos: a, b.» + continuidad. Si no cabe, se conservan tema y continuidad y se recorta el vocabulario;
-    solo si ni siquiera ellos caben se acorta la continuidad por el principio. Sin vocabulario ni continuidad, es `base`."""
+    """`base` (tema) + «Términos: a, b.» + continuidad, en `tope` caracteres y por este orden de prioridad: el tema, los términos del vocabulario
+    (los primeros mandan: no se salta a uno más corto) y la continuidad con el hueco que quede (se acorta por el principio: queda lo último
+    dicho; si hay que acortarla y quedan menos de `MIN_PALABRAS_HUECO` palabras, no entra). Si hay continuidad, el vocabulario deja libres
+    `RESERVA_CONTINUIDAD` caracteres (o lo que ella mida, si es menos) para que entre siempre algo de ella; sin continuidad (modo rápido) los
+    términos usan todo el hueco. Sin vocabulario ni continuidad, es `base`."""
     base, cont = (base or "").strip(), " ".join((continuidad or "").split())
-    if cont and len(base) + len(cont) + 1 > tope:
-        libre = max(0, tope - len(base) - 1)
-        palabras = cont.split()
-        while palabras and len(" ".join(palabras)) > libre:
-            palabras.pop(0)
-        cont = " ".join(palabras)
-    fijo = " ".join(x for x in (base, cont) if x)
-    libre = tope - len(fijo) - (1 if fijo else 0) - len(etiqueta) - 1   # -1: el punto final
+    if len(base) > tope:
+        base = base[:tope].rsplit(" ", 1)[0] if " " in base[:tope] else base[:tope]
+    libre = tope - len(base) - (1 if base else 0) - len(etiqueta) - 1   # -1: el punto final
+    if cont:
+        libre -= min(len(cont) + 1, RESERVA_CONTINUIDAD)   # hueco garantizado para la continuidad: el vocabulario no lo ocupa
     elegidos: list[str] = []
     usado = 0
     for term in vocabulario or ():
@@ -323,7 +328,13 @@ def construir_prompt(base: str, vocabulario=(), continuidad: str = "", tope: int
     if elegidos:
         partes.append(f"{etiqueta} {', '.join(elegidos)}.")
     if cont:
-        partes.append(cont)
+        hueco = tope - len(" ".join(p for p in partes if p)) - 1
+        entera = cont.split()
+        palabras = list(entera)
+        while palabras and len(" ".join(palabras)) > hueco:
+            palabras.pop(0)
+        if palabras and (len(palabras) == len(entera) or len(palabras) >= MIN_PALABRAS_HUECO):   # un cabo suelto de 2-3 palabras no sirve; la frase entera, sí
+            partes.append(" ".join(palabras))
     return " ".join(p for p in partes if p)
 
 
@@ -401,6 +412,11 @@ class Transcriptor:
         self.latencia_max: dict[str, float] = {}    # la mayor de esta ejecución, por fuente
         self.audio_total_s = 0.0     # audio transcrito en esta ejecución y lo que costó calcularlo: la velocidad media, sin el ruido
         self.calculo_total_s = 0.0   # de un tramo suelto
+        self.cpu_total_s = 0.0       # CPU del proceso (`process_time`) durante esos mismos cálculos: cpu_total_s / calculo_total_s = núcleos que consiguió Whisper
+        self.audio_recibido_s = 0.0  # audio que ha entrado en la cola en esta ejecución (la demanda; `audio_total_s` es lo ya calculado)
+        self.prompt_chars_total = 0  # caracteres del initial_prompt de todas las llamadas y cuántas fueron: el prompt medio
+        self.prompt_llamadas = 0
+        self.hilos: int | None = None   # hilos con los que se cargó el modelo (`hilos_efectivos`); None = aún sin cargar
         self._t_deteccion: dict[str, float] = {}    # cuándo se detectó por última vez el idioma de cada fuente
         self._frames_ventana = 0                    # ventana del codificador para la llamada en curso (0 = los 30 s de Whisper)
 
@@ -466,8 +482,9 @@ class Transcriptor:
     def cargar_modelo(self):
         from faster_whisper import WhisperModel
         MODELOS_DIR.mkdir(parents=True, exist_ok=True)
+        self.hilos = hilos_efectivos(self.config)   # num_workers se queda en 1 (el valor por defecto): un solo tramo a la vez
         return WhisperModel(self.config["whisper_modelo"], device="cpu", compute_type="int8",
-                            cpu_threads=int(self.config["whisper_hilos"]), download_root=str(MODELOS_DIR))
+                            cpu_threads=self.hilos, download_root=str(MODELOS_DIR))
 
     def _instalar_ventana(self, modelo) -> None:
         """Hace que el codificador vea solo `_frames_ventana` características en vez de los 30 s que faster-whisper rellena siempre. Se envuelve
@@ -511,6 +528,7 @@ class Transcriptor:
         with self._hay:   # las colas y los contadores cambian juntos: con dos hilos de captura, el mismo orden en todos
             ahora = time.monotonic()
             self._pendiente_s += dur
+            self.audio_recibido_s += dur
             if aplazar:
                 self._aplazado_s += dur
                 self.tramos_aplazados += 1
@@ -645,7 +663,7 @@ class Transcriptor:
         etiqueta = {(NORMAL, True): "tramo · rápido", (APLAZADO, False): "eco probable", (APLAZADO, True): "eco probable · rápido",
                     (REZAGADO, False): "tramo atrasado", (REZAGADO, True): "tramo atrasado · rápido"}.get((clase, rapido))
         self._avisar("inicio", ident, fuente=fuente, audio_s=dur, **({"etiqueta": etiqueta} if etiqueta else {}))
-        ini = time.perf_counter()
+        cpu0, ini = time.process_time(), time.perf_counter()
         try:
             try:
                 segmentos = self._segmentos(audio, fuente, rapido=rapido)
@@ -656,10 +674,12 @@ class Transcriptor:
                 gc.collect()
                 segmentos = self._segmentos(audio, fuente, rapido=True)
             calc = time.perf_counter() - ini
+            cpu = time.process_time() - cpu0   # de todo el proceso (también hilos ajenos al cálculo): una cota alta de lo que consiguió Whisper
             if calc > 0:
                 self.velocidad_x = dur / calc
             self.audio_total_s += dur
             self.calculo_total_s += calc
+            self.cpu_total_s += cpu
             # un rezagado se transcribe fuera de su sitio: su última frase no sirve de continuidad al tramo que venga después
             texto = self._entregar(fuente, t0, " ".join(t for _i, t, _p in segmentos), [w for _i, _t, p in segmentos for w in p],
                                    continuidad=clase != REZAGADO)
@@ -723,11 +743,14 @@ class Transcriptor:
             return m
         return self._idioma_usado.get(fuente) or self.idiomas_auto()[0]
 
-    def prompt_para(self, fuente: str, idioma: str | None = None) -> str:
-        """initial_prompt de esta fuente: tema (en el idioma del tramo) + vocabulario + última frase conservada de ESA fuente."""
+    def prompt_para(self, fuente: str, idioma: str | None = None, rapido: bool = False) -> str:
+        """initial_prompt de esta fuente: tema (en el idioma del tramo) + vocabulario + última frase conservada de ESA fuente, en este orden y con el
+        hueco que quede. En modo rápido, solo tema y primeros términos (`MAX_PROMPT_CHARS_RAPIDO`, sin continuidad)."""
         idioma = idioma or self._idioma_prompt(fuente)
         base = {"ca": self.prompt_ca, "en": self.prompt_en}.get(idioma) or self.prompt
-        return construir_prompt(base, self.vocabulario, self._ultima.get(fuente, ""), etiqueta=ETIQUETAS.get(idioma, ETIQUETA_VOCABULARIO))
+        return construir_prompt(base, self.vocabulario, "" if rapido else self._ultima.get(fuente, ""),
+                                tope=MAX_PROMPT_CHARS_RAPIDO if rapido else MAX_PROMPT_CHARS,
+                                etiqueta=ETIQUETAS.get(idioma, ETIQUETA_VOCABULARIO))
 
     def detectar_idioma(self, audio: np.ndarray):
         """[(idioma, probabilidad)] de `WhisperModel.detect_language` (faster-whisper ≥1.0: devuelve (idioma, p, todas)), o None si falla."""
@@ -787,17 +810,16 @@ class Transcriptor:
         self._palabras = [w for _i, _t, p in segmentos for w in p]
         return " ".join(t for _i, t, _p in segmentos)
 
-    def _tokens_prompt(self, prompt: str | None, hotwords: str | None) -> int | None:
-        """Tokens que ocupa el prompt de la llamada (marcas de inicio + hotwords + initial_prompt, cada uno con el tope de faster-whisper), o
+    def _tokens_prompt(self, prompt: str | None) -> int | None:
+        """Tokens que ocupa el prompt de la llamada (marcas de inicio + initial_prompt, con el tope de faster-whisper), o
         None si el modelo no expone su tokenizador (dobles de test)."""
         tok = getattr(self._modelo, "hf_tokenizer", None)
         if tok is None:
             return None
         try:
             n = 5
-            for texto in (hotwords, prompt):
-                if texto:
-                    n += min(len(tok.encode(" " + texto.strip(), add_special_tokens=False).ids), MAX_TOKENS_WHISPER // 2 - 1)
+            if prompt:
+                n += min(len(tok.encode(" " + prompt.strip(), add_special_tokens=False).ids), MAX_TOKENS_WHISPER // 2 - 1)
             return n
         except Exception:  # noqa: BLE001
             return None
@@ -815,12 +837,13 @@ class Transcriptor:
                 decodificacion = {"beam_size": min(beam, BEAM_RAPIDO), "temperature": TEMPERATURAS_RAPIDO}
             else:
                 decodificacion = {"beam_size": beam, "temperature": TEMPERATURAS}
-            prompt = self.prompt_para(fuente, idioma) or None
-            hotwords = construir_hotwords(self.vocabulario) or None
-            tope = tope_tokens(dur, self._tokens_prompt(prompt, hotwords))
+            prompt = self.prompt_para(fuente, idioma, rapido=rapido) or None
+            self.prompt_chars_total += len(prompt or "")
+            self.prompt_llamadas += 1
+            tope = tope_tokens(dur, self._tokens_prompt(prompt))
             if tope is not None:
                 decodificacion["max_new_tokens"] = tope   # corta los bucles de Whisper antes de que llenen la ventana
-            resto = dict(condition_on_previous_text=False, no_speech_threshold=0.6, initial_prompt=prompt, hotwords=hotwords,
+            resto = dict(condition_on_previous_text=False, no_speech_threshold=0.6, initial_prompt=prompt,
                          **self._opciones_vad(), **({"word_timestamps": True} if palabras else {}))   # ola 4: probabilidad por palabra
             try:
                 segs = list(self._modelo.transcribe(audio, language=idioma, **decodificacion, **resto)[0])   # faster-whisper genera al iterar

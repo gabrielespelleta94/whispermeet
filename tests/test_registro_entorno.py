@@ -37,6 +37,10 @@ def test_los_servidores_de_ayuda_lo_apartan_antes_de_importar_la_app():
         assert texto.index("WHISPERMEET_REGISTRO") < texto.index("import app as aplicacion"), nombre
 
 
+def test_pytest_pone_la_variable_que_impide_cambiar_la_prioridad_de_los_procesos_de_prueba():
+    assert os.environ.get("WHISPERMEET_SIN_PRIORIDAD") == "1"
+
+
 def test_la_salida_de_pythonw_va_al_mismo_fichero_que_el_registro():
     texto = (RAIZ / "app.py").read_text(encoding="utf-8")
     assert 'DATOS_DIR / "apuntes.log"' not in texto and "open(RUTA_LOG" in texto

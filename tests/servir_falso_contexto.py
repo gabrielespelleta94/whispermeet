@@ -29,6 +29,7 @@ sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "pruebas"))
 # Antes de importar la app: su registro, a un fichero temporal y nunca a datos/apuntes.log (pytest ya lo deja puesto; esto cubre el uso a mano).
 os.environ.setdefault("WHISPERMEET_REGISTRO", str(Path(tempfile.gettempdir()) / "whispermeet-pruebas.log"))
+os.environ.setdefault("WHISPERMEET_SIN_PRIORIDAD", "1")   # una reunión de prueba no sube la prioridad del servidor
 
 import app as aplicacion  # noqa: E402
 import servir_modelo_falso as base  # noqa: E402

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # nunca a datos/apuntes.log. Tiene que estar puesto ANTES de importar `apuntes.registro`. En este proceso lo aparta además `_registro_aparte`.
 _REGISTRO_PRUEBAS = Path(tempfile.gettempdir()) / f"whispermeet-pruebas-{os.getpid()}.log"
 os.environ["WHISPERMEET_REGISTRO"] = str(_REGISTRO_PRUEBAS)
+os.environ["WHISPERMEET_SIN_PRIORIDAD"] = "1"   # ningún test cambia la prioridad de pytest ni la de los servidores de ayuda (`energia.prioridad_de_reunion`)
 
 from apuntes.rutas import Guardian  # noqa: E402
 import guarda_reunion  # noqa: E402

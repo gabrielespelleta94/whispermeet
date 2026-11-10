@@ -175,6 +175,20 @@ Hecho el 10 de noviembre, sin medidas nuevas; falta comprobarlas en una reunión
 - Diagnóstico numérico del detector de eco: contadores por criterio e histogramas de correlación, dispersión y exceso, en una línea al cerrar la reunión.
 - Sin freno de energía de Windows (`apuntes/energia.py`): la línea `energia sin_freno=…` del arranque dice si Windows lo aceptó.
 
+## Capacidad de Whisper en reunión
+
+Hecho el 10 de noviembre. En una reunión real la transcripción en vivo iba a 1,17× el tiempo real (en vacío da 3,4×) con una demanda de 1,6-1,7×: aunque la cola ya tenía el retraso acotado, a Whisper le faltaba procesador frente a la videollamada.
+- Prioridad del proceso por encima de lo normal mientras se captura (reunión o dictado) y vuelta a su clase original al terminar del todo (solo si Whisper deja la mitad de los núcleos); ajuste `prioridad_reunion`. Los tests no pueden cambiarla (`WHISPERMEET_SIN_PRIORIDAD`).
+- Hilos de Whisper = la mitad de los núcleos como mucho (`whisper_hilos_auto`): la otra mitad se deja a la videollamada.
+- Sin `hotwords` y prompt recortado a 240 caracteres (120 y sin continuidad en modo rápido; con vocabulario largo, la continuidad conserva 60 caracteres): +17 % de velocidad con el mismo texto.
+- Con 5 hilos ajenos ocupados, 1,0× y 0,7× antes (dos medidas) frente a 3,0× y 2,9× ahora; con 3, de 2,1× y 1,2× a 2,9× y 2,9×. `OMP_WAIT_POLICY=PASSIVE` se midió y se descartó (ahorraba un 26 % de CPU pero perdía un 15 % de velocidad).
+- El registro dice ahora cuántos núcleos consigue Whisper y cuánta CPU gasta el equipo (`nucleos=`, `cpu_equipo=`, y al cierre `hilos=`, `prioridad=`, `prompt_med=`, `demanda=`).
+
+Lo que queda:
+- Comprobarlo en una reunión real con Teams: las medidas usan una carga sintética constante y la de Teams es a ráfagas.
+- Ajustar el detector de eco con el diagnóstico de la próxima reunión real (sigue sin validarse con eco acústico real).
+- Mirar `nucleos=` y `cpu_equipo=` de esa reunión: si Whisper sigue consiguiendo pocos núcleos con la prioridad alta, el límite está fuera de la app.
+
 ## Principios que no cambian
 
 - Todo en local. La IA se usa solo con `claude -p`.

@@ -16,6 +16,12 @@ from test_idioma import CapturaNula, gestor_con_audio
 SECRETO = "contenido-secreto-de-la-reunion"
 
 
+@pytest.fixture(autouse=True)
+def _sin_lectura_real_de_cpu(monkeypatch):
+    """La CPU de todo el equipo cambia en cada lectura: salvo en los tests que la fijan, el gestor no tiene lectura (`cpu_equipo=-`)."""
+    monkeypatch.setattr(G, "tiempos_del_equipo", lambda kernel32=None: None)
+
+
 # ================================================================ dobles
 class Reloj:
     """Reloj simulado: `monotonic()` solo avanza cuando el gestor «duerme» (asyncio.sleep) o cuando el test lo mueve."""
@@ -291,7 +297,7 @@ def test_vigilar_linea_de_retraso_con_sus_medidas_y_sin_texto_de_la_reunion(gest
     assert gestor._vigilar_transcripcion() is True
     (linea,) = lineas_log()
     assert linea.endswith("transcripcion retraso=20s cola=33s vel=0.8x rapido=True reintentos=2 perdidos=0s aplazado=0s "
-                          "ret_reunion=0s rezagado=0s eco_descartado=0s lat_reunion=- lat_micro=-")
+                          "ret_reunion=0s rezagado=0s eco_descartado=0s lat_reunion=- lat_micro=- nucleos=- cpu_equipo=-")
     assert gestor.sesion.incidencias == [] and gestor.avisos == [] and avisos_ev(gestor) == []             # el retraso solo se registra, no se avisa
     assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
 
@@ -568,7 +574,7 @@ def test_vigilar_linea_de_diagnostico_con_los_campos_de_la_cola_nueva(gestor, re
     assert gestor._vigilar_transcripcion() is True
     (linea,) = lineas_log()
     assert linea.endswith("transcripcion retraso=20s cola=33s vel=0.8x rapido=True reintentos=2 perdidos=0s aplazado=3s "
-                          "ret_reunion=18s rezagado=40s eco_descartado=12s lat_reunion=6s lat_micro=12s")
+                          "ret_reunion=18s rezagado=40s eco_descartado=12s lat_reunion=6s lat_micro=12s nucleos=- cpu_equipo=-")
 
 
 def test_vigilar_con_audio_rezagado_registra_aunque_el_retraso_sea_bajo(gestor, reloj):
@@ -593,7 +599,7 @@ def test_esperar_deja_una_linea_de_resumen_solo_con_medidas(gestor, reloj):
     esperar(gestor)
     (linea,) = lineas_log("transcripcion resumen")
     assert linea.endswith("transcripcion resumen audio=300s calculo=250s vel_media=1.2x lat_max_reunion=14s lat_max_micro=6s rezagado_total=20s "
-                          "perdidos=0s eco_descartado=8s aplazados=5 rezagados=2 reintentos=1")
+                          "perdidos=0s eco_descartado=8s aplazados=5 rezagados=2 reintentos=1 nucleos=- hilos=- prioridad=normal prompt_med=-")
     assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
 
 
@@ -616,7 +622,7 @@ def test_la_linea_periodica_lleva_al_final_lo_evaluado_y_lo_marcado_si_hay_detec
     gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.4, pendiente_s=33.0, velocidad_x=0.83, alcance=True, reintentos=2, perdidos_s=0.0)
     assert gestor._vigilar_transcripcion() is True
     (linea,) = lineas_log()
-    assert linea.endswith("lat_reunion=- lat_micro=- eco_eval=12 eco_marc=3")
+    assert linea.endswith("lat_reunion=- lat_micro=- eco_eval=12 eco_marc=3 nucleos=- cpu_equipo=-")
 
 
 def test_la_linea_periodica_no_lleva_eco_si_no_hay_detector_ni_si_este_falla(gestor, reloj):
@@ -695,3 +701,291 @@ def test_render_escribe_la_transcripcion_por_minuto_con_segmentos_llegados_fuera
     assert [l[:7] for l in lineas] == ["[00:05]", "[01:05]", "[01:05]", "[02:05]"]
     assert "Micro" in lineas[1] and "Reunión" in lineas[2]                       # mismo minuto: por orden de llegada (id)
     assert [x.t for x in s.segmentos] == [125.0, 5.0, 65.0, 65.0]               # la sesión no se reordena
+
+
+# ================================================================ capacidad: prioridad del proceso mientras se captura
+@pytest.fixture
+def prioridades(monkeypatch):
+    """Sustituye la llamada a la API de prioridad por un espía: anota `activa` y dice que sí."""
+    llamadas = []
+    monkeypatch.setattr(G, "prioridad_de_reunion", lambda activa, kernel32=None, clase_normal=None: llamadas.append(activa) or True)
+    monkeypatch.setattr(G.os, "cpu_count", lambda: 16)                              # Whisper (6 hilos) deja la mitad de los núcleos: la prioridad se sube
+    monkeypatch.setattr(G, "clase_de_prioridad", lambda kernel32=None: 0x20)
+    return llamadas
+
+
+def gestor_en_marcha(tmp_path, monkeypatch, config=None):
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch, config)
+    asyncio.run(iniciar_y_esperar(g, PROYECTO, "Tema ficticio", 5, None, []))
+    g.transcriptor.detener()
+    g.eventos = []
+    g._emitir = g.eventos.append
+    return g
+
+
+def terminar_sin_revision(g):
+    async def sin_revision():
+        return None
+    g._generar_revision = sin_revision
+    return asyncio.run(g.terminar())
+
+
+def lineas_energia():
+    return [l.split("] ", 1)[1] for l in lineas_log("energia ")]
+
+
+def test_al_empezar_la_captura_se_sube_la_prioridad_y_se_anota(tmp_path, monkeypatch, prioridades):
+    g = gestor_en_marcha(tmp_path, monkeypatch)
+    assert prioridades == [True] and g._prioridad_alta is True
+    assert lineas_energia() == ["energia prioridad=alta"]
+
+
+def test_al_terminar_se_baja_despues_de_vaciar_la_cola_y_se_anota(tmp_path, monkeypatch, prioridades):
+    g = gestor_en_marcha(tmp_path, monkeypatch)
+    visto = []
+    esperar_real = g._esperar_transcripcion
+
+    async def esperar():
+        visto.append(list(prioridades))        # mientras se vacía la cola de transcripción sigue alta
+        await esperar_real()
+    g._esperar_transcripcion = esperar
+    terminar_sin_revision(g)
+    assert visto == [[True]]
+    assert prioridades == [True, False] and g._prioridad_alta is False
+    assert lineas_energia() == ["energia prioridad=alta", "energia prioridad=normal"]
+
+
+def test_si_el_cierre_falla_la_prioridad_se_baja_igualmente(tmp_path, monkeypatch, prioridades):
+    g = gestor_en_marcha(tmp_path, monkeypatch)
+
+    async def falla():
+        raise RuntimeError("cola rota")
+    g._esperar_transcripcion = falla
+    with pytest.raises(RuntimeError, match="cola rota"):
+        terminar_sin_revision(g)
+    assert prioridades == [True, False] and g._prioridad_alta is False
+    assert lineas_energia()[-1] == "energia prioridad=normal"
+
+
+def test_con_el_ajuste_en_false_no_se_toca_nada(tmp_path, monkeypatch, prioridades):
+    g = gestor_en_marcha(tmp_path, monkeypatch, {"prioridad_reunion": False})
+    assert prioridades == [] and g._prioridad_alta is False
+    terminar_sin_revision(g)
+    assert prioridades == [] and lineas_energia() == []
+
+
+def test_si_la_api_dice_que_no_no_se_anota_ni_se_baja(tmp_path, monkeypatch):
+    llamadas = []
+    monkeypatch.setattr(G, "prioridad_de_reunion", lambda activa, kernel32=None, clase_normal=None: llamadas.append(activa) or False)
+    monkeypatch.setattr(G.os, "cpu_count", lambda: 16)
+    g = gestor_en_marcha(tmp_path, monkeypatch)
+    terminar_sin_revision(g)
+    assert llamadas == [True] and lineas_energia() == [] and g._prioridad_alta is False
+
+
+def test_un_fallo_de_la_api_nunca_rompe_la_reunion(tmp_path, monkeypatch):
+    def rota(activa, kernel32=None, clase_normal=None):
+        raise OSError("sin permiso")
+    monkeypatch.setattr(G, "prioridad_de_reunion", rota)
+    monkeypatch.setattr(G.os, "cpu_count", lambda: 16)
+    g = gestor_en_marcha(tmp_path, monkeypatch)
+    assert g._prioridad_alta is False
+    terminar_sin_revision(g)
+
+
+def test_apagar_la_app_devuelve_la_prioridad_a_normal(tmp_path, monkeypatch, prioridades):
+    g = gestor_en_marcha(tmp_path, monkeypatch)
+    g.apagar()
+    assert prioridades == [True, False]
+
+
+def test_reunion_y_dictado_comparten_la_prioridad_y_solo_baja_la_ultima(tmp_path, monkeypatch, prioridades):
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch)
+    g._prioridad_dictado(True)
+    g._subir_prioridad("reunion")
+    assert prioridades == [True]               # la segunda petición no vuelve a llamar
+    g._bajar_prioridad("reunion")
+    assert prioridades == [True] and g._prioridad_alta is True    # el dictado sigue abierto
+    g._prioridad_dictado(False)
+    assert prioridades == [True, False] and g._prioridad_alta is False
+    g._prioridad_dictado(False)                # bajar de más no hace nada
+    assert prioridades == [True, False]
+
+
+def test_el_gestor_le_da_su_funcion_de_prioridad_al_dictado(tmp_path, monkeypatch, prioridades):
+    from test_contexto_reunion import dictado_falso
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch)
+    assert g.dictado._prioridad == g._prioridad_dictado
+    d, piezas, _ = dictado_falso()
+    d._prioridad = g._prioridad_dictado
+    d.iniciar()
+    assert prioridades == [True]
+    d.detener()
+    assert prioridades == [True, False]
+
+
+def test_el_dictado_baja_la_prioridad_al_cancelar_y_no_la_sube_si_el_micro_falla():
+    from test_contexto_reunion import dictado_falso
+    eventos = []
+    d, piezas, _ = dictado_falso()
+    d._prioridad = eventos.append
+    d.iniciar()
+    d.cancelar()
+    d.cancelar()
+    assert eventos == [True, False]
+    d2, _p2, _ = dictado_falso(errores={"yo": "sin micro"})
+    d2._prioridad = eventos.append
+    with pytest.raises(ValueError):
+        d2.iniciar()
+    assert eventos == [True, False]            # ni subió ni bajó
+
+
+@pytest.mark.parametrize("nucleos,hilos,sube", [(8, 4, True), (8, 6, False), (2, 2, False), (8, 1, True), (8, 0, False)])
+def test_la_prioridad_solo_se_sube_si_whisper_deja_la_mitad_de_los_nucleos(tmp_path, monkeypatch, prioridades, nucleos, hilos, sube):
+    monkeypatch.setattr(G.os, "cpu_count", lambda: nucleos)
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch, {"whisper_hilos": hilos, "whisper_hilos_auto": False})
+    g._subir_prioridad("reunion")
+    assert prioridades == ([True] if sube else []) and g._prioridad_alta is sube
+
+
+def test_al_bajar_se_restaura_la_clase_que_tenia_el_proceso(tmp_path, monkeypatch):
+    destinos = []
+    monkeypatch.setattr(G, "prioridad_de_reunion", lambda activa, kernel32=None, clase_normal=None: destinos.append((activa, clase_normal)) or True)
+    monkeypatch.setattr(G.os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(G, "clase_de_prioridad", lambda kernel32=None: 0x4000)      # BELOW_NORMAL
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch)
+    g._subir_prioridad("reunion")
+    g._bajar_prioridad("reunion")
+    assert destinos == [(True, None), (False, 0x4000)] and g._prioridad_clase_original is None
+    monkeypatch.setattr(G, "clase_de_prioridad", lambda kernel32=None: None)        # no se pudo leer: al bajar, NORMAL (clase_normal=None)
+    destinos.clear()
+    g._subir_prioridad("reunion")
+    g._bajar_prioridad("reunion")
+    assert destinos == [(True, None), (False, None)]
+
+
+@pytest.mark.parametrize("clase", [0x8000, 0x80, 0x100])
+def test_si_el_proceso_ya_tiene_prioridad_alta_no_se_toca_nada(tmp_path, monkeypatch, prioridades, clase):
+    monkeypatch.setattr(G, "clase_de_prioridad", lambda kernel32=None: clase)
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch)
+    g._subir_prioridad("reunion")
+    g._bajar_prioridad("reunion")
+    assert prioridades == [] and g._prioridad_alta is False and lineas_energia() == []
+
+
+def test_la_prioridad_no_se_sube_si_falla_construir_la_captura(tmp_path, monkeypatch, prioridades):
+    class CapturaRota(CapturaNula):
+        def __init__(self, *a, **k):
+            raise OSError("sin dispositivo")
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch)
+    monkeypatch.setattr("apuntes.audio.Captura", CapturaRota)
+    with pytest.raises(OSError):
+        asyncio.run(g._iniciar_audio("Tema ficticio"))
+    assert prioridades == [] and g._prioridad_alta is False
+
+
+def test_la_prioridad_no_se_sube_si_la_captura_no_arranca(tmp_path, monkeypatch, prioridades):
+    class CapturaQueNoArranca(CapturaNula):
+        def iniciar(self):
+            raise OSError("sin micro")
+    g, _modelo, _cfg = gestor_con_audio(tmp_path, monkeypatch)
+    monkeypatch.setattr("apuntes.audio.Captura", CapturaQueNoArranca)
+    asyncio.run(g._iniciar_audio("Tema ficticio"))
+    assert prioridades == [] and any("No se pudo abrir el audio" in a for a in g.avisos)
+    g.transcriptor.detener()
+
+
+def test_un_dictado_cancelado_mientras_inicia_no_sube_la_prioridad():
+    from test_contexto_reunion import CapturaFalsa, Config, Dictado, Path, TranscriptorFalso
+    eventos = []
+
+    class CapturaQueSeCancela(CapturaFalsa):
+        def iniciar(self):
+            d.cancelar()                         # otro hilo cancela justo mientras se abre el micro
+    d = Dictado(Config(Path("no-existe.json")), lambda e: None, None, lambda *a: CapturaQueSeCancela(*a), TranscriptorFalso, eventos.append)
+    d.iniciar()
+    assert eventos == [] and d.estado == "parado" and d._captura is None and d._transcriptor is None
+
+
+def test_un_dictado_que_llega_a_su_tope_baja_la_prioridad_aunque_siga_abierto(monkeypatch):
+    from apuntes import dictado as DI
+    from test_contexto_reunion import dictado_falso
+    monkeypatch.setattr(DI, "MAX_DICTADO_S", -1)
+    eventos, avisos = [], []
+    d, piezas, _ = dictado_falso(emitir=avisos.append)
+    d._prioridad = eventos.append
+    d.iniciar()
+    fin = time.time() + 5
+    while time.time() < fin and not any("10 minutos" in (a.get("error") or "") for a in avisos):
+        time.sleep(0.02)
+    assert piezas["cap"].pausada is True and d.estado == "dictando"
+    assert eventos == [True, False]
+    d.detener()
+    assert eventos == [True, False]            # al parar no vuelve a bajar
+
+
+def test_un_fallo_al_cambiar_la_prioridad_no_rompe_el_dictado():
+    from test_contexto_reunion import dictado_falso
+
+    def rota(activa):
+        raise RuntimeError("raro")
+    d, piezas, _ = dictado_falso()
+    d._prioridad = rota
+    assert d.iniciar()["estado"] == "dictando"
+    assert d.detener()["estado"] == "parado"
+
+
+# ================================================================ capacidad: núcleos y CPU del equipo en el registro
+def test_la_linea_periodica_lleva_los_nucleos_y_la_cpu_del_equipo_del_intervalo(gestor, reloj, monkeypatch):
+    gestor._eco_audio = None
+    gestor._muestra_capacidad = (0.0, 0.0, (10.0, 20.0))                     # lectura anterior: (ocupado_s, total_s)
+    monkeypatch.setattr(G, "tiempos_del_equipo", lambda kernel32=None: (19.0, 30.0))
+    tr = gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.0, cpu_total_s=8.4, calculo_total_s=4.0)
+    assert gestor._vigilar_transcripcion() is True
+    assert lineas_log()[-1].endswith(" nucleos=2.1 cpu_equipo=90")
+    # segunda línea: solo cuenta lo que pasó desde la primera
+    reloj.t += G.REGISTRO_RETRASO_CADA_S
+    monkeypatch.setattr(G, "tiempos_del_equipo", lambda kernel32=None: (22.0, 40.0))
+    tr.cpu_total_s, tr.calculo_total_s = 8.4 + 3.0, 4.0 + 3.0
+    assert gestor._vigilar_transcripcion() is True
+    assert lineas_log()[-1].endswith(" nucleos=1.0 cpu_equipo=30")
+
+
+def test_sin_calculo_en_el_intervalo_o_sin_lectura_del_equipo_hay_guiones(gestor, reloj, monkeypatch):
+    gestor._eco_audio = None
+    gestor._muestra_capacidad = (5.0, 4.0, None)
+    gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.0, cpu_total_s=5.0, calculo_total_s=4.0)    # nada de cálculo desde la línea anterior
+    assert gestor._vigilar_transcripcion() is True
+    assert lineas_log()[-1].endswith(" nucleos=- cpu_equipo=-")
+
+
+def test_la_cpu_del_equipo_nunca_lleva_texto_de_la_reunion(gestor, reloj):
+    gestor.sesion.agregar_segmento(5.0, "yo", SECRETO)
+    gestor.transcriptor = Transcriptor2(reloj, retraso_s=20.0)
+    gestor._vigilar_transcripcion()
+    assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
+
+
+def test_el_resumen_lleva_nucleos_hilos_prioridad_prompt_y_demanda():
+    tr = Transcriptor2(None, audio_total_s=300.0, calculo_total_s=250.0, cpu_total_s=525.0, hilos=4, prompt_chars_total=9000, prompt_llamadas=30,
+                       audio_recibido_s=420.0, latencia_max={"reunion": 14.2, "yo": 6.0}, rezagado_total_s=20.0, perdidos_s=0.0,
+                       eco_descartado_s=8.0, tramos_aplazados=5, tramos_rezagados=2, reintentos=1)
+    G.Gestor._registrar_resumen_transcripcion(tr, 300.0, "alta")
+    (linea,) = lineas_log("transcripcion resumen")
+    assert linea.endswith("aplazados=5 rezagados=2 reintentos=1 nucleos=2.1 hilos=4 prioridad=alta prompt_med=300 demanda=1.40")
+    assert "transcripcion resumen audio=300s calculo=250s vel_media=1.2x" in linea
+
+
+def test_el_resumen_sin_duracion_ni_datos_no_inventa_nada():
+    tr = Transcriptor2(None, audio_total_s=60.0, calculo_total_s=30.0)
+    G.Gestor._registrar_resumen_transcripcion(tr)
+    (linea,) = lineas_log("transcripcion resumen")
+    assert linea.endswith("reintentos=0 nucleos=- hilos=- prioridad=normal prompt_med=-") and "demanda" not in linea
+
+
+def test_esperar_registra_la_prioridad_real_del_gestor_en_el_resumen(gestor, reloj):
+    gestor._prioridad_alta = True
+    gestor.transcriptor = Transcriptor2(reloj, audio_total_s=60.0, calculo_total_s=30.0, cpu_total_s=60.0, hilos=4)
+    esperar(gestor)
+    (linea,) = lineas_log("transcripcion resumen")
+    assert "nucleos=2.0 hilos=4 prioridad=alta" in linea

@@ -7,8 +7,9 @@ import pytest
 
 from apuntes.config import Config, DEFAULTS
 from apuntes import contexto as CX
-from apuntes.transcripcion import (MAX_PROMPT_CHARS, Transcriptor, construir_prompt, es_copia_del_prompt, filtrar_texto,
-                                   ultima_frase)
+from apuntes import transcripcion as TRN
+from apuntes.transcripcion import (MAX_PROMPT_CHARS, MAX_PROMPT_CHARS_RAPIDO, RESERVA_CONTINUIDAD, Transcriptor, construir_prompt, es_copia_del_prompt, filtrar_texto,
+                                   hilos_efectivos, ultima_frase)
 
 
 # ------------------------------------------------------------------ filtros
@@ -67,20 +68,111 @@ def test_el_prompt_lleva_tema_vocabulario_y_continuidad_en_ese_orden():
     assert construir_prompt(BASE, [], "Hola mundo.") == BASE + " Hola mundo."
 
 
-def test_el_prompt_no_pasa_del_tope_y_recorta_primero_el_vocabulario():
+def test_el_prompt_no_pasa_del_tope_y_el_vocabulario_va_antes_que_la_continuidad():
     vocab = [f"Termino{i:02d}" for i in range(80)]
     cont = " ".join(f"palabra{i}" for i in range(30))
     p = construir_prompt(BASE, vocab, cont)
-    assert len(p) <= MAX_PROMPT_CHARS
-    assert p.startswith(BASE) and p.endswith(cont)          # tema y continuidad intactos
+    assert len(p) <= MAX_PROMPT_CHARS and p.startswith(BASE)
     incluidos = p.split("Términos: ")[1].split(".")[0].split(", ")
     assert incluidos == vocab[:len(incluidos)] and 0 < len(incluidos) < len(vocab)   # se conservan los primeros (los de más prioridad)
+    assert p.endswith("palabra29")                                                    # pero la continuidad tiene su hueco garantizado
 
 
-def test_si_ni_tema_y_continuidad_caben_se_acorta_la_continuidad_por_el_principio():
-    cont = " ".join(f"p{i}" for i in range(200))
+def test_la_continuidad_solo_entra_con_el_hueco_que_deja_el_vocabulario_y_se_acorta_por_el_principio():
+    vocab = [f"Termino{i:02d}" for i in range(5)]
+    cont = " ".join(f"palabra{i}" for i in range(30))
+    sin = construir_prompt(BASE, vocab)
+    p = construir_prompt(BASE, vocab, cont, tope=len(sin) + 1 + 80)           # 80 caracteres de hueco
+    assert p.startswith(sin) and len(p) <= len(sin) + 1 + 80
+    cola = p[len(sin) + 1:]
+    assert cola and cola.endswith("palabra29") and cola.split()[0] != "palabra0"   # queda lo último dicho
+    justo = construir_prompt(BASE, vocab, cont, tope=len(sin) + 1 + 40)
+    assert len(justo) <= len(sin) + 1 + 40 and justo.endswith("palabra29")           # la reserva le cede sitio quitando el último término...
+    assert len(justo.split(". ")[-1].split()) >= 6 and justo.count("Termino") < sin.count("Termino")   # ...y entran al menos MIN_PALABRAS_HUECO palabras
+    assert construir_prompt(BASE, vocab, "Hola mundo.", tope=len(sin) + 1 + 40) == sin + " Hola mundo."   # una frase corta que cabe entera, sí
+
+
+def test_la_continuidad_tiene_un_hueco_garantizado_aunque_el_vocabulario_sea_largo():
+    assert RESERVA_CONTINUIDAD == 60
+    vocab = [f"Termino{i:02d}" for i in range(80)]
+    cont = " ".join(f"palabra{i}" for i in range(15))
+    p = construir_prompt(BASE, vocab, cont)
+    assert len(p) <= MAX_PROMPT_CHARS and p.startswith(BASE + " Términos: Termino00")
+    assert p.split("Términos: ")[1].count("Termino") >= 3                                # tema + algunos términos...
+    assert p.endswith(" ".join(f"palabra{i}" for i in range(9, 15)))                      # ...y al menos las últimas 6 palabras de la continuidad
+    # sin continuidad (modo rápido) los términos usan todo el hueco
+    sin_cont = construir_prompt(BASE, vocab)
+    assert len(sin_cont) <= MAX_PROMPT_CHARS and sin_cont.count("Termino") > p.count("Termino")
+
+
+def test_la_reserva_nunca_pasa_de_lo_que_mide_la_continuidad():
+    vocab = [f"Termino{i:02d}" for i in range(80)]
+    sin_cont = construir_prompt(BASE, vocab)
+    p = construir_prompt(BASE, vocab, "Vale.")
+    assert p.endswith(" Vale.") and len(p) <= MAX_PROMPT_CHARS
+    assert p.count("Termino") >= sin_cont.count("Termino") - 1                           # una frase corta solo resta lo que mide (+1)
+
+
+def test_con_poco_vocabulario_la_continuidad_cabe_entera():
+    cont = "Luis envía la estimación el viernes por la mañana."
     p = construir_prompt(BASE, ["PMS"], cont)
-    assert len(p) <= MAX_PROMPT_CHARS and p.startswith(BASE) and p.endswith("p199") and "Términos" not in p
+    assert p == BASE + " Términos: PMS. " + cont
+
+
+def test_el_tope_de_cada_modo_y_el_tema_nunca_se_pasa():
+    vocab = [f"Termino{i:02d}" for i in range(60)]
+    cont = " ".join(f"palabra{i}" for i in range(30))
+    assert MAX_PROMPT_CHARS == 240 and MAX_PROMPT_CHARS_RAPIDO == 120
+    assert len(construir_prompt(BASE, vocab, cont, tope=MAX_PROMPT_CHARS_RAPIDO)) <= MAX_PROMPT_CHARS_RAPIDO
+    largo = "Reunión de trabajo: " + "tema " * 40
+    p = construir_prompt(largo, vocab, cont, tope=MAX_PROMPT_CHARS_RAPIDO)
+    assert len(p) <= MAX_PROMPT_CHARS_RAPIDO and "Términos" not in p and not p.endswith(" ")
+
+
+def _tr_con_prompt(vocab, ultima="Luis envía la estimación el viernes por la mañana."):
+    tr = Transcriptor({"idioma": "es", "whisper_modelo": "x", "whisper_hilos": 1, "whisper_beam": 5}, lambda *a, **k: None)
+    tr.idioma, tr.prompt, tr.vocabulario = "es", BASE, list(vocab)
+    tr._ultima["yo"] = ultima
+    return tr
+
+
+def test_el_prompt_del_modo_normal_lleva_tema_terminos_y_continuidad_con_el_hueco():
+    tr = _tr_con_prompt(["PMS", "TR2"])
+    assert tr.prompt_para("yo") == BASE + " Términos: PMS, TR2. Luis envía la estimación el viernes por la mañana."
+    assert tr.prompt_para("yo", rapido=False) == tr.prompt_para("yo")
+
+
+def test_el_prompt_del_modo_rapido_es_corto_y_sin_continuidad():
+    vocab = [f"T{i}" for i in range(40)]
+    tr = _tr_con_prompt(vocab)
+    p = tr.prompt_para("yo", rapido=True)
+    assert len(p) <= MAX_PROMPT_CHARS_RAPIDO and p.startswith(BASE) and "Luis" not in p
+    assert p == construir_prompt(BASE, vocab, "", tope=MAX_PROMPT_CHARS_RAPIDO)
+    assert len(tr.prompt_para("yo")) > len(p)
+
+
+def test_en_modo_rapido_el_modelo_recibe_el_prompt_corto_y_nunca_hotwords():
+    modelo = ModeloDoble(["Hola equipo", "Hola equipo"])
+    tr = TranscriptorDoble({"idioma": "es", "whisper_beam": 5, "whisper_modelo": "x", "whisper_hilos": 1}, lambda *a: None, modelo)
+    tr.idioma, tr.prompt, tr.vocabulario = "es", BASE, [f"Termino{i:02d}" for i in range(40)]
+    tr._ultima["yo"] = "Una frase anterior bastante larga que no debería entrar en el prompt rápido."
+    tr._modelo = modelo
+    tr._segmentos(np.zeros(16000, dtype=np.float32), "yo", rapido=True)
+    tr._segmentos(np.zeros(16000, dtype=np.float32), "yo", rapido=False)
+    rapido, normal = modelo.llamadas
+    assert len(rapido["initial_prompt"]) <= MAX_PROMPT_CHARS_RAPIDO and "anterior" not in rapido["initial_prompt"]
+    assert len(normal["initial_prompt"]) <= MAX_PROMPT_CHARS
+    assert "hotwords" not in rapido and "hotwords" not in normal
+
+
+def test_el_transcriptor_cuenta_los_caracteres_medios_del_prompt():
+    modelo = ModeloDoble(["Hola equipo", "Hola equipo"])
+    tr = TranscriptorDoble({"idioma": "es", "whisper_beam": 5, "whisper_modelo": "x", "whisper_hilos": 1}, lambda *a: None, modelo)
+    tr.idioma, tr.prompt, tr.vocabulario, tr._modelo = "es", BASE, ["PMS"], modelo
+    assert tr.prompt_llamadas == 0 and tr.prompt_chars_total == 0
+    tr._segmentos(np.zeros(16000, dtype=np.float32), "yo")
+    tr._segmentos(np.zeros(16000, dtype=np.float32), "yo", rapido=True)
+    assert tr.prompt_llamadas == 2 and tr.prompt_chars_total == 2 * len(BASE + " Términos: PMS.")
 
 
 def test_ultima_frase_con_tope_de_30_palabras():
@@ -234,8 +326,8 @@ def test_el_gestor_pasa_al_transcriptor_el_vocabulario_de_config_y_del_contexto_
     assert [t.lower() for t in g.transcriptor.vocabulario].count("pms") == 1
 
 
-# ------------------------------------------------------------------ Silero VAD, hotwords y glosario
-from apuntes.transcripcion import construir_hotwords, corregir_glosario
+# ------------------------------------------------------------------ Silero VAD, sin hotwords y glosario
+from apuntes.transcripcion import corregir_glosario
 
 
 def _modelo_con(cfg_extra, vocab=()):
@@ -269,21 +361,28 @@ def test_la_config_valida_las_claves_del_vad(tmp_path):
     assert c["whisper_vad"] is False and c["whisper_vad_min_silencio_ms"] == 300
 
 
-def test_el_faster_whisper_instalado_acepta_vad_y_hotwords():
+def test_el_faster_whisper_instalado_acepta_vad():
     import inspect
     from faster_whisper import WhisperModel
     params = inspect.signature(WhisperModel.transcribe).parameters
-    assert {"vad_filter", "vad_parameters", "hotwords"} <= set(params)
+    assert {"vad_filter", "vad_parameters"} <= set(params)
 
 
-def test_los_terminos_van_tambien_como_hotwords_con_tope():
+def test_los_terminos_van_solo_en_el_prompt_y_nunca_como_hotwords():
     kw = _modelo_con({}, vocab=["SAP", "Fiori", "TPV"])
-    assert kw["hotwords"] == "SAP, Fiori, TPV"
-    assert _modelo_con({}).get("hotwords") is None
-    largo = [f"Termino{i:02d}" * 2 for i in range(40)]
-    h = construir_hotwords(largo)
-    assert 0 < len(h) <= 200 and h.startswith(largo[0]) and not h.endswith(",")
-    assert construir_hotwords(largo[:3], tope=40) == ", ".join(largo[:2])
+    assert "hotwords" not in kw and kw["initial_prompt"] == BASE + " Términos: SAP, Fiori, TPV."
+    assert "hotwords" not in _modelo_con({})
+    assert not hasattr(TRN, "construir_hotwords") and not hasattr(TRN, "MAX_HOTWORDS_CHARS")
+
+
+def test_el_vocabulario_va_antes_que_la_continuidad_aunque_esta_sea_larga():
+    """Antes la continuidad mandaba sobre el vocabulario y parte de éste solo llegaba por hotwords: ahora el prompt lleva primero los términos."""
+    vocab = [f"Termino{i:02d}" * 2 for i in range(40)]
+    cont = "Luis envía la estimación el viernes por la mañana y lo revisamos juntos el lunes con todo el equipo."
+    p = construir_prompt(BASE, vocab, cont)
+    llevados = p.split("Términos: ")[1].split(".")[0].split(", ")
+    assert llevados == vocab[:len(llevados)] and len(llevados) >= 5
+    assert p.endswith("con todo el equipo.")                # la continuidad, si entra, va detrás de todos los términos
 
 
 @pytest.mark.parametrize("texto,esperado", [
@@ -334,3 +433,60 @@ def test_corregir_glosario_sin_glosario_o_texto_vacio_no_toca_nada():
 def test_el_glosario_se_aplica_antes_de_emitir_el_segmento():
     emitidos, _, tr = _correr(["hemos abierto sap fiori en el tpv"], [("reunion", 0)], vocab=["SAP", "Fiori", "TPV"], curados=["Fiori"])
     assert emitidos == [("reunion", "hemos abierto SAP Fiori en el TPV")]
+
+
+# ------------------------------------------------------------------ hilos efectivos y ajustes de capacidad
+@pytest.mark.parametrize("pedidos,nucleos,esperado", [
+    (6, 8, 4),      # 8 núcleos: la mitad
+    (6, 16, 6),     # con muchos núcleos manda lo que el usuario pidió
+    (6, 4, 2),      # 4 núcleos: la mitad, con el suelo de 2
+    (6, 2, 2),      # nunca por debajo de 2
+    (6, 1, 2),
+    (3, 8, 3),      # pidió menos que la mitad: se respeta
+    (1, 8, 1),
+    (4, 8, 4),
+])
+def test_hilos_efectivos_son_el_minimo_entre_lo_pedido_y_la_mitad_de_los_nucleos(pedidos, nucleos, esperado):
+    assert hilos_efectivos({"whisper_hilos": pedidos, "whisper_hilos_auto": True}, nucleos) == esperado
+
+
+def test_sin_auto_los_hilos_son_los_pedidos_tal_cual():
+    assert hilos_efectivos({"whisper_hilos": 6, "whisper_hilos_auto": False}, 4) == 6
+    assert hilos_efectivos({"whisper_hilos": 12, "whisper_hilos_auto": False}, 8) == 12
+
+
+def test_hilos_efectivos_sin_la_clave_auto_cuenta_como_automatico_y_sin_nucleos_los_cuenta_el_sistema(monkeypatch):
+    assert hilos_efectivos({"whisper_hilos": 6}, 8) == 4
+    monkeypatch.setattr(TRN.os, "cpu_count", lambda: 8)
+    assert hilos_efectivos({"whisper_hilos": 6, "whisper_hilos_auto": True}) == 4
+    monkeypatch.setattr(TRN.os, "cpu_count", lambda: None)
+    assert hilos_efectivos({"whisper_hilos": 6, "whisper_hilos_auto": True}) == 2
+
+
+def test_el_modelo_se_crea_con_los_hilos_efectivos_y_un_solo_trabajador(monkeypatch, tmp_path):
+    import sys
+    import types
+    recibido = {}
+
+    class WhisperModelFalso:
+        def __init__(self, nombre, **kw):
+            recibido.update(nombre=nombre, **kw)
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=WhisperModelFalso))
+    monkeypatch.setattr(TRN.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(TRN, "MODELOS_DIR", tmp_path / "modelos")   # ni se descarga ni se toca la carpeta real
+    tr = Transcriptor({"whisper_modelo": "small", "whisper_hilos": 6, "whisper_hilos_auto": True}, lambda *a: None)
+    tr.cargar_modelo()
+    assert recibido["cpu_threads"] == 4 and tr.hilos == 4 and "num_workers" not in recibido and recibido["device"] == "cpu"
+    tr2 = Transcriptor({"whisper_modelo": "small", "whisper_hilos": 6, "whisper_hilos_auto": False}, lambda *a: None)
+    tr2.cargar_modelo()
+    assert recibido["cpu_threads"] == 6 and tr2.hilos == 6
+
+
+def test_la_config_trae_los_dos_ajustes_nuevos_activos_y_los_valida(tmp_path):
+    assert DEFAULTS["whisper_hilos_auto"] is True and DEFAULTS["prioridad_reunion"] is True
+    c = Config(tmp_path / "c.json")
+    c.actualizar({"whisper_hilos_auto": False, "prioridad_reunion": False})
+    assert c["whisper_hilos_auto"] is False and c["prioridad_reunion"] is False
+    c.actualizar({"whisper_hilos_auto": "no", "prioridad_reunion": 0})
+    assert c["whisper_hilos_auto"] is False and c["prioridad_reunion"] is False       # lo que no es booleano se ignora
+    assert Config(tmp_path / "c.json")["prioridad_reunion"] is False                   # y persiste

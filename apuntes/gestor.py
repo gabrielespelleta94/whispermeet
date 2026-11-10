@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import os
 import random
 import threading
 import time
@@ -33,6 +34,7 @@ from .plantillas import Plantillas, pesos_de          # ola 4
 from .silencio import ReglasSilencio                  # ola 4
 from .dictado import Dictado
 from .eco_audio import EcoAudio
+from .energia import CLASES_ALTAS, clase_de_prioridad, prioridad_compatible, prioridad_de_reunion, tiempos_del_equipo, uso_de_cpu
 from .consumo import Consumo
 from .equipo.director import MODOS_CON_EQUIPO, Director
 from .fuentes import ServicioFuentes
@@ -112,6 +114,11 @@ class Gestor:
         self._perdidos_avisados = 0.0     # segundos de audio perdidos por el transcriptor de los que ya se avisó
         self._perdida_avisada_en = None   # cuándo (monotónico) se avisó por última vez de audio perdido (None = nunca en esta reunión)
         self._retraso_registrado = 0.0    # última vez (monotónico) que se anotó el retraso de la transcripción en el registro
+        self._muestra_capacidad = None    # (cpu_total_s, calculo_total_s, tiempos del equipo) de la línea periódica anterior: los nucleos y la CPU del equipo son del intervalo
+        self._prioridad_motivos: set[str] = set()   # capturas en marcha que han pedido prioridad alta (`reunion`, `dictado`): se baja al quedar vacío
+        self._prioridad_clase_original: int | None = None   # clase de prioridad que tenía el proceso antes de subirla (se restaura al bajar)
+        self._prioridad_alta = False      # True mientras el proceso corre con prioridad por encima de lo normal (la API dijo que sí)
+        self._prioridad_lock = threading.Lock()
         self._reiniciar_descartes()
         self._vocabulario_contexto: list[str] = []
         self.captura = None
@@ -141,7 +148,7 @@ class Gestor:
         self.idioma = validar_idioma(config["idioma"], defecto="auto")   # idioma de la reunión en curso (auto | es | ca)
         self.contexto_reunion = ""             # lo que el usuario aceptó en «Contexto de la reunión» (vacío = todo como siempre)
         self._contexto_en_curso = False
-        self.dictado = Dictado(config, emitir, bloqueo=self._bloqueo_dictado)   # dictado del contexto por micro: solo en memoria
+        self.dictado = Dictado(config, emitir, bloqueo=self._bloqueo_dictado, prioridad=self._prioridad_dictado)   # dictado del contexto por micro: solo en memoria
         self._cierre: COB.Cierre | None = None   # lo que recibió la llamada final (para avisar de lo que quedó fuera)
         self._salud: dict[str, dict] = {}      # por tipo de fallo del bucle: {seguidas, ultimo_aviso, avisado, texto}
         self.fuentes = ServicioFuentes(guardian, config)   # índice local de fuentes (BM25) para el asesor: se construye en segundo plano, nunca bloquea
@@ -377,6 +384,7 @@ class Gestor:
         from .transcripcion import Transcriptor
         self.transcriptor = Transcriptor(self.cfg, self._on_texto)
         self._perdidos_avisados, self._retraso_registrado, self._perdida_avisada_en = 0.0, 0.0, None
+        self._muestra_capacidad = (0.0, 0.0, tiempos_del_equipo())
         self._reiniciar_descartes()
         self.transcriptor.idioma = self.idioma
         self.transcriptor.prompt = prompt_tema(recortar(tema, 80), "es")       # initial_prompt coherente con el idioma de cada tramo
@@ -398,9 +406,50 @@ class Gestor:
             await asyncio.to_thread(self.captura.iniciar)
         except Exception as e:  # noqa: BLE001
             self.avisos.append(f"No se pudo abrir el audio: {e}")
+        else:
+            self._subir_prioridad("reunion")   # solo con la captura ya abierta; se baja en `terminar` (o `apagar`), con la cola de transcripción vacía
         for fuente, err in self.captura.errores.items():
             nombre = "el micrófono" if fuente == "yo" else "el audio del sistema"
             self.avisos.append(f"Sin captura de {nombre}: {err}")
+
+    # ------------------------------------------------------------------ prioridad del proceso mientras se captura
+    def _subir_prioridad(self, motivo: str) -> None:
+        """Prioridad del proceso por encima de lo normal mientras haya una captura (reunión o dictado): en una videollamada Whisper competía con Teams y
+        iba a 1,1× del tiempo real. Con `prioridad_reunion` en False no se toca nada. Una línea al registro al subirla; nunca lanza."""
+        try:
+            if not self.cfg["prioridad_reunion"]:
+                return
+            from .transcripcion import hilos_efectivos
+            if not prioridad_compatible(hilos_efectivos(self.cfg), os.cpu_count() or 2):
+                return   # Whisper se queda con más de la mitad de los núcleos: con prioridad alta ahogaría a la videollamada
+            with self._prioridad_lock:
+                primera = not self._prioridad_motivos
+                self._prioridad_motivos.add(motivo)
+                if primera:
+                    original = clase_de_prioridad()
+                    if original in CLASES_ALTAS:
+                        return   # ya corre con prioridad alta (la puso quien lo lanzó): no se toca ni cuenta como subida
+                    if prioridad_de_reunion(True):
+                        self._prioridad_clase_original, self._prioridad_alta = original, True
+                        registrar_linea("energia prioridad=alta")
+        except Exception as e:  # noqa: BLE001
+            registrar_error("Gestor._subir_prioridad", e)
+
+    def _bajar_prioridad(self, motivo: str) -> None:
+        """Quita la petición de `motivo`; con la última, el proceso vuelve a prioridad normal. Una línea al registro; nunca lanza."""
+        try:
+            with self._prioridad_lock:
+                self._prioridad_motivos.discard(motivo)
+                if not self._prioridad_motivos and self._prioridad_alta:
+                    self._prioridad_alta = False
+                    prioridad_de_reunion(False, clase_normal=self._prioridad_clase_original)   # NORMAL si no se pudo leer la de antes
+                    self._prioridad_clase_original = None
+                    registrar_linea("energia prioridad=normal")
+        except Exception as e:  # noqa: BLE001
+            registrar_error("Gestor._bajar_prioridad", e)
+
+    def _prioridad_dictado(self, activa: bool) -> None:
+        (self._subir_prioridad if activa else self._bajar_prioridad)("dictado")
 
     def _actualizar_vocabulario(self) -> None:
         """Vocabulario del prompt de Whisper: primero el de `vocabulario_transcripcion` (config), luego las siglas y términos
@@ -591,7 +640,7 @@ class Gestor:
                             f"ret_reunion={float(getattr(tr, 'retraso_reunion_s', 0.0) or 0.0):.0f}s rezagado={rezagado:.0f}s "
                             f"eco_descartado={float(getattr(tr, 'eco_descartado_s', 0.0) or 0.0):.0f}s "
                             f"lat_reunion={'-' if lat_r is None else f'{lat_r:.0f}s'} lat_micro={'-' if lat_m is None else f'{lat_m:.0f}s'}"
-                            + self._sufijo_eco())
+                            + self._sufijo_eco() + self._sufijo_capacidad(tr))
             hecho = True
         return hecho
 
@@ -608,6 +657,20 @@ class Gestor:
         """` eco_eval=N eco_marc=N` para la línea periódica de la transcripción (vacío sin detector): solo dos enteros."""
         d = self._diagnostico_eco()
         return "" if d is None else f" eco_eval={int(d.get('eval', 0))} eco_marc={int(d.get('eco', 0))}"
+
+    def _sufijo_capacidad(self, tr) -> str:
+        """` nucleos=2.1 cpu_equipo=87` para la línea periódica, del intervalo desde la línea anterior: los núcleos que consiguió de verdad Whisper (CPU
+        del proceso / reloj durante el cálculo) y el % de CPU de todo el equipo. «-» si no hay dato. Solo dos números: nunca contenido."""
+        try:
+            cpu, calc = float(getattr(tr, "cpu_total_s", 0.0) or 0.0), float(getattr(tr, "calculo_total_s", 0.0) or 0.0)
+            equipo = tiempos_del_equipo()
+            cpu0, calc0, equipo0 = self._muestra_capacidad or (0.0, 0.0, None)
+            self._muestra_capacidad = (cpu, calc, equipo)
+            nucleos = (cpu - cpu0) / (calc - calc0) if calc - calc0 > 0.5 else None
+            uso = uso_de_cpu(equipo0, equipo)
+            return f" nucleos={'-' if nucleos is None else f'{nucleos:.1f}'} cpu_equipo={'-' if uso is None else uso}"
+        except Exception:  # noqa: BLE001
+            return " nucleos=- cpu_equipo=-"
 
     def _registrar_diagnostico_eco(self) -> None:
         """Al cerrar: UNA línea con los contadores del detector de eco (por qué criterio se descartó cada tramo, histogramas de rho, dispersión y
@@ -1281,11 +1344,14 @@ class Gestor:
         self.estado = "terminando"
         self.reloj.pausar()
         self._emitir_estado()
-        if self.captura:
-            await asyncio.to_thread(self.captura.detener)
-        if self.transcriptor:
-            await self._esperar_transcripcion()
-            self.transcriptor.detener()
+        try:
+            if self.captura:
+                await asyncio.to_thread(self.captura.detener)
+            if self.transcriptor:
+                await self._esperar_transcripcion()
+                self.transcriptor.detener()
+        finally:
+            self._bajar_prioridad("reunion")   # la sesión de audio ha terminado del todo (también si el cierre falla)
         for t in self._tareas:
             if t is not asyncio.current_task() and t is not self._digest_tarea:
                 t.cancel()
@@ -1337,23 +1403,29 @@ class Gestor:
             texto = f"La transcripción está incompleta: quedaron {int(round(resto))} s de audio sin transcribir al terminar{de_eco}."
             self.avisos.append(texto)
             self.emitir("aviso", mensaje=texto, componente="transcripcion", grave=True, prioridad="fijo")
-        self._registrar_resumen_transcripcion(tr)
+        self._registrar_resumen_transcripcion(tr, self.reloj.ahora(), "alta" if self._prioridad_alta else "normal")
         self._registrar_diagnostico_eco()
 
     @staticmethod
-    def _registrar_resumen_transcripcion(tr) -> None:
-        """Una línea al registro con las medidas de toda la reunión (nunca contenido): lo que hace falta para saber si la máquina daba para ella."""
+    def _registrar_resumen_transcripcion(tr, duracion_s: float | None = None, prioridad: str | None = None) -> None:
+        """Una línea al registro con las medidas de toda la reunión (nunca contenido): lo que hace falta para saber si la máquina daba para ella.
+        Al final: `nucleos` (CPU del proceso / reloj de cálculo: cuántos núcleos consiguió Whisper), `hilos`, `prioridad` y `prompt_med` (caracteres
+        medios del prompt por llamada) y, con la duración de la captura, `demanda` (segundos de audio recibidos por segundo de captura)."""
         def n(nombre: str) -> float:
             return float(getattr(tr, nombre, 0.0) or 0.0)
         audio, calculo = n("audio_total_s"), n("calculo_total_s")
         if audio <= 0:
             return
+        nucleos = "-" if calculo <= 0 or n("cpu_total_s") <= 0 else f"{n('cpu_total_s') / calculo:.1f}"
+        prompt_med = "-" if n("prompt_llamadas") <= 0 else f"{n('prompt_chars_total') / n('prompt_llamadas'):.0f}"
+        demanda = f" demanda={n('audio_recibido_s') / duracion_s:.2f}" if duracion_s and duracion_s > 0 and n("audio_recibido_s") > 0 else ""
         lat = getattr(tr, "latencia_max", None)
         lat = lat if isinstance(lat, dict) else {}
         registrar_linea(f"transcripcion resumen audio={audio:.0f}s calculo={calculo:.0f}s vel_media={'-' if calculo <= 0 else f'{audio / calculo:.1f}x'} "
                         f"lat_max_reunion={float(lat.get('reunion', 0.0)):.0f}s lat_max_micro={float(lat.get('yo', 0.0)):.0f}s "
                         f"rezagado_total={n('rezagado_total_s'):.0f}s perdidos={n('perdidos_s'):.0f}s eco_descartado={n('eco_descartado_s'):.0f}s "
-                        f"aplazados={int(n('tramos_aplazados'))} rezagados={int(n('tramos_rezagados'))} reintentos={int(n('reintentos'))}")
+                        f"aplazados={int(n('tramos_aplazados'))} rezagados={int(n('tramos_rezagados'))} reintentos={int(n('reintentos'))} "
+                        f"nucleos={nucleos} hilos={getattr(tr, 'hilos', None) or '-'} prioridad={prioridad or 'normal'} prompt_med={prompt_med}" + demanda)
 
     async def lanzar_agentes_cierre(self) -> dict:
         """ola 4: el usuario confirma, en la revisión de una reunión en modo solo local, que SÍ se lancen los agentes del cierre (resumen final y cambios de contexto).
@@ -1716,3 +1788,4 @@ class Gestor:
                 pass
         if self.transcriptor:
             self.transcriptor.detener()
+        self._bajar_prioridad("reunion")

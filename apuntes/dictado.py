@@ -36,10 +36,12 @@ class _TranscriptorDictado(Transcriptor):
 
 
 class Dictado:
-    def __init__(self, cfg, emitir, bloqueo=None, fabrica_captura=None, fabrica_transcriptor=None):
+    def __init__(self, cfg, emitir, bloqueo=None, fabrica_captura=None, fabrica_transcriptor=None, prioridad=None):
         """`emitir(dict)`: eventos por el WebSocket (seguro desde cualquier hilo). `bloqueo()`: motivo (texto) por el que ahora no se puede
-        dictar, o None. Las fábricas permiten sustituir micro y transcriptor (tests y pruebas con micro falso)."""
+        dictar, o None. Las fábricas permiten sustituir micro y transcriptor (tests y pruebas con micro falso). `prioridad(activa)`: el Gestor sube
+        la prioridad del proceso mientras se dicta y la baja al cerrar las piezas (se llama una vez al subir y una al bajar)."""
         self.cfg, self._emitir, self._bloqueo = cfg, emitir, bloqueo or (lambda: None)
+        self._prioridad, self._prioridad_subida = prioridad, False
         self._fabrica_captura = fabrica_captura or self._captura_real
         self._fabrica_transcriptor = fabrica_transcriptor or self._transcriptor_real
         self._lock = threading.Lock()
@@ -120,11 +122,16 @@ class Dictado:
         try:
             self._transcriptor = self._fabrica_transcriptor(self._on_texto)
             self._transcriptor.iniciar()
-            self._captura = self._fabrica_captura(lambda: time.monotonic() - self._t0, self._on_enunciado, self._on_nivel)
-            self._captura.iniciar()
-            fallo = dict(getattr(self._captura, "errores", {}) or {}).get("yo")
+            cap = self._captura = self._fabrica_captura(lambda: time.monotonic() - self._t0, self._on_enunciado, self._on_nivel)
+            cap.iniciar()
+            fallo = dict(getattr(cap, "errores", {}) or {}).get("yo")
             if fallo:
                 raise RuntimeError(f"no se pudo abrir el micrófono: {fallo}")
+            if not self._cancelado:
+                self._cambiar_prioridad(True)
+            if self._cancelado:   # `cancelar` cerró las piezas mientras se iniciaba: no se sigue y la prioridad no queda subida
+                self._cerrar_piezas()
+                return self.publico()
         except Exception as e:  # noqa: BLE001
             self._cerrar_piezas()
             mensaje = f"No se pudo empezar el dictado: {e}"
@@ -140,6 +147,7 @@ class Dictado:
             if time.monotonic() - t0 > MAX_DICTADO_S:
                 if self._captura is not None:
                     self._captura.pausada = True   # deja de recoger voz; «Parar» cierra el micro y entrega lo dictado
+                self._cambiar_prioridad(False)   # el dictado sigue abierto pero ya no captura: no hay motivo para la prioridad alta (no se reanuda)
                 self._avisar(fase="estado", estado="dictando", error="Se dejó de escuchar a los 10 minutos; pulsa «Parar» para recoger el texto.")
                 return
             time.sleep(1.0)
@@ -174,6 +182,16 @@ class Dictado:
             self._estado("parado")
         self.fragmentos = []
 
+    def _cambiar_prioridad(self, activa: bool) -> None:
+        """Avisa al Gestor (si lo hay) de que empieza o acaba la captura del dictado; solo una vez por sentido y nunca lanza."""
+        if self._prioridad is None or self._prioridad_subida == activa:
+            return
+        self._prioridad_subida = activa
+        try:
+            self._prioridad(activa)
+        except Exception:  # noqa: BLE001  (un favor al rendimiento: nunca rompe el dictado)
+            pass
+
     def _cerrar_piezas(self) -> None:
         cap, tr, self._captura, self._transcriptor = self._captura, self._transcriptor, None, None
         for pieza, metodo in ((cap, "detener"), (tr, "detener")):
@@ -182,6 +200,7 @@ class Dictado:
                     getattr(pieza, metodo)()
                 except Exception:  # noqa: BLE001
                     pass
+        self._cambiar_prioridad(False)
 
     def texto(self) -> str:
         return " ".join(f["texto"] for f in self.fragmentos)

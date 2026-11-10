@@ -1,5 +1,5 @@
 """Vocabulario curado por el usuario (ola 4): el global vive en `vocabulario_transcripcion` (config) y el de cada proyecto en `glosario.json`,
-dentro de la carpeta local de datos de la app (solo vía Guardian). Lo que se añade aquí entra en el `initial_prompt`, en los `hotwords` y en `corregir_glosario`
+dentro de la carpeta local de datos de la app (solo vía Guardian). Lo que se añade aquí entra en el `initial_prompt` y en `corregir_glosario`
 de las reuniones siguientes y, si hay una en curso, de la actual (el Gestor recalcula el vocabulario del transcriptor)."""
 from __future__ import annotations
 

@@ -88,6 +88,8 @@ DEFAULTS: dict = {
     "whisper_modelo": "small",
     "whisper_beam": 5,
     "whisper_hilos": 6,
+    "whisper_hilos_auto": True,            # los hilos que usa Whisper son min(whisper_hilos, la mitad de los núcleos, mínimo 2): la otra mitad es de la videollamada. False = whisper_hilos tal cual
+    "prioridad_reunion": True,             # mientras se captura (reunión o dictado) el proceso sube a prioridad «por encima de lo normal», para que Whisper no se quede sin procesador
     "whisper_vad": True,                   # Silero VAD de faster-whisper sobre cada fragmento (recorta silencios y ruido de sala; menos alucinaciones)
     "whisper_vad_min_silencio_ms": 500,    # silencio mínimo para separar dos tramos de voz dentro del fragmento
     "vocabulario_transcripcion": [],       # términos propios para el prompt de Whisper (mandan sobre los extraídos del contexto)
@@ -377,7 +379,8 @@ class Config:
                     self.datos[k] = v
                 elif k == "cadencia_defecto" and str(v) in _CADENCIAS:
                     self.datos[k] = "equipo" if str(v) == "adaptativo" else str(v)
-                elif k in ("excluir_captura", "detectar_llamadas", "filtrar_eco", "asesor_activo", "asesor_web", "whisper_vad") and isinstance(v, bool):
+                elif k in ("excluir_captura", "detectar_llamadas", "filtrar_eco", "asesor_activo", "asesor_web", "whisper_vad",
+                           "whisper_hilos_auto", "prioridad_reunion") and isinstance(v, bool):
                     self.datos[k] = v
                 elif k in ("dispositivo_mic", "dispositivo_sistema") and (v is None or isinstance(v, (int, str))):
                     self.datos[k] = v
