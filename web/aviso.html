@@ -19,7 +19,8 @@
     <button class="btn btn-ghost btn-mini av-no" id="av-no" type="button" title="Cierra el aviso; no vuelve a salir en esta llamada">Ahora no</button>
   </div>
 
-  <label class="check av-check"><input type="checkbox" id="av-avisado"> He avisado a los asistentes</label>
+  <p class="t-meta av-nube" id="av-nube" role="note" hidden></p>
+  <label class="check av-check"><input type="checkbox" id="av-avisado" aria-describedby="av-nube"> He avisado a los asistentes</label>
 
   <div class="av-acciones">
     <button class="btn btn-primary av-empezar" id="av-empezar" type="button" disabled>Empezar a transcribir</button>

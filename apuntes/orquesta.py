@@ -225,7 +225,7 @@ class Sonda:
 
     # ------------------------------------------------------------ transcriptor (Whisper, local)
     def transcripcion(self, fase: str, ident: int, **datos) -> None:
-        """`fase` inicio|fin. `ident` identifica el tramo. Datos: fuente, audio_s, palabras, ms, ok, error, etiqueta."""
+        """`fase` inicio|fin. `ident` identifica el tramo. Datos: fuente, audio_s, palabras, ms, ok, error, etiqueta, motor (local|nube, en `fin`)."""
         hora = datetime.now().strftime("%H:%M:%S")
         with self._lock:
             reg = next((t for t in self.transcripcion_tareas if t["id"] == f"w{ident}"), None)
@@ -245,6 +245,8 @@ class Sonda:
                 reg.update(estado="ok" if ok else "error", ok=ok, ms=datos.get("ms"), error=datos.get("error", ""))
                 if datos.get("palabras") is not None:
                     reg["palabras"] = datos["palabras"]
+                if datos.get("motor") == "nube":   # el tramo lo resolvió la transcripción en la nube (si no, sigue siendo «local»)
+                    reg["modelo"] = "nube"
             copia = dict(reg)
         self._emitir({"tipo": "tarea", "fase": fase, **copia})
 

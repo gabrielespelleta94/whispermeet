@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/static/ola2.css">
 <link rel="stylesheet" href="/static/olas34.css">
 <link rel="stylesheet" href="/static/requisitos.css">
+<link rel="stylesheet" href="/static/nube.css">
 </head>
 <body data-vista="inicio" data-efectos="alto">
 <div class="ambiente" id="ambiente" aria-hidden="true"></div>
@@ -27,6 +28,7 @@
       <div class="reunion-id"><span class="reunion-tema t-body-m" id="r-tema"></span><span class="reunion-meta t-meta" id="r-meta"></span></div>
       <span class="obj-prog t-meta" id="r-obj-prog" role="status" hidden></span>
       <span class="chip-local t-meta" id="r-local" role="status" hidden title="Nada de esta reunión sale de este equipo: solo transcripción y detección local">Solo local</span>
+      <span class="chip-motor t-meta" id="r-motor" role="status" hidden><span class="chip-motor-t"></span></span>
       <div class="medidores">
         <div class="medidor m-sala" title="Reunión"><span class="t-label">Reunión</span><div class="vu" id="vu-reunion" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><span class="retraso t-meta" id="r-retraso" hidden></span></div>
         <div class="medidor m-micro" title="Micro"><span class="t-label">Micro</span><div class="vu" id="vu-yo" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div></div>
@@ -250,6 +252,7 @@
         </div>
         <div class="ini-barra" id="i-barra-empezar">
           <label class="check ini-aviso" title="La app no guarda audio, pero sí el texto, y la transcripción se enviará a Claude para analizarla."><input type="checkbox" id="i-aviso"> He avisado a los asistentes de que voy a transcribir la reunión</label>
+          <p class="t-meta ini-nube" id="i-nube" role="note" hidden></p>
           <span class="t-meta soft ini-aviso-nota">Sin audio guardado; el texto se envía a Claude.</span>
           <span class="nota-pie t-meta ini-ayuda" id="i-ayuda"></span>
           <button class="btn btn-primary btn-grande" id="i-empezar" type="button" disabled>Empezar reunión</button>
@@ -409,6 +412,47 @@
           </select>
           <span class="t-meta soft">Más precisión tarda más en transcribir: de «Precisa» en adelante, en un portátil la transcripción puede ir con retraso. Antes de subirla, añade la jerga del proyecto al glosario. Se aplica a la reunión siguiente.</span>
           <span class="error aj-error" id="aj-modelo-error" data-error-de="whisper_modelo" role="alert" hidden></span></label>
+        <fieldset class="campo aj-nube" id="aj-nube">
+          <legend class="t-label">Dónde se transcribe</legend>
+          <div class="aj-nube-motor">
+            <label class="check"><input type="radio" name="transcripcion_motor" value="local" aria-describedby="aj-nube-aviso"> En este equipo (Whisper)</label>
+            <label class="check"><input type="radio" name="transcripcion_motor" value="nube" aria-describedby="aj-nube-aviso aj-nube-motor-error"> En la nube: no compite con la videollamada; el audio sale del equipo</label>
+          </div>
+          <div class="aj-nube-acepto" id="aj-nube-acepto-fila" hidden>
+            <label class="check"><input type="checkbox" id="aj-nube-acepto" aria-describedby="aj-nube-motor-error"> Entiendo que el audio sale del equipo</label>
+          </div>
+          <span class="error aj-error" id="aj-nube-motor-error" role="alert" hidden></span>
+          <p class="t-meta soft aj-nube-aviso" id="aj-nube-aviso">Con la nube activada se envía al servicio el audio del micro y de la reunión (solo los tramos con voz) y, para acertar más, el tema de la reunión, el vocabulario del proyecto y la última frase de cada canal. La clave no sale de este equipo salvo hacia ese servicio. Si la nube falla, la transcripción sigue en este equipo sin perder texto. «Modo solo local» también la desactiva.</p>
+          <div class="aj-nube-campos" id="aj-nube-campos" data-activo="false">
+            <label>Dirección del servicio<input class="input" name="nube_url_base" type="text" inputmode="url" spellcheck="false" autocomplete="off" maxlength="200" aria-describedby="aj-nube-url-error"></label>
+            <span class="error aj-error" id="aj-nube-url-error" role="alert" hidden></span>
+            <label>Modelo<input class="input" name="nube_modelo" type="text" spellcheck="false" autocomplete="off" maxlength="80" aria-describedby="aj-nube-modelo-error"></label>
+            <span class="error aj-error" id="aj-nube-modelo-error" role="alert" hidden></span>
+            <details class="aj-avanzado" id="aj-nube-avanzado">
+              <summary class="t-meta">Ajuste fino del servicio</summary>
+              <div class="fila3">
+                <label>Cómo se identifica ante el servicio<select class="input" name="nube_autenticacion" aria-describedby="aj-nube-auth-error"><option value="bearer">Bearer (lo habitual)</option><option value="api-key">Cabecera api-key (Azure)</option></select></label>
+                <span class="error aj-error" id="aj-nube-auth-error" role="alert" hidden></span>
+                <label>Tipo de servicio<select class="input" name="nube_dialecto" aria-describedby="aj-nube-dialecto-error"><option value="auto">Automático</option><option value="gpt-transcribe">gpt-transcribe</option><option value="clasico">Clásico: whisper-1, Groq, Azure whisper</option></select></label>
+                <span class="error aj-error" id="aj-nube-dialecto-error" role="alert" hidden></span>
+              </div>
+            </details>
+          </div>
+          <div class="aj-nube-clave">
+            <label class="t-label" for="aj-nube-clave">Clave del servicio</label>
+            <div class="aj-nube-fila">
+              <input class="input" id="aj-nube-clave" type="password" autocomplete="off" spellcheck="false" aria-describedby="aj-nube-clave-estado aj-nube-clave-error">
+              <button class="btn" type="button" id="aj-nube-clave-guardar">Guardar clave</button>
+              <button class="btn btn-ghost" type="button" id="aj-nube-clave-quitar">Quitar clave</button>
+            </div>
+            <span class="t-meta soft" id="aj-nube-clave-estado" role="status"></span>
+            <span class="error aj-error" id="aj-nube-clave-error" role="alert" hidden></span>
+          </div>
+          <div class="aj-nube-probar">
+            <button class="btn" type="button" id="aj-nube-probar">Probar conexión</button>
+            <span class="t-meta aj-nube-res" id="aj-nube-probar-res" role="status"></span>
+          </div>
+        </fieldset>
         <label class="campo" id="aj-c-beam"><span class="t-label">Ancho de búsqueda de la transcripción</span>
           <input class="input" name="whisper_beam" type="number" min="1" max="10" step="1" inputmode="numeric" aria-describedby="aj-beam-ayuda aj-beam-error">
           <span class="t-meta soft" id="aj-beam-ayuda">De 1 a 10 (5 por defecto). Más ancho acierta más y va más lento: si la transcripción va con retraso, bájalo; si falla en la jerga, súbelo.</span>
@@ -560,6 +604,7 @@
 <script src="/static/olas34.js"></script>
 <script src="/static/disposicion.js"></script>
 <script src="/static/ajustes.js"></script>
+<script src="/static/nube.js"></script>
 <script src="/static/requisitos.js"></script>
 <script src="/static/copia.js"></script>
 <script src="/static/version.js"></script>

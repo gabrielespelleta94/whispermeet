@@ -377,3 +377,52 @@ def test_una_knowledge_valida_o_vacia_no_da_aviso(tmp_path):
 def test_una_knowledge_que_no_existe_sigue_siendo_aviso_como_antes(tmp_path):
     _res, k = _res_knowledge(tmp_path, str(tmp_path / "Perdida"))
     assert k["estado"] == "aviso" and "no existe" in k["detalle"]
+
+
+# ---------------------------------------------------------------- transcripción en la nube (sin ninguna llamada de red)
+CFG_NUBE = {"transcripcion_motor": "nube", "nube_url_base": "https://recurso.ejemplo.net/openai/v1", "nube_modelo": "gpt-transcribe"}
+
+
+def test_comprobar_nube_con_motor_local_es_none():
+    assert R.comprobar_nube({"transcripcion_motor": "local"}, {"puesta": True, "origen": "fichero", "error": ""}) is None
+    assert R.comprobar_nube({}, None) is None   # un config sin las claves nuevas se comporta como hoy
+
+
+@pytest.mark.parametrize("origen,texto", [("entorno", "de la variable de entorno"), ("fichero", "guardada cifrada en este equipo")])
+def test_comprobar_nube_con_clave_es_bien(origen, texto):
+    r = R.comprobar_nube(CFG_NUBE, {"puesta": True, "origen": origen, "error": ""})
+    _forma(r)
+    assert r["clave"] == "nube" and r["titulo"] == "Transcripción en la nube" and r["estado"] == "bien" and r["como_arreglarlo"] == ""
+    assert r["detalle"] == f"Con «gpt-transcribe» en recurso.ejemplo.net; clave {texto}."
+    assert "/openai" not in json.dumps(r)   # del servicio solo el nombre del host
+
+
+def test_comprobar_nube_sin_clave_es_aviso_y_con_error_lleva_su_texto():
+    r = R.comprobar_nube(CFG_NUBE, {"puesta": False, "origen": "ninguna", "error": ""})
+    assert r["estado"] == "aviso" and r["detalle"] == "Está activada pero no hay clave: las reuniones se transcribirán en este equipo."
+    assert r["como_arreglarlo"] == "Pon la clave en Ajustes › Audio o en la variable WHISPERMEET_CLAVE_NUBE."
+    assert R.comprobar_nube(CFG_NUBE, None)["estado"] == "aviso"
+    texto = "La clave guardada no se puede leer con este usuario de Windows: vuelve a ponerla."
+    r = R.comprobar_nube(CFG_NUBE, {"puesta": False, "origen": "ninguna", "error": texto})
+    assert r["estado"] == "aviso" and r["detalle"] == texto and r["como_arreglarlo"] == ""
+
+
+def test_comprobar_todo_con_nube_la_anade_tras_whisper_y_no_hace_red(tmp_path, monkeypatch):
+    import socket
+
+    def prohibido(*a, **k):
+        raise AssertionError("las comprobaciones no hacen ninguna llamada de red")
+    monkeypatch.setattr(socket, "create_connection", prohibido)
+    cfg, g = _montaje(tmp_path)
+    cfg.actualizar({"transcripcion_motor": "nube"}, guardar=False)
+    fila = {"indice": 1, "nombre": "x", "canales": 1, "frecuencia": 16000}
+    kw = dict(version=(3, 12, 4), buscar_claude=lambda n: "claude", listar_audio=lambda: {"error": "", "entradas": [fila], "salidas": [fila]}, modelos_dir=tmp_path / "modelos")
+    res = R.comprobar_todo(cfg, g, clave_nube={"puesta": True, "origen": "fichero", "error": ""}, **kw)
+    claves = [c["clave"] for c in res["comprobaciones"]]
+    assert claves.index("nube") == claves.index("modelo_whisper") + 1
+    por = {c["clave"]: c for c in res["comprobaciones"]}
+    assert por["nube"]["estado"] == "bien" and por["modelo_whisper"]["detalle"].endswith(" Es el respaldo si falla la nube.")
+    cfg.actualizar({"transcripcion_motor": "local"}, guardar=False)
+    sin = R.comprobar_todo(cfg, g, **kw)
+    assert "nube" not in [c["clave"] for c in sin["comprobaciones"]]
+    assert "respaldo" not in {c["clave"]: c for c in sin["comprobaciones"]}["modelo_whisper"]["detalle"]

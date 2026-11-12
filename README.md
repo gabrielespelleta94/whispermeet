@@ -1,6 +1,6 @@
 # WhisperMeet (carpeta y paquete: apuntes)
 
-Herramienta local para Windows, al estilo Granola: transcribe reuniones en directo, da insights periódicos y propone cambios a las carpetas de contexto del proyecto. Sin correo ni calendario. Interfaz en español, modo claro y oscuro.
+Herramienta para Windows, local por defecto (la transcripción en la nube es opcional y hay que activarla), al estilo Granola: transcribe reuniones en directo, da insights periódicos y propone cambios a las carpetas de contexto del proyecto. Sin correo ni calendario. Interfaz en español, modo claro y oscuro.
 
 ## Instalación
 
@@ -98,7 +98,7 @@ Tests (antes, `instalar.bat --dev` para tener pytest): `.venv\Scripts\python.exe
 Los de la sección «Instalación»; en corto:
 
 - Python 3.12 o superior, Windows 10/11 y un micrófono.
-- Claude Code (`claude`) en el PATH y con la sesión iniciada con tu licencia. **El análisis usa solo Claude Code; nunca la API.** No hay clave que configurar.
+- Claude Code (`claude`) en el PATH y con la sesión iniciada con tu licencia. **El análisis usa solo Claude Code; nunca la API.** El análisis no necesita clave; solo la transcripción en la nube (opcional) necesita la del servicio.
 - WASAPI loopback (Windows 10/11) para el audio del sistema.
 
 ## Cómo funciona
@@ -166,6 +166,19 @@ La ficha de cada proyecto (inicio, al pulsar una tarjeta) tiene un bloque «Docu
 
 Es la ola A, la ola B y la ola C de `HOJA-DE-RUTA.md`, que recoge el análisis de la herramienta de punta a punta y lo que viene después: empaquetado, entregables y datos internos.
 
+## Transcripción en la nube (opcional)
+
+Por defecto la transcripción es local (Whisper) y el audio no sale. Con `transcripcion_motor` = `nube` (Ajustes › Audio) los trozos con voz se envían a un servicio compatible con OpenAI (`POST {nube_url_base}/audio/transcriptions`), de modo que la CPU deja de ser el cuello de botella durante la videollamada. No promete «sin retraso»: lo que se garantiza es que la CPU no es el límite y que, si la nube falla, ese trozo lo transcribe Whisper local siempre que el modelo local esté descargado en el equipo (si no lo está, ese audio se pierde y la app lo avisa). Cada trozo tiene un plazo total de 12 s para todos sus intentos y, con el motor en la nube, el modelo local se precarga en segundo plano (solo desde disco: el respaldo nunca lo descarga en plena reunión). El motor se decide en cada trozo; cambiarlo en Ajustes vale al momento, también en plena reunión.
+
+- **Qué sale.** El audio del micro y de la reunión, solo los tramos con voz (un VAD local quita el silencio; con menos de 0,25 s de voz no se envía nada), como WAV en memoria, nunca a disco. Para acertar más viajan también el tema, el vocabulario del proyecto y la última frase de cada canal. No sale nada si está apagada ni con «Modo solo local» (que también la bloquea). El dictado del contexto sigue siempre en local. En el registro de envíos queda un lote cada 120 s con segundos, trozos, servidor y modelo, nunca contenido.
+- **Clave.** En Ajustes › Audio (se guarda cifrada con DPAPI del usuario de Windows en `datos\secreto-nube.dpapi`; no entra en `config.json`, en `/api/info`, en el registro ni en la copia de seguridad) o en la variable de entorno `WHISPERMEET_CLAVE_NUBE`, que manda sobre el fichero. Ejemplo de forma: `sk-ficticia-0000000000`. En un equipo o perfil nuevo hay que volver a ponerla. El botón «Probar» envía un tono sintético de 1 s con los valores del formulario y funciona aunque «Solo local» esté activo, porque no lleva datos tuyos.
+- **Proveedores** (consultado en noviembre de 2026; mira siempre la página del proveedor). Por defecto, `https://api.openai.com/v1` con `gpt-transcribe` (dialecto `auto`). La residencia europea es opcional y depende de la cuenta: un proyecto con residencia en la UE y la URL `https://eu.api.openai.com/v1`; que `gpt-transcribe` la admita en este endpoint no está confirmado. Azure (API v1): URL `https://<recurso>.openai.azure.com/openai/v1`, autenticación `api-key`, el modelo es el nombre del *deployment* y conviene fijar el dialecto. Groq (`https://api.groq.com/openai/v1`, p. ej. `whisper-large-v3-turbo`) y servidores locales compatibles (`http://localhost:8000/v1`) usan el dialecto `clasico` (`language`, `prompt` y `verbose_json`, con el mismo filtro de calidad que el modo local). Solo se admite `https://`, salvo `http://` hacia este equipo. `whisper-1` y los `gpt-4o-*-transcribe` se apagan en OpenAI el 26-02-2027.
+- **Precio orientativo** (OpenAI, noviembre de 2026): `gpt-transcribe` 0,0045 $ por minuto de audio enviado, unos 0,27 $ por hora de audio. Si hablan los dos canales a la vez se suman. La app no pone tope de gasto; se pone en el panel del proveedor.
+- **Qué cambia.** No hay palabras dudosas en los trozos de la nube (no hay probabilidad por palabra). En modo rápido solo se acortan las pistas (prompt de 120 caracteres sin continuidad y 10 `keywords`, frente a 240 y 30).
+- **Si falla.** Un reintento breve, después Whisper local para ese trozo (carga perezosa del modelo), y tras dos trozos seguidos fallidos la nube se aparta 60 s (luego 120, 240 y 300) y vuelve sola con una sonda. Los errores de configuración (401, 403, 404/405/415, 400 de configuración, crédito, certificado) la bloquean hasta el final de la reunión o hasta cambiar algo en Ajustes. El cuerpo de las respuestas de error nunca se muestra ni se registra. La cabecera muestra el chip «Nube» y los avisos dicen la causa.
+- **Sin verificar.** Todo se ha probado contra un servidor falso en bucle local; nada contra el servicio real (latencia por trozo, límite del prompt de `gpt-transcribe`, comportamiento de `languages[]` con tres idiomas, residencia en la UE y retención de datos de este modelo). Un proxy de empresa con PAC o con autenticación no está soportado: la nube no saldría y la transcripción seguiría en local. Ver `HOJA-DE-RUTA.md`.
+
+
 ## Dónde escribe (y dónde no)
 
 | Qué | Dónde | Cuándo |
@@ -178,8 +191,10 @@ Es la ola A, la ola B y la ola C de `HOJA-DE-RUTA.md`, que recoge el análisis d
 | Copia de seguridad | `apuntes\copias\whispermeet-copia-AAAA-MM-DD-HHMMSS.zip` (local, fuera de git; datos propios de la app, sin la caché ni los documentos de los proyectos) | al pulsar «Crear copia» en Ajustes, Privacidad, fuera de una reunión; restaurar es manual (`MANUAL.md`, apartado 10) |
 | Digest de contexto | `apuntes\cache\` | al empezar la reunión, si cambian los ficheros de origen |
 | Consumo | `apuntes\datos\consumo.jsonl` | por llamada, sin contenido de reuniones |
+| Clave de la transcripción en la nube | `apuntes\datos\secreto-nube.dpapi` (cifrada con DPAPI, local, fuera de git y de la copia de seguridad) | al guardar la clave en Ajustes › Audio |
+| Registro de lo enviado a la nube | `apuntes\datos\envios.jsonl`, un lote cada 120 s (segundos, trozos, servidor y modelo; sin contenido) | solo con la nube activada |
 
-- **El audio nunca se guarda**: solo buffers en memoria que se descartan al transcribir.
+- **El audio nunca se guarda**: solo buffers en memoria que se descartan al transcribir (con la nube activada salen en memoria hacia el servicio; ver «Transcripción en la nube»).
 - Nunca se escribe en `CLAUDE.md`, `AGENTS.md`, `docs\` ni en Knowledge. Todo pasa por `apuntes/rutas.py`, que valida nombres y rutas (sin path traversal ni enlaces que escapen).
 - Nunca se lee ni se envía `.env`, credenciales, `.git`, `node_modules` ni ficheros con pinta de secreto; lectura con tope de tamaño, líneas con pinta de secreto omitidas, secciones «Contactos» fuera.
 
@@ -228,6 +243,7 @@ crear_acceso_directo.py acceso directo del menú Inicio con icono y AppUserModel
 MANUAL.md               guía para quien USA la app (primera vez, reunión, proyectos, ajustes, qué se guarda y qué sale de la máquina)
 app.py                  entrada (argumentos, servidor, ventana)
 apuntes/requisitos.py   comprobación de requisitos (Python, claude, modelo de Whisper, audio, carpetas), sin tokens ni efectos;  GET /api/requisitos;  web/requisitos.js|css  panel «Antes de la primera reunión»
+apuntes/nube.py, motor_nube.py, clave_nube.py   transcripción en la nube (opcional): cliente HTTP compatible con OpenAI (sin política), política (reintento, respaldo local, cortacircuitos, contadores) y clave (variable de entorno o DPAPI);  web/nube.js|css  Ajustes y chip «Nube»;  tests/servidor_nube_falso.py  servidor falso en bucle local
 apuntes/rutas.py        Guardian: rutas permitidas, secretos, escritura atómica
 apuntes/contexto.py     proyectos, selección local de contexto, plantillas del kit
 apuntes/inventario.py   mapa de documentos del proyecto: los clasifica por tipo (arranque, oferta, funcional, técnico, datos, usuarios, planificación, seguimiento) sin abrir ninguno
@@ -324,4 +340,4 @@ Con voz sintética de Windows (23 s de audio, `pruebas\medir_velocidad.py`): ent
 
 Ese dato es de la época de `whisper_beam` 1. Desde noviembre el defecto es **beam 5** y `temperature=(0.0, 0.2, 0.4)` (faster-whisper reintenta con la siguiente temperatura si un tramo falla por compresión o log-prob). Medido de nuevo con voz sintética (Helena, 33 s en 3 tramos, `small`, 6 hilos, 3 rondas): beam 1 + 0,0 dio de media 4,19× (3,14-5,04×) y beam 5 + tupla 3,23× (2,96-3,64×); la velocidad varía mucho con la carga de la máquina. Si se acumula retraso, vuelve a `whisper_beam` 1 en `datos\config.json`.
 
-El `initial_prompt` de Whisper lleva el tema, un vocabulario del proyecto (siglas y nombres propios extraídos en local de los ficheros de contexto ya cargados; `vocabulario_transcripcion` en la config va primero) y la última frase conservada de la MISMA fuente (micro o reunión), con un tope de ~480 caracteres (~200 tokens). Si el resultado de un tramo es una copia del prompt, se descarta.
+El `initial_prompt` de Whisper lleva el tema, un vocabulario del proyecto (siglas y nombres propios extraídos en local de los ficheros de contexto ya cargados; `vocabulario_transcripcion` en la config va primero) y la última frase conservada de la MISMA fuente (micro o reunión), con un tope de 240 caracteres (120 y sin continuidad en modo rápido); ya no hay `hotwords`. Si el resultado de un tramo es una copia del prompt, se descarta. En la nube, con `gpt-transcribe`, el vocabulario va aparte en `keywords` (como mucho 30; 10 en modo rápido) y el prompt lleva el resto, con los mismos topes.

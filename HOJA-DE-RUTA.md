@@ -1,12 +1,12 @@
 # Hoja de ruta de WhisperMeet
 
-Estado a 10 de noviembre de 2026. Recoge el análisis de punta a punta de la herramienta y el plan por olas para llevarla de «apuntador de reuniones» a «puesto de mando del proyecto»: que sepa qué documentación tiene cada proyecto, cómo es la solución, su modelo de datos, sus usuarios y su plan de sesiones, y que tenga agentes que ayuden también fuera de la reunión.
+Estado a 11 de noviembre de 2026. Recoge el análisis de punta a punta de la herramienta y el plan por olas para llevarla de «apuntador de reuniones» a «puesto de mando del proyecto»: que sepa qué documentación tiene cada proyecto, cómo es la solución, su modelo de datos, sus usuarios y su plan de sesiones, y que tenga agentes que ayuden también fuera de la reunión.
 
 ## Cómo está hoy
 
 | Área | Qué hay | Qué falta |
 |---|---|---|
-| Reunión en directo | Transcripción local con Whisper, tarjetas, objetivos, checks, asesor, equipo de agentes y eco aplazado en origen. Retraso acotado: cola con prioridades (Reunión primero, lo atrasado y el eco después), transcripción ordenada por minuto y aviso de estado con los tres casos. | Validar el eco con sonido real de sala y los límites de «Transcripción: retraso acotado». |
+| Reunión en directo | Transcripción local con Whisper (o, si se activa, en la nube con respaldo local), tarjetas, objetivos, checks, asesor, equipo de agentes y eco aplazado en origen. Retraso acotado: cola con prioridades (Reunión primero, lo atrasado y el eco después), transcripción ordenada por minuto y aviso de estado con los tres casos. | Validar el eco con sonido real de sala y los límites de «Transcripción: retraso acotado». |
 | Documentos del proyecto | Lee `.md`, `.txt`, `.docx`, `.pptx` y `.pdf` como contexto. Mapa de documentos por tipo y aviso de los tipos que faltan (ola A); tipo corregible a mano, resumen de una línea de los documentos clave y tipo propuesto para lo ambiguo (ola B). | Leer `.xlsx`; que el mapa entre en la preparación sugerida y en el resumen del proyecto. |
 | Solución tal como está y modelo de datos | La plantilla `03-arquitectura-y-datos`, que se rellena a mano, y desde la ola B el Archivero: cobertura por faceta con el documento que lo dice y lo que falta. | Que proponga los huecos por el flujo de «aceptar cambios»; rellenar la plantilla a partir de lo que encuentra. |
 | Usuarios y roles | Desde la ola B, el Archivero extrae los perfiles y roles de la solución que digan los documentos (nunca personas). Las secciones de contactos se excluyen a propósito del contexto de la IA. | Interlocutores del proyecto, sin enviar datos personales al modelo. |
@@ -189,9 +189,30 @@ Lo que queda:
 - Ajustar el detector de eco con el diagnóstico de la próxima reunión real (sigue sin validarse con eco acústico real).
 - Mirar `nucleos=` y `cpu_equipo=` de esa reunión: si Whisper sigue consiguiendo pocos núcleos con la prioridad alta, el límite está fuera de la app.
 
+## Transcripción en la nube
+
+Hecho el 11 de noviembre (rama `nube`), probado solo contra un servidor falso en bucle local. Motivo: en una reunión real Whisper iba a 1,17× el tiempo real frente a una demanda de 1,6-1,7×; con la nube la CPU deja de ser el cuello de botella. No se promete «sin retraso»: se promete que la CPU no es el límite y que, si la nube falla, ese trozo lo transcribe Whisper local siempre que el modelo local esté descargado (si no, ese audio se pierde y la app lo avisa).
+- Opcional y apagada: `transcripcion_motor` = `local` (defecto) | `nube`. El motor se decide en cada trozo, así que se puede cambiar en Ajustes a mitad de reunión.
+- Protocolo compatible con OpenAI (`POST {nube_url_base}/audio/transcriptions`, por defecto `https://api.openai.com/v1`, modelo `gpt-transcribe`). Dos dialectos: `gpt-transcribe` (`languages[]`, `keywords[]`, `prompt`) y `clasico` (`language`, `prompt`, `verbose_json` con el mismo filtro de calidad que el modo local; sirve para Groq, Azure whisper y servidores locales). Autenticación `bearer` o `api-key` (Azure). Cliente de la biblioteca estándar con conexión persistente y proxy del sistema (sin PAC ni autenticación de proxy).
+- Qué sale: audio con voz (VAD local, nada por debajo de 0,25 s), WAV en memoria, más tema, vocabulario y última frase. «Modo solo local» la bloquea. El dictado del contexto sigue en local. Lote de envíos cada 120 s sin contenido.
+- Clave por variable `WHISPERMEET_CLAVE_NUBE` o cifrada con DPAPI en `datos\secreto-nube.dpapi`; nunca en config, `/api/info`, registros ni copias. El cuerpo de los errores del servicio no se muestra ni se registra.
+- Respaldo: plazo total de 12 s por trozo para todos sus intentos, un reintento, Whisper local por trozo (el modelo se precarga en segundo plano al empezar y solo desde disco: nunca se descarga en plena reunión; sin modelo en disco ese audio se pierde y se avisa), cortacircuitos con sonda (60 a 300 s) y bloqueo ante errores de configuración o crédito, que se levanta al cambiar algo en Ajustes. Sin palabras dudosas en los trozos de la nube.
+- Interfaz: Ajustes › Audio (motor, dirección, modelo, clave, «Probar» con un tono sintético), chip «Nube» en la cabecera y mención de la nube en la casilla «He avisado a los asistentes» y en el aviso de llamada.
+- Los tests no salen nunca a Internet: `WHISPERMEET_NUBE_SOLO_LOOPBACK=1` en `tests/conftest.py`.
+
+Lo que queda:
+- Verificar con una clave real y en una reunión real con Teams: latencia media por trozo (`ms_medio` en la línea `nube_resumen`), retraso del directo y coste por hora.
+- Medir el límite real del prompt de `gpt-transcribe` (la documentación solo dice que existe) y cómo se comporta `languages[]` con tres idiomas (si restringe o solo orienta, y si empeora la detección).
+- Si `ms_medio` pasa de la mitad de la duración media del trozo, valorar un segundo trabajador (hoy hay uno solo, en serie, para conservar el orden y la continuidad del prompt).
+- Probar detrás de un proxy de empresa con PAC o con autenticación (hoy no están soportados: la nube no saldría y todo iría a local).
+- Residencia europea (`https://eu.api.openai.com/v1`) y retención de datos para `gpt-transcribe`: la documentación consultada en noviembre de 2026 lista esas garantías para otros modelos, no para este.
+- Decidir sobre `whisper-1` y los `gpt-4o-*-transcribe` antes de su apagado en OpenAI el 26-02-2027 (el dialecto `clasico` sigue sirviendo para Groq, Azure y servidores locales).
+- Sin verificar con el servicio real: la forma exacta del cuerpo de error, los formatos de audio aceptados por `gpt-transcribe` y el límite de duración por petición.
+
+
 ## Principios que no cambian
 
-- Todo en local. La IA se usa solo con `claude -p`.
+- Todo en local por defecto; la transcripción en la nube es opcional, explícita y con respaldo local (si el modelo local está descargado). La IA se usa solo con `claude -p`.
 - El audio nunca se guarda en disco.
 - El contexto del proyecto solo se modifica después de que el usuario acepte el cambio.
 - Todo acceso a disco pasa por `Guardian`; los ficheros con pinta de secreto no se leen ni se listan.

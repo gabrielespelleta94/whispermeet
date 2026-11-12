@@ -27,8 +27,10 @@ from .analisis.analista import Analista
 from .asesor_directo import Asesor
 from . import correccion as CORR   # ola 4
 from . import metricas as MT       # ola 4
+from .clave_nube import ClaveNube
 from .config import validar_idioma
-from .envios import ModeloVigilado, RegistroEnvios   # ola 4
+from .envios import TIPO_NUBE, ModeloVigilado, RegistroEnvios   # ola 4
+from .motor_nube import LOTE_ENVIOS_S, texto_aviso
 from .glosario import Glosario                        # ola 4
 from .plantillas import Plantillas, pesos_de          # ola 4
 from .silencio import ReglasSilencio                  # ola 4
@@ -120,6 +122,8 @@ class Gestor:
         self._prioridad_alta = False      # True mientras el proceso corre con prioridad por encima de lo normal (la API dijo que sí)
         self._prioridad_lock = threading.Lock()
         self._reiniciar_descartes()
+        self.clave_nube = ClaveNube(guardian)   # la clave de la transcripción en la nube: variable de entorno o fichero cifrado con DPAPI, nunca en la configuración
+        self._reiniciar_nube()
         self._vocabulario_contexto: list[str] = []
         self.captura = None
         self.digest = ""
@@ -199,6 +203,28 @@ class Gestor:
         self._eco_texto = None                 # la incidencia tal como está escrita en `sesion.incidencias` (se sustituye en su sitio)
         self._eco_anotado_en = None            # cuándo (monotónico) se actualizó por última vez
 
+    def _reiniciar_nube(self) -> None:
+        """Estado de los avisos de la nube de la reunión en curso (cada reunión empieza sin avisos dichos)."""
+        self._nube_causas_avisadas: set[str] = set()   # causas definitivas ya avisadas (una vez por causa y reunión)
+        self._nube_circuito_aviso_en: float | None = None   # último aviso de «sin conexión con la nube» (como mucho uno cada AVISO_FALLO_CADA_S)
+        self._nube_sin_modelo_aviso_en: float | None = None
+        self._nube_lote_en: float = time.monotonic()   # último lote de envíos de la nube
+        self._nube_cerrada = False
+
+    def _estado_nube(self, tr) -> dict:
+        """`motor`, `motor_activo` y `nube` del estado de la transcripción (diseno.md §2.3). Nunca lanza."""
+        try:
+            motor = str(self.cfg["transcripcion_motor"])
+        except (KeyError, TypeError):
+            motor = "local"
+        try:
+            activo = str(getattr(tr, "motor_activo", "local") or "local")
+            nube = getattr(tr, "nube", None)
+            bloque = nube.publico() if nube is not None else None
+        except Exception:  # noqa: BLE001  (el estado público nunca se rompe por la nube)
+            activo, bloque = "local", None
+        return {"motor": motor, "motor_activo": activo, "nube": bloque}
+
     def estado_ligero(self) -> dict:
         s = self.sesion
         tr = self.transcriptor
@@ -237,7 +263,8 @@ class Gestor:
                                                       "aplazado_s": round(float(getattr(tr, "aplazado_s", 0.0) or 0.0), 1),   # audio de Micro que parece solo eco y espera su turno
                                                       "retraso_reunion_s": round(float(getattr(tr, "retraso_reunion_s", 0.0) or 0.0), 1),   # el retraso de lo que dicen los demás
                                                       "rezagado_s": round(float(getattr(tr, "rezagado_s", 0.0) or 0.0), 1),   # audio que no llegó a tiempo y espera un hueco
-                                                      "eco_descartado_s": round(float(getattr(tr, "eco_descartado_s", 0.0) or 0.0), 1)},   # eco del micro que no se transcribió
+                                                      "eco_descartado_s": round(float(getattr(tr, "eco_descartado_s", 0.0) or 0.0), 1),   # eco del micro que no se transcribió
+                                                      **self._estado_nube(tr)},   # motor configurado, quién transcribió el último trozo y el bloque de la nube
             "captura": None if self.captura is None else {"errores": {k: str(v) for k, v in dict(self.captura.errores).items()}},
             "avisos": list(self.avisos), "consumo": self.consumo.resumen(),
             "revision": self.revision_publica(),
@@ -382,7 +409,10 @@ class Gestor:
     async def _iniciar_audio(self, tema: str) -> None:
         from .audio import Captura
         from .transcripcion import Transcriptor
-        self.transcriptor = Transcriptor(self.cfg, self._on_texto)
+        # La nube solo por `MotorNube` (dentro del transcriptor). La clave se pide en cada trozo; «Solo local» (config o sesión) la veta en cada trozo.
+        self.transcriptor = Transcriptor(self.cfg, self._on_texto, clave_nube=self.clave_nube.obtener,
+                                         permitir_nube=lambda: not self.modo_local_activo())
+        self._reiniciar_nube()
         self._perdidos_avisados, self._retraso_registrado, self._perdida_avisada_en = 0.0, 0.0, None
         self._muestra_capacidad = (0.0, 0.0, tiempos_del_equipo())
         self._reiniciar_descartes()
@@ -596,6 +626,8 @@ class Gestor:
         if tr is None:
             return False
         hecho = False
+        if self._vigilar_nube(tr, forzar):   # eventos de la nube (avisos, incidencias, registro) y lotes de envíos; nunca lanza
+            hecho = True
         self._recoger_descartes(tr)   # antes de leer `perdidos_s`: así lo recogido nunca supera lo contado
         perdidos = float(getattr(tr, "perdidos_s", 0.0) or 0.0)
         toca = forzar or self._perdida_avisada_en is None or time.monotonic() - self._perdida_avisada_en >= AVISO_FALLO_CADA_S
@@ -640,9 +672,160 @@ class Gestor:
                             f"ret_reunion={float(getattr(tr, 'retraso_reunion_s', 0.0) or 0.0):.0f}s rezagado={rezagado:.0f}s "
                             f"eco_descartado={float(getattr(tr, 'eco_descartado_s', 0.0) or 0.0):.0f}s "
                             f"lat_reunion={'-' if lat_r is None else f'{lat_r:.0f}s'} lat_micro={'-' if lat_m is None else f'{lat_m:.0f}s'}"
-                            + self._sufijo_eco() + self._sufijo_capacidad(tr))
+                            + self._sufijo_eco() + self._sufijo_capacidad(tr) + self._sufijo_nube(tr))
             hecho = True
         return hecho
+
+    # ------------------------------------------------------------------ transcripción en la nube: avisos, incidencias, registro y envíos (solo medidas, nunca contenido)
+    @staticmethod
+    def _sufijo_nube(tr) -> str:
+        """` motor=nube nube_ms=910 nube_fallos=3 respaldo=2` para la línea periódica, solo si la nube ha transcrito algo."""
+        nube = getattr(tr, "nube", None)
+        try:
+            trozos = int(getattr(nube, "trozos", 0) or 0)
+            if trozos <= 0:
+                return ""
+            return f" motor=nube nube_ms={int(nube.ms_total / trozos)} nube_fallos={int(nube.fallos)} respaldo={int(nube.respaldo_trozos)}"
+        except Exception:  # noqa: BLE001
+            return ""
+
+    @staticmethod
+    def _campo_log(valor) -> str:
+        """Un valor para una línea de registro: solo letras, cifras, `_`, `-` y `.`; vacío o None = «-»."""
+        v = "".join(c for c in str(valor if valor is not None else "") if c.isalnum() or c in "_-.")
+        return v or "-"
+
+    def _vigilar_nube(self, tr, forzar: bool = False) -> bool:
+        """Recoge los eventos de `MotorNube` y, cada `LOTE_ENVIOS_S` (y al terminar), el lote de envíos. Nunca lanza."""
+        nube = getattr(tr, "nube", None)
+        if nube is None:
+            return False
+        hecho = False
+        try:
+            for ev in nube.tomar_eventos():
+                self._evento_nube(ev)
+                hecho = True
+            ahora = time.monotonic()
+            if forzar or ahora - self._nube_lote_en >= LOTE_ENVIOS_S:
+                self._nube_lote_en = ahora
+                lote = nube.tomar_lote()
+                if lote:
+                    self._registrar_envio_nube(lote)
+                    hecho = True
+        except Exception as e:  # noqa: BLE001  (la nube nunca rompe la vigilancia de la transcripción)
+            registrar_error("Gestor._vigilar_nube", e)
+        return hecho
+
+    def _aviso_nube(self, texto: str, grave: bool, prioridad: str) -> None:
+        if prioridad == "fijo" and texto not in self.avisos:
+            self.avisos.append(texto)
+        self.emitir("aviso", mensaje=texto, componente="transcripcion", grave=grave, prioridad=prioridad)
+
+    def _evento_nube(self, ev: dict) -> None:
+        """Un evento de la nube (diseno.md §2.7 y §2.8): aviso, incidencia en el .md y línea de registro. El texto del aviso sale de `texto_aviso`; nada de
+        lo que llega del servicio (cuerpo, mensaje) pasa por aquí."""
+        e, causa = ev.get("evento"), ev.get("causa")
+        ahora = time.monotonic()
+        mm = mmss(self.reloj.ahora())
+
+        def incidencia(c: str) -> None:
+            if self.sesion:
+                self.sesion.incidencias.append(f"[{mm}] transcripción: nube → local ({c})")
+
+        if e == "bloqueada":
+            registrar_linea(f"transcripcion nube evento=bloqueada causa={self._campo_log(causa)} http={self._campo_log(ev.get('http'))} codigo={self._campo_log(ev.get('codigo'))}")
+            if causa not in self._nube_causas_avisadas:   # una vez por causa
+                self._nube_causas_avisadas.add(causa)
+                self._aviso_nube(texto_aviso(causa), False, "fijo")
+            incidencia(self._campo_log(causa))
+        elif e == "circuito_abierto":
+            registrar_linea(f"transcripcion nube evento=circuito_abierto causa={self._campo_log(causa)} http={self._campo_log(ev.get('http'))} "
+                            f"fallos_seguidos={int(ev.get('fallos_seguidos') or 0)} vuelve_s={int(ev.get('vuelve_s') or 0)}")
+            if self._nube_circuito_aviso_en is None or ahora - self._nube_circuito_aviso_en >= AVISO_FALLO_CADA_S:
+                self._nube_circuito_aviso_en = ahora
+                self._aviso_nube(texto_aviso("circuito_abierto", int(ev.get("vuelve_s") or 0), con_reunion=False), False, "normal")
+            incidencia(self._campo_log(causa))
+        elif e == "restablecida":
+            registrar_linea(f"transcripcion nube evento=restablecida tras_s={int(ev.get('tras_s') or 0)}")
+            self._nube_circuito_aviso_en = None   # la próxima caída avisa al momento
+            self._aviso_nube(texto_aviso("restablecida"), False, "discreto")
+        elif e == "sin_clave":
+            registrar_linea("transcripcion nube evento=sin_clave")
+            self._aviso_nube(texto_aviso("sin_clave"), False, "fijo")
+            incidencia("sin_clave")
+        elif e == "solo_local":
+            registrar_linea("transcripcion nube evento=solo_local")
+            self._aviso_nube(texto_aviso("solo_local"), False, "discreto")
+            incidencia("solo_local")
+            self._registrar_envio_nube_bloqueado()
+        elif e == "pistas_off":
+            registrar_linea(f"transcripcion nube evento=pistas_off rechazos={int(ev.get('rechazos') or 0)}")
+        elif e == "respaldo_sin_modelo":
+            registrar_linea("transcripcion nube evento=respaldo_sin_modelo")
+            if self._nube_sin_modelo_aviso_en is None or ahora - self._nube_sin_modelo_aviso_en >= AVISO_FALLO_CADA_S:
+                self._nube_sin_modelo_aviso_en = ahora
+                self._aviso_nube(texto_aviso("respaldo_sin_modelo"), True, "fijo")
+            incidencia("sin_modelo")
+
+    def _envio_nube(self, **campos) -> dict:
+        s = self.sesion
+        return {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "sesion": s.id if s else "", "agente": "Transcripción en la nube", "tarea": "transcripcion_nube",
+                "tipo": TIPO_NUBE, "entrada": 0, "salida": 0, "extracto": "", **campos}
+
+    def _anotar_envio_nube(self, reg: dict) -> None:
+        """Al registro de envíos y al WebSocket. El evento `envio` no puede llevar la clave `tipo` (es la del propio evento): se identifica por `tarea`."""
+        try:
+            self.envios.registrar(reg)
+            self.emitir("envio", **{k: v for k, v in reg.items() if k != "tipo"})
+        except Exception:  # noqa: BLE001  (medir nunca rompe la transcripción)
+            pass
+
+    def _registrar_envio_nube(self, lote: dict) -> None:
+        """Un lote de audio enviado a la nube: segundos, trozos, host y modelo; nunca contenido (`chars` cuenta los del tema, los términos y la última frase)."""
+        self._anotar_envio_nube(self._envio_nube(modelo=lote.get("modelo", ""), host=lote.get("host", ""), audio_s=lote.get("audio_s", 0.0),
+                                                 trozos=lote.get("trozos", 0), fallos=lote.get("fallos", 0), chars=lote.get("chars", 0),
+                                                 bloqueado=False, ok=bool(lote.get("ok", lote.get("fallos", 0) == 0))))
+
+    def registrar_prueba_nube(self, resultado: dict, modelo: str, host: str) -> None:
+        """El tono sintético de «Probar»: queda en el registro de envíos como `nube_prueba` (sin sesión: no es de ninguna reunión)."""
+        self._anotar_envio_nube(self._envio_nube(tarea="nube_prueba", sesion="", modelo=modelo, host=host, audio_s=1.0, trozos=1,
+                                                 fallos=0 if resultado.get("ok") else 1, chars=0, bloqueado=False, ok=bool(resultado.get("ok"))))
+
+    def _registrar_envio_nube_bloqueado(self) -> None:
+        """«Solo local» veta la nube: una línea por reunión que lo deja dicho."""
+        self._anotar_envio_nube(self._envio_nube(modelo=str(self.cfg["nube_modelo"]), host="", audio_s=0, trozos=0, fallos=0, chars=0,
+                                                 bloqueado=True, ok=False, error="local"))
+
+    def _cierre_nube(self, tr) -> None:
+        """Al terminar la reunión (o cerrar la app): los eventos que queden, el último lote, la línea `nube_resumen` y se cierra la conexión. Una sola vez."""
+        nube = getattr(tr, "nube", None)
+        if nube is None or self._nube_cerrada:
+            return
+        self._nube_cerrada = True
+        try:
+            self._vigilar_nube(tr, forzar=True)
+            r = nube.resumen()
+            if r["trozos"] or r["respaldo_trozos"] or r["silencio_trozos"] or r["fallos"]:
+                registrar_linea(f"transcripcion nube_resumen trozos={r['trozos']} audio={r['audio_s']}s ms_medio={r['ms_medio']} ms_max={r['ms_max']} "
+                                f"fallos={r['fallos']} reintentos={r['reintentos']} respaldo={r['respaldo_trozos']} respaldo_audio={r['respaldo_s']}s "
+                                f"silencio={r['silencio_trozos']} aperturas={r['aperturas']} bloqueos={r['bloqueos']} idioma_rep={r['idioma_repetidos']} "
+                                f"pistas_rep={r['pistas_reintentos']} kb={r['kb']} dialecto={self._campo_log(r['dialecto'])} host={self._campo_log(r['host'])}")
+        except Exception as e:  # noqa: BLE001
+            registrar_error("Gestor._cierre_nube", e)
+        finally:
+            with contextlib.suppress(Exception):
+                nube.cerrar()
+
+    def nube_config_cambiada(self) -> None:
+        """Cambió la clave, la URL, el modelo, la autenticación o el dialecto: se levantan el bloqueo y el cortacircuitos de esta reunión (si la hay).
+        Una causa vuelve a avisar si se repite. Nunca lanza."""
+        try:
+            self._nube_causas_avisadas.clear()
+            nube = getattr(self.transcriptor, "nube", None) if self.transcriptor else None
+            if nube is not None:
+                nube.reiniciar()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _diagnostico_eco(self) -> dict | None:
         """Los contadores del detector de eco por niveles (`EcoAudio.diagnostico`), o None si no hay detector o no los da. Nunca lanza."""
@@ -1350,6 +1533,7 @@ class Gestor:
             if self.transcriptor:
                 await self._esperar_transcripcion()
                 self.transcriptor.detener()
+                self._cierre_nube(self.transcriptor)   # último lote de envíos, línea `nube_resumen` y conexión cerrada
         finally:
             self._bajar_prioridad("reunion")   # la sesión de audio ha terminado del todo (también si el cierre falla)
         for t in self._tareas:
@@ -1414,8 +1598,10 @@ class Gestor:
         def n(nombre: str) -> float:
             return float(getattr(tr, nombre, 0.0) or 0.0)
         audio, calculo = n("audio_total_s"), n("calculo_total_s")
-        if audio <= 0:
+        nube_trozos = int(getattr(getattr(tr, "nube", None), "trozos", 0) or 0)   # trozos que resolvió la nube: audio_total_s solo cuenta lo local
+        if audio <= 0 and nube_trozos <= 0:
             return
+        motor = "mixto" if audio > 0 and nube_trozos > 0 else ("nube" if nube_trozos > 0 else "local")
         nucleos = "-" if calculo <= 0 or n("cpu_total_s") <= 0 else f"{n('cpu_total_s') / calculo:.1f}"
         prompt_med = "-" if n("prompt_llamadas") <= 0 else f"{n('prompt_chars_total') / n('prompt_llamadas'):.0f}"
         demanda = f" demanda={n('audio_recibido_s') / duracion_s:.2f}" if duracion_s and duracion_s > 0 and n("audio_recibido_s") > 0 else ""
@@ -1425,7 +1611,8 @@ class Gestor:
                         f"lat_max_reunion={float(lat.get('reunion', 0.0)):.0f}s lat_max_micro={float(lat.get('yo', 0.0)):.0f}s "
                         f"rezagado_total={n('rezagado_total_s'):.0f}s perdidos={n('perdidos_s'):.0f}s eco_descartado={n('eco_descartado_s'):.0f}s "
                         f"aplazados={int(n('tramos_aplazados'))} rezagados={int(n('tramos_rezagados'))} reintentos={int(n('reintentos'))} "
-                        f"nucleos={nucleos} hilos={getattr(tr, 'hilos', None) or '-'} prioridad={prioridad or 'normal'} prompt_med={prompt_med}" + demanda)
+                        f"nucleos={nucleos} hilos={getattr(tr, 'hilos', None) or '-'} prioridad={prioridad or 'normal'} prompt_med={prompt_med}" + demanda
+                        + f" motor={motor}")
 
     async def lanzar_agentes_cierre(self) -> dict:
         """ola 4: el usuario confirma, en la revisión de una reunión en modo solo local, que SÍ se lancen los agentes del cierre (resumen final y cambios de contexto).
@@ -1788,4 +1975,5 @@ class Gestor:
                 pass
         if self.transcriptor:
             self.transcriptor.detener()
+            self._cierre_nube(self.transcriptor)
         self._bajar_prioridad("reunion")

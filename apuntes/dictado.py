@@ -25,6 +25,7 @@ class _TranscriptorDictado(Transcriptor):
     """El modelo de Whisper se carga una vez y se reutiliza entre dictados (cargarlo cuesta segundos)."""
     _modelo_compartido = None   # (nombre del modelo, modelo)
     tope_retraso_s = None       # un dictado es un texto seguido: sus tramos van en orden de llegada y ninguno se deja para después
+    forzar_local = True         # el dictado se hace antes de la reunión, sin competencia por la CPU: el audio no sale del equipo y no hay una tercera ruta que probar
     _candado = threading.Lock()
 
     def cargar_modelo(self):

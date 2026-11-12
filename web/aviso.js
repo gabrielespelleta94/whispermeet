@@ -19,7 +19,7 @@
   }
 
   const el = { av: $("#av"), tema: $("#av-tema"), temaInput: $("#av-tema-input"), avisado: $("#av-avisado"), empezar: $("#av-empezar"), no: $("#av-no"),
-    mas: $("#av-mas"), detalle: $("#av-detalle"), proyecto: $("#av-proyecto"), idioma: $("#av-idioma"), ayuda: $("#av-ayuda"), error: $("#av-error"),
+    nube: $("#av-nube"), mas: $("#av-mas"), detalle: $("#av-detalle"), proyecto: $("#av-proyecto"), idioma: $("#av-idioma"), ayuda: $("#av-ayuda"), error: $("#av-error"),
     tiempo: document.querySelector(".av-tiempo"), barra: $("#av-barra") };
   el.mas.replaceChildren(window.AP.icono("abajo"));   // el mismo juego de iconos que la ventana principal (iconos.js)
 
@@ -110,6 +110,17 @@
   // Para diagnóstico y pruebas (solo lectura): lo que va contando el aviso.
   window.__aviso = { estado: () => ({ restante, caducaMs, encima, escribiendo, ocupado, activo }) };
 
+  // Con el motor `nube` el consentimiento lo dice: el audio sale del equipo hacia el servicio configurado. Si /api/info no responde, no cambia nada.
+  async function pintarNube() {
+    try {
+      const info = await api("GET", "/api/info");
+      if (!info || !info.config || info.config.transcripcion_motor !== "nube") return;
+      const host = (info.nube && info.nube.host) || "";
+      el.nube.textContent = `La transcripción se hace en la nube: el audio se envía a ${host || "el servicio configurado"}.`;
+      el.nube.hidden = false;
+    } catch { /* sin el dato, el aviso queda como siempre */ }
+  }
+
   (async function init() {
     try {
       const d = await api("GET", "/api/aviso");
@@ -122,6 +133,7 @@
       el.idioma.value = d.idioma || "auto";
       caducaMs = restante = Math.max(1, (d.caduca_s || 45)) * 1000;
       pintarEstado();
+      pintarNube();
       ultimo = Date.now();
       reloj = setInterval(paso, 100);   // setInterval y no requestAnimationFrame: sigue contando aunque el motor deje de pintar
       window.__avisoListo = true;

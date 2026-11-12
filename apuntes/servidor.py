@@ -11,8 +11,9 @@ import secrets
 from datetime import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -33,10 +34,17 @@ from . import huella as HU
 from . import planes as PL
 from .audio import listar_dispositivos
 from . import requisitos as REQ
-from .config import APP_DIR, WEB_DIR, validar_beam, validar_vocabulario_estricto
+from .clave_nube import validar_clave
+from .config import (APP_DIR, WEB_DIR, dialecto_efectivo, validar_autenticacion, validar_beam, validar_dialecto, validar_modelo_nube, validar_motor,
+                     validar_url_nube, validar_vocabulario_estricto)
+from .motor_nube import MotorNube
 from .rutas import RutaProhibida, esta_dentro, raiz_onedrive, sugerir_compartida
 
 HOST = "127.0.0.1"
+TEXTO_SIN_CARPETA_CLAVE = "No hay carpeta de datos donde guardar la clave."
+# Transcripción en la nube: las cinco claves de configuración (ninguna secreta) y cómo se validan. La clave del servicio NO es de configuración.
+VALIDADORES_NUBE = {"transcripcion_motor": validar_motor, "nube_url_base": validar_url_nube, "nube_modelo": validar_modelo_nube,
+                    "nube_autenticacion": validar_autenticacion, "nube_dialecto": validar_dialecto}
 
 
 class Difusor:
@@ -296,20 +304,90 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
     # ------------------------------------------------------------ API
+    def _info_nube(estado_clave: dict) -> dict:
+        """Bloque `nube` de /api/info: si hay clave y de dónde viene (nunca la clave), el dialecto con el que se hablaría y el host (sin ruta)."""
+        try:
+            host = urlsplit(str(cfg["nube_url_base"])).hostname or ""
+        except ValueError:
+            host = ""
+        return {"clave": estado_clave, "dialecto_efectivo": dialecto_efectivo(str(cfg["nube_modelo"]), str(cfg["nube_dialecto"])), "host": host}
+
     @app.get("/api/info")
     async def info():
+        estado_clave = await asyncio.to_thread(gestor.clave_nube.estado)
         return {"version": __version__, "simulacion": gestor.sim is not None, "config": cfg.publico(),
-                "raiz_existe": Path(cfg["raiz_proyectos"]).is_dir(), "codigo_cambiado": bool(vigia.cambiado())}
+                "raiz_existe": Path(cfg["raiz_proyectos"]).is_dir(), "codigo_cambiado": bool(vigia.cambiado()), "nube": _info_nube(estado_clave)}
 
     @app.get("/api/requisitos")
     async def requisitos():
         """Qué hace falta para la primera reunión (apuntes/requisitos.py): sin tokens, sin abrir el micrófono, sin descargar ni escribir nada."""
-        return await asyncio.to_thread(REQ.comprobar_todo, cfg, guardian, audio_en_uso=gestor.estado != "inactivo")
+        estado_clave = await asyncio.to_thread(gestor.clave_nube.estado)
+        return await asyncio.to_thread(lambda: REQ.comprobar_todo(cfg, guardian, audio_en_uso=gestor.estado != "inactivo", clave_nube=estado_clave))
+
+    # ------------------------------------------------------------ transcripción en la nube (apuntes/nube.py, motor_nube.py, clave_nube.py)
+    @app.put("/api/nube/clave")
+    @envolver
+    async def poner_clave_nube(cuerpo: dict):
+        try:
+            clave = validar_clave(cuerpo.get("clave"))
+        except ValueError as e:
+            raise ErrorCampo("nube_clave", str(e))
+        if guardian.ajustes is None:
+            raise ErrorCampo("nube_clave", TEXTO_SIN_CARPETA_CLAVE)
+        try:
+            await asyncio.to_thread(gestor.clave_nube.guardar, clave)
+        except RutaProhibida:
+            raise ErrorCampo("nube_clave", TEXTO_SIN_CARPETA_CLAVE)
+        except OSError:   # DPAPI no pudo cifrar (o no es Windows): sin detalle, que podría ser sensible
+            raise ErrorCampo("nube_clave", "No se pudo cifrar y guardar la clave en este equipo.")
+        gestor.nube_config_cambiada()
+        r = {"clave": await asyncio.to_thread(gestor.clave_nube.estado)}
+        if r["clave"]["origen"] == "entorno":
+            r["nota"] = "Manda la variable de entorno WHISPERMEET_CLAVE_NUBE mientras exista."
+        return r
+
+    @app.delete("/api/nube/clave")
+    @envolver
+    async def quitar_clave_nube():
+        await asyncio.to_thread(gestor.clave_nube.borrar)
+        gestor.nube_config_cambiada()
+        return {"clave": await asyncio.to_thread(gestor.clave_nube.estado)}
+
+    @app.post("/api/nube/probar")
+    @envolver
+    async def probar_nube(cuerpo: dict | None = Body(default=None)):
+        """UNA petición con un tono sintético de 1 s y los valores del formulario (o los guardados). Permitido con «Solo local»: no lleva datos del usuario.
+        La clave de la petición nunca se guarda ni se devuelve."""
+        cuerpo = cuerpo if isinstance(cuerpo, dict) else {}
+        efectiva = {k: cfg[k] for k in ("nube_url_base", "nube_modelo", "nube_autenticacion", "nube_dialecto")}
+        for k, f in VALIDADORES_NUBE.items():
+            if k != "transcripcion_motor" and cuerpo.get(k) is not None:
+                try:
+                    efectiva[k] = f(cuerpo[k])
+                except ValueError as e:
+                    raise ErrorCampo(k, str(e))
+        clave = ""
+        if cuerpo.get("clave") not in (None, ""):
+            try:
+                clave = validar_clave(cuerpo["clave"])
+            except ValueError as e:
+                raise ErrorCampo("nube_clave", str(e))
+        elif MotorNube.otra_direccion(cfg["nube_url_base"], efectiva["nube_url_base"]):
+            return MotorNube.respuesta_otra_direccion()   # la clave guardada no viaja a una dirección que no es la guardada: sin llamada de red
+        else:
+            clave = (await asyncio.to_thread(gestor.clave_nube.obtener)) or ""
+        r = await asyncio.to_thread(MotorNube.probar, efectiva, clave)
+        if r.get("causa") not in ("sin_clave", "bloqueada_pruebas"):   # si no salió nada de este equipo, no hay nada que registrar
+            gestor.registrar_prueba_nube(r, efectiva["nube_modelo"], urlsplit(efectiva["nube_url_base"]).hostname or "")
+        return r
 
     @app.put("/api/config")
     @envolver
     async def poner_config(cambios: dict):
         antes = cfg["excluir_captura"]
+        if "nube_clave" in cambios:   # la clave NUNCA va a la configuración (se guarda en claro en config.json): tiene su propio botón y su propia ruta
+            raise ErrorCampo("nube_clave", "La clave se guarda con su propio botón; no va en la configuración.")
+        antes_nube = {k: cfg[k] for k in VALIDADORES_NUBE}
         if "raiz_proyectos" in cambios:
             r = Path(str(cambios["raiz_proyectos"]))
             if not r.is_dir():
@@ -335,6 +413,12 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
                 cambios["vocabulario_transcripcion"] = validar_vocabulario_estricto(cambios["vocabulario_transcripcion"])
             except ValueError as e:
                 raise ErrorCampo("vocabulario_transcripcion", str(e))
+        for k, f in VALIDADORES_NUBE.items():   # antes de tocar nada; durante una reunión NO se rechaza ninguna (el motor se decide en cada trozo)
+            if k in cambios:
+                try:
+                    cambios[k] = f(cambios[k])
+                except ValueError as e:
+                    raise ErrorCampo(k, str(e))
         raiz_nueva = Path(str(cambios["raiz_proyectos"])) if "raiz_proyectos" in cambios else None
         if "knowledge" in cambios:
             extras_nuevos = None   # si el mismo cuerpo cambia las carpetas añadidas, Knowledge se valida contra las NUEVAS
@@ -363,6 +447,8 @@ def crear_app(gestor, difusor: Difusor, cfg, guardian, token: str, puerto: int,
         guardian.fijar_extras(cfg["proyectos_extra"])
         if cfg["excluir_captura"] != antes and al_cambiar_captura:
             al_cambiar_captura(cfg["excluir_captura"])
+        if any(cfg[k] != antes_nube[k] for k in VALIDADORES_NUBE):   # el siguiente trozo ya usa lo nuevo y un bloqueo anterior se levanta
+            gestor.nube_config_cambiada()
         return {"config": cfg.publico()}
 
     @app.get("/api/proyectos")

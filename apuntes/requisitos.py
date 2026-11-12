@@ -113,6 +113,30 @@ def comprobar_modelo(modelo, modelos_dir) -> dict:
     return _r("modelo_whisper", titulo, "falta", f"El modelo «{modelo}» todavía no está descargado.", como)
 
 
+def comprobar_nube(cfg, estado_clave: dict | None) -> dict | None:
+    """Transcripción en la nube: None si el motor es local. SIN llamadas de red (no se envía nada ni se prueba el servicio: eso es el botón «Probar»).
+    `estado_clave`: lo que da `ClaveNube.estado()` ({puesta, origen, error}); nunca lleva la clave."""
+    try:
+        if cfg["transcripcion_motor"] != "nube":
+            return None
+    except (KeyError, TypeError):
+        return None
+    titulo = "Transcripción en la nube"
+    ec = estado_clave or {}
+    if ec.get("puesta"):
+        from urllib.parse import urlsplit
+        try:
+            host = urlsplit(str(cfg["nube_url_base"])).hostname or ""
+        except ValueError:
+            host = ""
+        origen = "de la variable de entorno" if ec.get("origen") == "entorno" else "guardada cifrada en este equipo"
+        return _r("nube", titulo, "bien", f"Con «{cfg['nube_modelo']}» en {host}; clave {origen}.")
+    if ec.get("error"):
+        return _r("nube", titulo, "aviso", str(ec["error"]))
+    return _r("nube", titulo, "aviso", "Está activada pero no hay clave: las reuniones se transcribirán en este equipo.",
+              "Pon la clave en Ajustes › Audio o en la variable WHISPERMEET_CLAVE_NUBE.")
+
+
 def comprobar_audio(listar=None, en_uso: bool = False) -> dict:
     """¿Hay dispositivos de entrada de audio? Solo enumera (`audio.listar_dispositivos`): no abre ningún stream. `en_uso`: hay una reunión en curso, que ya
     tiene el audio abierto: no se vuelve a enumerar (no se toca el audio de una grabación en marcha) y se da por bueno."""
@@ -187,12 +211,15 @@ def carpetas_locales(guardian) -> dict[str, Path]:
 
 
 def comprobar_todo(cfg, guardian=None, *, version=None, buscar_claude=None, listar_audio=None, modelos_dir=None, existe=None, puede_escribir=None,
-                   audio_en_uso: bool = False) -> dict:
-    """Todas las comprobaciones. -> {estado (la peor), faltan, avisos, comprobaciones: [...]}."""
+                   audio_en_uso: bool = False, clave_nube: dict | None = None) -> dict:
+    """Todas las comprobaciones. -> {estado (la peor), faltan, avisos, comprobaciones: [...]}. `clave_nube`: `ClaveNube.estado()` (solo importa con el motor en la nube)."""
     if modelos_dir is None:
         from .transcripcion import MODELOS_DIR as modelos_dir
-    lista = [comprobar_python(version), comprobar_claude(buscar_claude), comprobar_modelo(cfg["whisper_modelo"], modelos_dir),
-             comprobar_audio(listar_audio, audio_en_uso)]
+    modelo = comprobar_modelo(cfg["whisper_modelo"], modelos_dir)
+    nube = comprobar_nube(cfg, clave_nube)
+    if nube is not None:   # con la nube, Whisper local es el respaldo
+        modelo["detalle"] += " Es el respaldo si falla la nube."
+    lista = [comprobar_python(version), comprobar_claude(buscar_claude), modelo] + ([nube] if nube is not None else []) + [comprobar_audio(listar_audio, audio_en_uso)]
     validar = None
     if guardian is not None:
         from .config import APP_DIR

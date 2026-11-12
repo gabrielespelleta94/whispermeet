@@ -1,0 +1,37 @@
+/* WhisperMeet: transcripción en la nube (web/nube.js). Solo tokens y clases que ya existen (DESIGN-visual.md): un nivel de caja, filetes entre filas, radios 2·4·6·8,
+   color solo con significado (--ok, --warn, --err), escala de tamaños por variable y ningún recorte con puntos suspensivos que quite texto accesible. */
+
+/* ------------------------------------------------------------ Ajustes › Audio */
+.aj-nube-motor { display: block; }
+.aj-nube-motor .check { align-items: flex-start; min-height: 32px; margin-top: 4px; }
+.aj-nube-motor .check input { margin-top: 2px; }
+.aj-nube-acepto { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--warn); border-radius: var(--r-p); background: var(--warn-bg); }
+.aj-nube-acepto .check { margin-top: 0; }
+.aj-nube-aviso { margin: 8px 0 4px; overflow-wrap: anywhere; }
+.aj-nube-campos { margin-top: 4px; }
+.aj-nube-campos[data-activo="false"] { opacity: .6; }
+.aj-sec fieldset.aj-nube > .error.aj-error { margin-top: 4px; }
+.aj-nube-clave { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hair); }
+.aj-nube-clave > .t-label { display: block; margin-bottom: 6px; font-family: var(--sans); text-transform: none; letter-spacing: 0; font-variant-numeric: normal; font-size: var(--f-14); line-height: 20px; font-weight: 500; color: var(--ink); }
+.aj-nube-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.aj-nube-fila .input { flex: 1 1 220px; min-width: 0; }
+.aj-nube-fila .btn { flex: none; }
+.aj-nube-clave .t-meta { display: block; margin-top: 6px; overflow-wrap: anywhere; }
+.aj-nube-probar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; }
+.aj-nube-probar .btn { flex: none; }
+.aj-nube-res { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.aj-nube-res[data-estado="ok"] { color: var(--ok); }
+.aj-nube-res[data-estado="error"] { color: var(--err); }
+
+/* ------------------------------------------------------------ portada: dónde se transcribe, en la barra de «Empezar reunión» */
+.ini-barra:has(> .ini-nube:not([hidden])) { flex-wrap: wrap; }
+.ini-nube { order: -1; flex: 1 0 100%; margin: 0; overflow-wrap: anywhere; color: var(--ink); }
+
+/* ------------------------------------------------------------ ventana de aviso de llamada */
+.av-nube { margin: 12px 0 0; overflow-wrap: anywhere; color: var(--ink); }
+
+/* ------------------------------------------------------------ cabecera: chip de motor (junto a «Solo local» y los medidores) */
+.chip-motor { order: 3; flex: 0 1 auto; min-width: 0; max-width: 220px; display: inline-flex; align-items: center; padding: 0 8px; line-height: 20px; border: 1px solid var(--hair2); border-radius: var(--r-s); color: var(--soft); font-weight: 600; }
+.chip-motor .chip-motor-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* el texto completo va en title y aria-label */
+.chip-motor[data-estado="activa"], .chip-motor[data-estado="sonda"] { color: var(--ink); }
+.chip-motor[data-estado="respaldo"], .chip-motor[data-estado="bloqueada"] { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }

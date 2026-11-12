@@ -626,3 +626,14 @@ def test_el_cerrojo_empieza_libre_y_no_se_coge_fuera_de_la_funcion_del_hilo(serv
     api_copia, r = _router(servidor)
     assert r.cerrojo.acquire(blocking=False)
     r.cerrojo.release()
+
+
+def test_copia_excluye_secreto_nube(g, app):
+    """La clave de la nube cifrada (DPAPI) está atada al usuario de Windows: no entra en la copia aunque esté en una carpeta que sí se copia."""
+    _escribir(app / "datos" / "ola4" / "secreto-nube.dpapi", '{"v": 1, "dpapi": "AAAA"}')
+    _escribir(app / "datos" / "secreto-nube.dpapi", '{"v": 1, "dpapi": "AAAA"}')
+    r = C.crear_copia(g, AHORA)
+    dentro = nombres(zip_de(g, r))
+    assert not [n for n in dentro if "secreto-nube" in n or n.endswith(".dpapi")]
+    assert "datos/config.json" in dentro and "datos/ola4/glosario.json" in dentro   # lo demás de esas carpetas sí
+    assert [o["ruta"] for o in r["omitidos"]] == ["datos/ola4/secreto-nube.dpapi"]   # el de `datos/` (hermano de config.json) ni se mira: del fichero de ajustes solo entra config.json

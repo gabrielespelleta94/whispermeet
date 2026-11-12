@@ -43,7 +43,7 @@ EXT_DOCUMENTO = frozenset({".md", ".txt", ".rtf", ".docx", ".doc", ".docm", ".od
 EXT_ABRIBLES = EXT_DOCUMENTO - {".docm", ".xlsm"}   # sin los formatos hechos para llevar macros; el resto se abre como con un doble clic (los antiguos `.doc/.xls/.ppt` también pueden llevarlas: ahí manda la protección de Office)
 NOMBRES_BASURA = {"thumbs.db", "desktop.ini"}
 EXT_SECRETAS = {".pem", ".key", ".pfx", ".p12", ".pkcs12", ".kdbx", ".jks", ".keystore", ".ppk",
-                ".tfvars", ".tfstate", ".gpg", ".asc"}
+                ".tfvars", ".tfstate", ".gpg", ".asc", ".dpapi"}
 NOMBRES_PROTEGIDOS = {"claude.md", "agents.md"}
 DIRS_SOLO_LECTURA = {"docs"}
 EXT_LEGIBLES = {".md", ".txt"}
@@ -72,6 +72,8 @@ SUFIJO_COPIA_PARCIAL = ".parcial"   # el zip se escribe con este sufijo y se ren
 ATRIBUTOS_DE_COPIA = ("ajustes", "datos", "bandeja", "sesiones_locales", "planes", "checks", "backlog", "seguimiento", "tipos")
 _RE_SESION_MD = re.compile(r"^\d{4}-\d{2}-\d{2}.*\.md$", re.I)   # lectura del backlog: más tolerante que _RE_FICHERO_SESION (que es para escribir)
 NOMBRE_ESTADO_BACKLOG = "estado.json"
+NOMBRE_SECRETO_NUBE = "secreto-nube.dpapi"   # clave de la transcripción en la nube, cifrada con DPAPI; hermano de config.json
+TOPE_SECRETO_NUBE_BYTES = 16_384
 TOPE_PLAN_BYTES = 100_000   # un plan por encima de este tamaño NO lo lee la app (`_planes_bytes`) ni se escribe (`escribir_plan`, `plan_editor.guardar`): un solo tope para las dos cosas
 
 # Líneas con pinta de secreto dentro de un texto leído (defensa en profundidad).
@@ -945,6 +947,43 @@ class Guardian:
         with open(destino, "a", encoding="utf-8", newline="\n") as f:
             f.write(linea.rstrip("\r\n") + "\n")
         return destino
+
+    # ---------- clave de la nube: la única escritura con nombre de secreto. Hermana de config.json, nombre fijo, atómica ----------
+    def ruta_secreto_nube(self) -> Path:
+        if self.ajustes is None:
+            raise RutaProhibida("no hay carpeta de datos donde guardar la clave")
+        return self.ajustes.parent / NOMBRE_SECRETO_NUBE
+
+    def leer_secreto_nube(self) -> str | None:
+        """Texto del fichero de la clave cifrada, o None si no existe. Tope de 16 KB: un fichero mayor no es el nuestro."""
+        p = self.ruta_secreto_nube()
+        if p.is_symlink() or not p.is_file():
+            return None
+        with open(p, "rb") as f:
+            crudo = f.read(TOPE_SECRETO_NUBE_BYTES + 1)
+        if len(crudo) > TOPE_SECRETO_NUBE_BYTES:
+            raise RutaProhibida("el fichero de la clave es demasiado grande")
+        return crudo.decode("utf-8-sig", errors="replace")
+
+    def escribir_secreto_nube(self, texto: str) -> Path:
+        destino = self.ruta_secreto_nube()
+        if _norm(destino.parent) != _norm(self.ajustes.parent):   # el padre es exactamente la carpeta de los ajustes
+            raise RutaProhibida("destino fuera de la carpeta de ajustes")
+        if destino.is_symlink():
+            raise RutaProhibida("el destino es un enlace")
+        self._escribir(destino, texto)
+        return destino
+
+    def borrar_secreto_nube(self) -> bool:
+        """Quita el fichero de la clave. True si existía; no falla si no había."""
+        destino = self.ruta_secreto_nube()
+        if destino.is_symlink():
+            raise RutaProhibida("el destino es un enlace")
+        try:
+            destino.unlink()
+            return True
+        except FileNotFoundError:
+            return False
 
     # ---------- ola 3: seguimiento de pendientes entre sesiones (local) ----------
     def ruta_seguimiento(self, proyecto: str) -> Path:

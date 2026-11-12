@@ -40,7 +40,13 @@
   // Qué dice el aviso de la transcripción cuando va por detrás ("" si va al día). `retraso_s` ya solo cuenta lo que se transcribe en directo y
   // rara vez pasa de unos 45 s: lo que se atrasa más pasa a `rezagado_s` y llega después, con su minuto. Con un servidor anterior (sin los campos
   // nuevos) queda el texto de siempre. `umbral`: retraso a partir del cual se avisa de un retraso (la línea del equipo espera más que el respaldo).
+  // Con la nube caída (respaldo o bloqueada) el retraso se explica: la transcripción sigue, pero en este equipo.
+  AP.nubeCaida = (tr) => !!(tr && tr.nube && (tr.nube.estado === "respaldo" || tr.nube.estado === "bloqueada"));
   AP.avisoRetraso = (tr, umbral = 3) => {
+    const t = AP.avisoRetrasoBase(tr, umbral);
+    return t && AP.nubeCaida(tr) ? t + " · en este equipo (la nube no responde)" : t;
+  };
+  AP.avisoRetrasoBase = (tr, umbral = 3) => {
     if (!tr) return "";
     if (tr.rezagado_s > 1) return `Transcripción saturada: ${Math.round(tr.rezagado_s)} s de audio se transcribirán más tarde.`;
     const r = AP.retrasoDe(tr);
@@ -672,7 +678,7 @@
     if (AP.hooks.pie) return AP.hooks.pie();
     const tr = S.transcripcion;
     $("#p-trans").textContent = S.simulacion ? "Modo simulación" : tr ? "Transcripción: " + ({ cargando: "cargando modelo", listo: "lista", error: "con error", sin_cargar: "en espera" }[tr.estado] || tr.estado)
-      + (tr.velocidad_x ? ` · ${tr.velocidad_x.toFixed(1).replace(".", ",")}× tiempo real` : "") : "Transcripción: en espera";
+      + (tr.velocidad_x ? ` · ${tr.velocidad_x.toFixed(1).replace(".", ",")}× tiempo real` : "") + (AP.nubeCaida(tr) && tr.nube.mensaje && tr.estado !== "error" ? " · " + tr.nube.mensaje : "") : "Transcripción: en espera";
     const d = S.digest || {};
     $("#p-digest").textContent = d.origen ? "Contexto: " + ({ generado: "resumido ahora", cache: "ya preparado antes", vacio: "sin contenido útil en el proyecto", sin_proyecto: "sin proyecto", contexto_usuario: "el que aceptaste antes de empezar", error: "no disponible" }[d.origen] || d.origen) : "";
     const c = S.consumo;

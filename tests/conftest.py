@@ -14,6 +14,11 @@ _REGISTRO_PRUEBAS = Path(tempfile.gettempdir()) / f"whispermeet-pruebas-{os.getp
 os.environ["WHISPERMEET_REGISTRO"] = str(_REGISTRO_PRUEBAS)
 os.environ["WHISPERMEET_SIN_PRIORIDAD"] = "1"   # ningún test cambia la prioridad de pytest ni la de los servidores de ayuda (`energia.prioridad_de_reunion`)
 
+# Transcripción en la nube: ningún test sale a internet ni usa una clave real. Con la guarda, el cliente rechaza todo host que no sea de bucle local
+# (antes de abrir un socket) y no usa proxy; la variable de la clave se borra para que no se cuele la del usuario. Los subprocesos de prueba lo heredan.
+os.environ["WHISPERMEET_NUBE_SOLO_LOOPBACK"] = "1"
+os.environ.pop("WHISPERMEET_CLAVE_NUBE", None)
+
 from apuntes.rutas import Guardian  # noqa: E402
 import guarda_reunion  # noqa: E402
 

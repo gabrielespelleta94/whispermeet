@@ -53,7 +53,7 @@ class Banco:
         else:
             self.tr._segmentos = self._segmentos
 
-    def _segmentos(self, audio, fuente, rapido=False):
+    def _segmentos(self, audio, fuente, rapido=False, solo_local=False):
         self.llamadas.append((fuente, audio.size / SR_WHISPER, rapido))
         if self.capacidad:
             self.reloj.t += (audio.size / SR_WHISPER) / self.capacidad
@@ -287,7 +287,7 @@ def test_7_tras_procesar_o_descartar_todo_la_contabilidad_queda_a_cero_incluso_c
 def test_7_un_fallo_dentro_del_tramo_tambien_deja_la_contabilidad_a_cero(reloj):
     b = Banco(reloj)
 
-    def falla(audio, fuente, rapido=False):
+    def falla(audio, fuente, rapido=False, solo_local=False):
         raise RuntimeError("memoria agotada (ficticia)")
     b.tr._segmentos = falla
     b.en(0.0, "reunion", 4, t0=0.0)
@@ -564,7 +564,7 @@ def test_el_transcriptor_acumula_el_audio_recibido_y_la_cpu_del_calculo(reloj):
 def test_un_tramo_que_falla_no_suma_cpu_ni_calculo(reloj):
     b = Banco(reloj)
 
-    def falla(audio, fuente, rapido=False):
+    def falla(audio, fuente, rapido=False, solo_local=False):
         reloj.t += 1.0
         raise RuntimeError("memoria agotada (ficticia)")
     b.tr._segmentos = falla

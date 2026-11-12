@@ -170,12 +170,23 @@
       sec.hidden = false;
       if (!Array.isArray(r.envios)) { sec.hidden = true; return; }
       const rs = r.resumen || {};
-      res.textContent = filas.length ? `${rs.llamadas || 0} llamadas en total · ${k((rs.entrada || 0) + (rs.salida || 0))} tokens · ${rs.bloqueadas || 0} bloqueadas por el modo local` : "Todavía no ha salido nada de este equipo.";
+      const audioNube = minNube(rs.nube && rs.nube.audio_s);
+      res.textContent = filas.length ? `${rs.llamadas || 0} llamadas en total · ${k((rs.entrada || 0) + (rs.salida || 0))} tokens · ${rs.bloqueadas || 0} bloqueadas por el modo local` + (audioNube ? ` · ${audioNube} min de audio a la nube` : "") : "Todavía no ha salido nada de este equipo.";
       lista.replaceChildren(...[...filas].reverse().map(filaEnvio));
     } catch { sec.hidden = true; }
   }
   const NOMBRE_ENVIO = { Coordinador: "Capitán", "Analista funcional": "Lupa", Constructor: "Arquitecto", Revisor: "Auditor", Estratega: "Sherpa" };
+  const minNube = (s) => (s > 0 ? Math.max(1, Math.round(s / 60)) : 0);
+  const esNube = (e) => !!e && (e.tipo === "transcripcion_nube" || e.tarea === "transcripcion_nube" || e.tarea === "nube_prueba");   // el evento `envio` del WebSocket pisa `tipo`: `tarea` también lo dice
+  function filaNube(e) {
+    const hora = String(e.ts || "").slice(11, 16), host = e.host ? " → " + e.host : "";
+    const detalle = e.bloqueado ? "bloqueada por el modo solo local" : e.tarea === "nube_prueba" ? "prueba de conexión" + host
+      : `${Math.round(e.audio_s || 0)} s de audio en ${e.trozos || 0} ${e.trozos === 1 ? "trozo" : "trozos"}${host}${e.ok === false ? " · con fallos" : ""}`;
+    return h("div", { class: "aj-reg-f t-meta" + (e.bloqueado ? " bloqueado" : ""), "data-tipo": "transcripcion_nube" },
+      h("span", { class: "aj-reg-h" }, hora), h("span", { class: "aj-reg-d" }, "Transcripción en la nube"), h("span", { class: "aj-reg-q" }, detalle));
+  }
   function filaEnvio(e) {
+    if (esNube(e)) return filaNube(e);
     const hora = String(e.ts || "").slice(11, 16);
     const estado = e.bloqueado ? "Bloqueado: modo local" : e.ok ? "Enviado" : "Con error";
     return h("div", { class: "aj-reg-f t-meta" + (e.bloqueado ? " bloqueado" : ""), title: e.extracto || "" },
@@ -195,8 +206,9 @@
     const tab = $("#tab-sesion");
     if (!tab) return;
     if (!sec) { sec = h("details", { class: "ses-envios", id: "ses-envios", open: true }, h("summary", { class: "t-label" }, "Lo que ha salido de este equipo en esta reunión"), h("div", { class: "ses-env-res t-meta", id: "ses-env-res" }), h("div", { class: "aj-reg-lista", id: "ses-env-lista" })); tab.append(sec); }
-    const tot = O.envios.reduce((a, e) => ({ n: a.n + (e.bloqueado ? 0 : 1), b: a.b + (e.bloqueado ? 1 : 0), t: a.t + (e.entrada || 0) + (e.salida || 0) }), { n: 0, b: 0, t: 0 });
-    $("#ses-env-res").textContent = O.envios.length ? `${tot.n} llamadas a Claude · ${k(tot.t)} tokens` + (tot.b ? ` · ${tot.b} bloqueadas por el modo local` : "") : (O.local && O.local.activo ? "Modo solo local: no ha salido nada." : "Todavía no ha salido nada.");
+    const tot = O.envios.reduce((a, e) => esNube(e) ? { ...a, b: a.b + (e.bloqueado ? 1 : 0), s: a.s + (e.bloqueado ? 0 : e.audio_s || 0) }
+      : ({ ...a, n: a.n + (e.bloqueado ? 0 : 1), b: a.b + (e.bloqueado ? 1 : 0), t: a.t + (e.entrada || 0) + (e.salida || 0) }), { n: 0, b: 0, t: 0, s: 0 });
+    $("#ses-env-res").textContent = O.envios.length ? `${tot.n} llamadas a Claude · ${k(tot.t)} tokens` + (minNube(tot.s) ? ` · ${minNube(tot.s)} min de audio a la nube` : "") + (tot.b ? ` · ${tot.b} bloqueadas por el modo local` : "") : (O.local && O.local.activo ? "Modo solo local: no ha salido nada." : "Todavía no ha salido nada.");
     $("#ses-env-lista").replaceChildren(...[...O.envios].reverse().slice(0, 40).map(filaEnvio));
   }
   async function cargarEnviosSesion() {

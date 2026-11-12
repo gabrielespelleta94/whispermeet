@@ -133,3 +133,32 @@ def test_el_registro_no_guarda_la_transcripcion_entera(tmp_path):
     assert usuario_mayor > 500 and len(crudo) < usuario_mayor * 2   # las líneas son metadatos + 120 caracteres, no los prompts
     assert all(len(json.loads(x)["extracto"]) <= 120 for x in crudo.splitlines())
     assert any(e.get("tipo") == "envio" for e in eventos)
+
+
+# ---------------------------------------------------------------- transcripción en la nube
+def test_resumir_separa_transcripcion_nube():
+    llamada = {"agente": "Redactor del resumen final", "tarea": "final", "chars": 100, "entrada": 30, "salida": 10, "ok": True}
+    lote = {"tarea": "transcripcion_nube", "tipo": "transcripcion_nube", "agente": "Transcripción en la nube", "audio_s": 96.4, "trozos": 13, "fallos": 1,
+            "chars": 1820, "bloqueado": False, "ok": True, "entrada": 0, "salida": 0}
+    prueba = {**lote, "tarea": "nube_prueba", "audio_s": 1.0, "trozos": 1, "chars": 0}
+    bloqueado = {**lote, "bloqueado": True, "ok": False, "error": "local", "audio_s": 0, "trozos": 0, "chars": 0}
+    r = RegistroEnvios.resumir([llamada, lote, lote, prueba, bloqueado])
+    assert (r["llamadas"], r["enviadas"], r["bloqueadas"], r["errores"], r["chars"], r["entrada"], r["salida"]) == (1, 1, 0, 0, 100, 30, 10)
+    assert list(r["por_agente"]) == ["Redactor del resumen final"]   # la nube no es un agente
+    assert r["nube"] == {"lotes": 2, "trozos": 26, "audio_s": 192.8, "fallos": 2, "bloqueadas": 1}
+    assert RegistroEnvios.resumir([])["nube"] == {"lotes": 0, "trozos": 0, "audio_s": 0.0, "fallos": 0, "bloqueadas": 0}
+
+
+def test_el_evento_envio_de_la_nube_no_choca_con_el_nombre_del_evento(tmp_path):
+    """`emitir(tipo, **datos)`: un registro que lleve `tipo` (el de la nube) daría «multiple values for argument 'tipo'». El registro guardado lo conserva; el evento, no."""
+    g = Guardian(tmp_path / "r", tmp_path / "b", tmp_path / "c", datos=tmp_path / "datos")
+    gm = GestorMinimo(g, sesion=SimpleNamespace(id="abc12345"))
+    m = ModeloVigilado(ModeloUso(), gm)
+    reg = {"ts": "2026-11-11T10:02:00", "sesion": "", "agente": "Transcripción en la nube", "tarea": "nube_prueba", "tipo": "transcripcion_nube", "modelo": "gpt-transcribe",
+           "host": "api.openai.com", "audio_s": 1.0, "trozos": 1, "fallos": 0, "chars": 0, "bloqueado": False, "ok": True, "entrada": 0, "salida": 0, "extracto": ""}
+    m._anotar(reg)
+    [(tipo, d)] = gm.eventos
+    assert tipo == "envio" and "tipo" not in d and d["tarea"] == "nube_prueba" and d["host"] == "api.openai.com"
+    [guardado] = _lineas_registro(g)
+    assert guardado["tipo"] == "transcripcion_nube" and guardado["tarea"] == "nube_prueba"
+    assert reg["tipo"] == "transcripcion_nube"   # y el registro original no se toca

@@ -19,6 +19,8 @@ from .analisis import ErrorAnalisis, ModeloLLM, Respuesta
 from .rutas import RutaProhibida
 
 FICHERO = "envios.jsonl"
+TIPO_NUBE = "transcripcion_nube"      # lote de audio hacia la nube (`MotorNube.tomar_lote`) o prueba del botón «Probar»; no es una llamada a `claude -p`
+TAREA_PRUEBA_NUBE = "nube_prueba"
 EXTRACTO_MAX = 120
 MENSAJE_LOCAL = ("Modo solo local: no se envía nada a Claude. La transcripción y el Monitor siguen funcionando; "
                  "desactiva el modo solo local para usar los agentes.")
@@ -84,8 +86,22 @@ class RegistroEnvios:
     @staticmethod
     def resumir(envios: list[dict]) -> dict:
         """Totales y desglose por agente de una lista de envíos."""
-        r = {"llamadas": 0, "enviadas": 0, "bloqueadas": 0, "errores": 0, "chars": 0, "entrada": 0, "salida": 0, "por_agente": {}}
+        r = {"llamadas": 0, "enviadas": 0, "bloqueadas": 0, "errores": 0, "chars": 0, "entrada": 0, "salida": 0, "por_agente": {},
+             "nube": {"lotes": 0, "trozos": 0, "audio_s": 0.0, "fallos": 0, "bloqueadas": 0}}
         for e in envios:
+            if e.get("tipo") == TIPO_NUBE or e.get("tarea") == TAREA_PRUEBA_NUBE:
+                # La transcripción en la nube no es una llamada al modelo: ni llamadas, ni caracteres, ni tokens. Se resume aparte (la prueba del botón «Probar» no es un lote).
+                if e.get("tarea") == TAREA_PRUEBA_NUBE:
+                    continue
+                n = r["nube"]
+                if e.get("bloqueado"):
+                    n["bloqueadas"] += 1
+                    continue
+                n["lotes"] += 1
+                n["trozos"] += int(e.get("trozos") or 0)
+                n["audio_s"] = round(n["audio_s"] + float(e.get("audio_s") or 0), 1)
+                n["fallos"] += int(e.get("fallos") or 0)
+                continue
             r["llamadas"] += 1
             if e.get("bloqueado"):
                 r["bloqueadas"] += 1
@@ -129,7 +145,7 @@ class ModeloVigilado(ModeloLLM):
     def _anotar(self, reg: dict) -> None:
         try:
             self.gestor.envios.registrar(reg)
-            self.gestor.emitir("envio", **reg)
+            self.gestor.emitir("envio", **{k: v for k, v in reg.items() if k != "tipo"})   # `tipo` es el nombre del evento en `emitir`: un registro que lo lleve (nube) no puede pasarlo dos veces
         except Exception:  # noqa: BLE001  (el registro nunca detiene el análisis)
             pass
 

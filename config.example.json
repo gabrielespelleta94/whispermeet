@@ -4,6 +4,11 @@
   "autor": "Tu Nombre",
   "idioma": "auto",
   "whisper_modelo": "small",
+  "transcripcion_motor": "local",
+  "nube_url_base": "https://api.openai.com/v1",
+  "nube_modelo": "gpt-transcribe",
+  "nube_autenticacion": "bearer",
+  "nube_dialecto": "auto",
   "proyectos_extra": [
     {
       "nombre": "Proyecto compartido de ejemplo",

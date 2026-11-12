@@ -1,6 +1,6 @@
 # Manual de WhisperMeet
 
-Para quien usa la app, no para quien la programa (eso está en `README.md` y `CLAUDE.md`). WhisperMeet es una app de escritorio para Windows que transcribe tus reuniones en el momento, te va dando avisos útiles mientras hablan y, al terminar, te propone un resumen y cambios al contexto del proyecto. Todo corre en tu equipo; para analizar el texto usa Claude Code con tu propia licencia.
+Para quien usa la app, no para quien la programa (eso está en `README.md` y `CLAUDE.md`). WhisperMeet es una app de escritorio para Windows que transcribe tus reuniones en el momento, te va dando avisos útiles mientras hablan y, al terminar, te propone un resumen y cambios al contexto del proyecto. Por defecto todo corre en tu equipo, la transcripción incluida; para analizar el texto usa Claude Code con tu propia licencia. Si quieres, puedes pasar la transcripción a un servicio en la nube (apartado 11); es opcional y empieza apagada.
 
 ## 1. La primera vez
 
@@ -14,8 +14,8 @@ Para quien usa la app, no para quien la programa (eso está en `README.md` y `CL
 
 1. En el inicio elige un proyecto (o **Bandeja** si es una reunión sin proyecto). Con un proyecto elegido aparece la preparación.
 2. Escribe el **tema** de la reunión. Si el proyecto tiene un plan de sesiones, elige también la sesión (o «Otra reunión»).
-3. Elige el **idioma** (Automático reconoce español, catalán e inglés en cada intervención) y, en Opciones, el **ritmo del equipo**. Si quieres que no salga nada a Claude en esa reunión, marca **Solo local en esta reunión**.
-4. Marca que **has avisado a los asistentes** de que vas a transcribir. La app no guarda audio, pero sí el texto, y ese texto se envía a Claude para analizarlo.
+3. Elige el **idioma** (Automático reconoce español, catalán e inglés en cada intervención) y, en Opciones, el **ritmo del equipo**. Si quieres que no salga nada de tu equipo en esa reunión (ni a Claude ni a la nube), marca **Solo local en esta reunión**.
+4. Marca que **has avisado a los asistentes** de que vas a transcribir. La app no guarda audio, pero sí el texto, y ese texto se envía a Claude para analizarlo. Si la transcripción va por la nube, la casilla lo dice con claridad (el audio sale a un tercero) y la ventana de aviso de llamada también: avisa a los asistentes de eso, no solo de que se transcribe.
 5. Pulsa **Empezar reunión**.
 
 Durante la reunión ves la transcripción en directo (el micrófono se llama «Micro» y lo que suena en tu equipo, «Reunión»), lo que va saliendo y los objetivos de la sesión. Algunas ayudas:
@@ -62,29 +62,30 @@ Al empezar una reunión, la sesión del plan que elijas trae sus objetivos y che
 
 Se abren con el botón **Ajustes** de la cabecera. Tienen tres secciones:
 
-- **Audio**: micrófono y audio de la reunión, precisión de la transcripción, **ancho de búsqueda**, **vocabulario de transcripción**, quitar el eco del micro, proponer grabar con las llamadas de Teams, efectos visuales y la lista de requisitos del equipo.
+- **Audio**: micrófono y audio de la reunión, precisión de la transcripción, **ancho de búsqueda**, **vocabulario de transcripción**, quitar el eco del micro, **dónde se transcribe** (en este equipo o en la nube, apartado 11), proponer grabar con las llamadas de Teams, efectos visuales y la lista de requisitos del equipo.
   - La precisión del modelo: más precisión tarda más; en un portátil, de «Precisa» en adelante la transcripción puede ir con retraso. Se aplica a la reunión siguiente.
   - El ancho de búsqueda va de 1 a 10 (5 por defecto): más ancho acierta más y va más lento. Si la transcripción va con retraso, bájalo; si falla en la jerga, súbelo.
   - El vocabulario es una lista de términos, uno por línea (siglas, nombres de producto, jerga): Whisper los tiene en cuenta y los escribe como tú los pongas. Hasta 60 términos de 40 caracteres. Vale para la reunión siguiente.
 - **Equipo**: cuándo interviene el equipo, cuánto hace por su cuenta, avisos silenciados, y qué modelo usa cada tarea (ligero o potente) y con qué límite de uso por hora.
 - **Privacidad**: ocultar la ventana en capturas y al compartir pantalla, **Modo solo local**, el registro de envíos, las carpetas que lee la app (carpeta de proyectos, carpetas añadidas y **carpeta de Knowledge**) y la **copia de seguridad** (apartado 10).
 
-Si un valor no es válido (un ancho fuera de rango, un término demasiado largo, una carpeta que no existe), el error sale junto a su campo y no se guarda nada. Con una reunión en curso no se cambian la carpeta de proyectos, el modelo de transcripción ni la carpeta de Knowledge: el cambio se rechaza, con el error junto al campo, y hay que repetirlo al terminar. El resto de los ajustes sí se guardan durante la reunión.
+Si un valor no es válido (un ancho fuera de rango, un término demasiado largo, una carpeta que no existe), el error sale junto a su campo y no se guarda nada. Con una reunión en curso no se cambian la carpeta de proyectos, el modelo de transcripción ni la carpeta de Knowledge: el cambio se rechaza, con el error junto al campo, y hay que repetirlo al terminar. El resto de los ajustes sí se guardan durante la reunión, también dónde se transcribe (local o nube) y los datos de la nube: se aplican al siguiente trozo.
 
 ## 7. Qué se guarda y dónde
 
-- **Audio**: nunca se guarda en disco. Solo existe en memoria mientras se transcribe y se descarta.
+- **Audio**: nunca se guarda en disco. Solo existe en memoria mientras se transcribe y se descarta (con la transcripción en la nube, esa memoria es lo que se envía al servicio).
 - **Transcripciones**: un `.md` por reunión en la carpeta `02. Sesiones (transcripciones)` del proyecto; las reuniones sin proyecto, en `bandeja`. En un proyecto compartido, durante la reunión se guarda solo en tu equipo (`sesiones`), y al terminar se publica en la carpeta compartida sin sobrescribir nunca nada (o puedes elegir no publicar).
 - **Contexto del proyecto**: solo cambia cuando aceptas un cambio en la revisión, en `00. CONTEXTO (IA)` (más el registro de cambios). La app no escribe en `CLAUDE.md`, `AGENTS.md`, `docs` ni en Knowledge.
-- **En la carpeta de la app** (todo local, fuera de git): `datos` (tu configuración y el registro de consumo, sin contenido de reuniones), `planes`, `checks`, `backlog` (qué pendientes has dado por hechos), `cache`, `tipos_documento`, `copias` (tus copias de seguridad, apartado 10) y `modelos`.
+- **En la carpeta de la app** (todo local, fuera de git): `datos` (tu configuración, el registro de consumo, sin contenido de reuniones, y, si la pusiste, la clave de la nube cifrada con tu usuario de Windows), `planes`, `checks`, `backlog` (qué pendientes has dado por hechos), `cache`, `tipos_documento`, `copias` (tus copias de seguridad, apartado 10) y `modelos`.
 
 El botón **Sesiones** de la cabecera reúne todas las sesiones pasadas y la lista conjunta de pendientes, ideas, decisiones, riesgos y preguntas; no hace llamadas a Claude, y marcar un pendiente como hecho solo se guarda en tu equipo, sin tocar los `.md`.
 
 ## 8. Qué sale de tu máquina y qué no
 
 - **Sale**, hacia Claude Code (con tu licencia, nunca por una API ni con claves): el texto de la transcripción, los extractos del contexto del proyecto que hacen falta para cada análisis, y, cuando lanzas el Archivero o «Proponer plan», extractos acotados de los documentos del proyecto (sin secretos, sin contactos, sin correos ni teléfonos). La búsqueda en la web solo ocurre si, al pulsar «Profundizar», marcas la casilla (viene desmarcada) y lo que viaja va sin nombres de cliente, de proyecto, de persona ni importes.
-- **No sale**: el audio, los ficheros de secretos, las secciones de contactos y nada de lo que pidas explícitamente que se quede (**Modo solo local**: ni una llamada a Claude, solo transcripción y detección local).
-- En **Ajustes, Privacidad**, el registro de envíos te enseña cada llamada: qué agente la hizo, cuántos tokens gastó y cuándo; guarda como mucho un extracto de 120 caracteres, nunca el contenido de las reuniones.
+- **Sale a la nube, solo si activas la transcripción en la nube** (apartado 11): el audio del micro y de la reunión, solo los tramos con voz; y, para acertar más, el tema de la reunión, el vocabulario del proyecto y la última frase de cada canal. Va al servicio que hayas configurado (por defecto, OpenAI). No sale nada de esto si está apagada, que es como viene, ni con el **Modo solo local**.
+- **No sale**: el audio mientras la transcripción sea en este equipo (lo normal), los ficheros de secretos, las secciones de contactos y nada de lo que pidas explícitamente que se quede (**Modo solo local**: ni una llamada a Claude ni a la nube, solo transcripción y detección local). La clave de la nube solo viaja hacia ese servicio.
+- En **Ajustes, Privacidad**, el registro de envíos te enseña cada llamada: qué agente la hizo, cuántos tokens gastó y cuándo; guarda como mucho un extracto de 120 caracteres, nunca el contenido de las reuniones. Lo que va a la nube aparece como un renglón cada dos minutos con los segundos de audio, los trozos y el servidor, sin contenido.
 - La app escucha solo en tu equipo y protege cada arranque con un código propio.
 
 ## 9. Problemas frecuentes
@@ -94,6 +95,17 @@ El botón **Sesiones** de la cabecera reúne todas las sesiones pasadas y la lis
 - **No se transcribe lo que dicen los demás.** Falta el audio del sistema: el panel avisa si Windows no muestra ninguna salida de audio. Revisa en Ajustes que «Audio de la reunión» apunta a los altavoces o auriculares que usas.
 - **La transcripción va con retraso.** Baja la precisión en Ajustes o el ancho de búsqueda, y cierra lo que gaste procesador. Mientras grabas, la app sube su prioridad en Windows y usa como mucho la mitad de los núcleos para transcribir, para no quedarse atrás frente a la videollamada; si prefieres que no lo haga, pon `"prioridad_reunion": false` y `"whisper_hilos_auto": false` en `datos\config.json`. Añadir la jerga del proyecto al vocabulario mejora el acierto sin cambiar la velocidad. Con auriculares no hay eco de altavoces que transcribir, y el equipo se dedica a lo que dicen los demás y a tu voz. Qué significa cada aviso de retraso, en el apartado 2.
 - **Aparece «Hay una versión nueva de WhisperMeet en este equipo».** Tras actualizar el programa, la ventana abierta sigue con la versión anterior: ciérrala y vuelve a abrirla para usar la nueva (si estás en una reunión, espera a que acabe).
+- **Dice «La transcripción en la nube está activada, pero no hay clave».** Falta la clave: ponla en Ajustes › Audio o en la variable `WHISPERMEET_CLAVE_NUBE` (apartado 11). Mientras tanto la reunión se transcribe en tu equipo, sin perder nada.
+- **Dice «Modo solo local: esta reunión se transcribe en este equipo, sin la nube».** Es lo esperado: el Modo solo local también apaga la nube. Si la quieres, desactívalo (o desmarca «Solo local en esta reunión» antes de empezar).
+- **Dice «La nube rechaza la clave (401)».** La clave está mal escrita, revocada o es de otra cuenta o proyecto. Vuelve a ponerla en Ajustes › Audio y pulsa «Probar»; al guardar vuelve a la nube sin esperar a la siguiente reunión.
+- **Dice «La clave no tiene permiso para este modelo o esta dirección (403)».** Esa clave no puede usar ese modelo o esa dirección. Mira en el panel del proveedor los permisos del proyecto o prueba con otra clave.
+- **Dice «La cuenta de la nube no tiene crédito o llegó a su límite de gasto».** Recarga saldo o sube el límite en el panel del proveedor; después, «Probar».
+- **Dice «La nube no acepta la configuración (modelo, dirección o dialecto)».** Revisa en Ajustes › Audio la dirección, el nombre del modelo y, en «Ajuste fino del servicio», la autenticación y el dialecto. «Probar» te dice cuál falla.
+- **Dice «No se puede verificar el certificado del servicio (¿proxy de la empresa?)».** Suele pasar en redes de empresa que inspeccionan el tráfico seguro. Habla con tu equipo de sistemas para que el certificado de la empresa esté instalado en Windows, o usa Whisper local.
+- **Dice «Sin conexión con la nube: la transcripción sigue en este equipo y se vuelve a probar en N s».** La nube no responde (red, servicio saturado o caído). Esos trozos van a Whisper local, con el retraso que eso suponga (siempre que el modelo local esté descargado en tu equipo; si no, ese audio se pierde y la app te lo avisa), y la app vuelve a probar sola. Cada trozo tiene un plazo total de 12 segundos para todos sus intentos: pasado ese tiempo se transcribe en local. Cuando lo consigue, avisa con «Transcripción en la nube restablecida». Un proxy de empresa con configuración automática (PAC) o con usuario y contraseña no está soportado: ahí la nube no saldrá y seguirá todo en local.
+- **Dice «Falló la nube y no se pudo cargar el modelo local: parte del audio no se ha transcrito».** Falló la nube y, además, el modelo de Whisper no está descargado o no se pudo cargar, así que ese tramo se perdió (la grabación sigue y queda en las Incidencias). El respaldo nunca descarga el modelo en plena reunión: al empezar con la nube, la app lo carga en segundo plano solo si ya está en el equipo. Ejecuta `instalar.bat` antes de la reunión para descargarlo.
+- **«Probar» falla.** El mensaje dice la causa, con los mismos textos de arriba pero empezando por «Revisa…». «Probar» envía solo un tono de 1 segundo, nunca tu voz, y funciona aunque el Modo solo local esté activo.
+- **Con la nube no veo las palabras dudosas.** Es normal: en los trozos de la nube no hay palabras dudosas.
 - **Un término se transcribe mal una y otra vez.** Añádelo al vocabulario de Ajustes tal como quieres verlo escrito.
 - **Mi carpeta de Knowledge «no existe» aunque está en OneDrive.** Puede estar sin conexión o sin sincronizar; la app no abre los ficheros que están solo en la nube. Espera a que se sincronice o vacía el campo.
 - **Ajustes no me deja cambiar la carpeta de proyectos, el modelo de transcripción o la carpeta de Knowledge.** Hay una reunión en curso: termínala y repite el cambio. El resto de los ajustes sí se guardan mientras dura.
@@ -122,3 +134,26 @@ El zip lleva un `MANIFIESTO.json` con la lista de ficheros; al descomprimir sobr
 No hay restauración automática ni migración de versiones todavía.
 
 **Ojo con lo que contiene.** La copia lleva transcripciones y datos de tus reuniones. Se guarda en local, en tu equipo, y dónde la llevas después (un disco, la nube, un correo) es responsabilidad tuya.
+
+## 11. Transcribir en la nube (opcional)
+
+Por defecto la transcripción se hace en tu equipo con Whisper y el audio no sale. Si durante una videollamada tu equipo no da abasto, puedes mandar la transcripción a un servicio en la nube (por defecto, OpenAI). Lo que ganas es que el procesador deja de ser el cuello de botella; no es una promesa de «sin retraso», porque también cuenta tu conexión y el servicio. Y el respaldo: si la nube falla, ese trozo lo transcribe tu equipo, siempre que el modelo de Whisper esté descargado (la app lo carga en segundo plano al empezar); si no lo está, ese audio se pierde y la app te lo avisa. Está probada contra un servidor de pruebas, todavía no contra el servicio real: pulsa «Probar» antes de una reunión importante.
+
+**Activarla, paso a paso.**
+
+1. Necesitas una cuenta de pago del proveedor y una clave de API (una cadena larga, algo como `sk-ficticia-0000000000`), que se crea en el panel del proveedor. No es la de Claude.
+2. Abre **Ajustes**, sección **Audio**, y en la transcripción elige **En la nube**. Si antes estaba en tu equipo, marca **Entiendo que el audio sale del equipo**.
+3. Pon la clave de una de estas dos maneras. En el campo de clave de Ajustes, escribe la clave y pulsa el botón de guardarla: se guarda cifrada con tu usuario de Windows, el campo se vacía y la app no la vuelve a enseñar. O crea en Windows una variable de entorno de usuario llamada `WHISPERMEET_CLAVE_NUBE` con la clave y reinicia la app. Si hay las dos, manda la variable. Para borrar la guardada, el botón de quitarla (no toca la variable).
+4. Deja la dirección (`https://api.openai.com/v1`) y el modelo (`gpt-transcribe`) como vienen, salvo que tengas otro servicio compatible (Azure, Groq o un servidor propio): en ese caso cámbialos y, en **Ajuste fino del servicio**, la autenticación y el dialecto (el `README.md` da los valores). La residencia europea es opcional y depende de tu cuenta del proveedor: se logra con un proyecto europeo y la dirección `https://eu.api.openai.com/v1`; no está confirmado que valga para `gpt-transcribe`.
+5. Pulsa **Probar**: envía un tono de 1 segundo (no tu voz) y te dice si va bien y cuánto tarda, o qué falla.
+6. Guarda los ajustes. Vale desde el siguiente trozo, también en plena reunión, y puedes volver a tu equipo cuando quieras.
+
+**Qué ves.** En la cabecera aparece un indicador: «Nube» (todo va por la nube), «Nube · local» (la nube está apartada un rato y se transcribe en tu equipo), «Local (nube caída)» (error de configuración o de crédito: bloqueada hasta el final de la reunión o hasta que lo arregles), «Local (sin clave)» o «Local» (Modo solo local). Pasa el ratón por encima para leer el motivo. Los avisos de arriba (apartado 9) explican cada caso.
+
+**Qué sale y qué no.** Lo que está en el apartado 8. Resumido: sale el audio con voz y las pistas (tema, vocabulario y última frase); no sale si está apagada ni con el Modo solo local. El dictado del contexto antes de la reunión sigue siendo en tu equipo.
+
+**Qué cambia.** No hay palabras dudosas en lo que transcribe la nube. Con la nube, en modo rápido solo se acortan las pistas que se mandan. Y avisa a los asistentes de que el audio va a un tercero.
+
+**Cuánto cuesta (orientativo).** OpenAI cobraba en noviembre de 2026 0,0045 $ por minuto de audio con `gpt-transcribe`, unos 0,27 $ por hora de audio; el silencio no se envía y, si hablan los dos canales a la vez, se suman. Una reunión de una hora cuesta entre unos céntimos y poco más de 0,5 $. Confírmalo en la página de precios del proveedor, que puede cambiar. La app no pone tope de gasto: ponlo en el panel del proveedor.
+
+**Copia de seguridad.** La clave guardada no entra en la copia y está atada a tu usuario de Windows: en un equipo o perfil nuevo hay que volver a ponerla.

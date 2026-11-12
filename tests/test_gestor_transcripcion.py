@@ -357,7 +357,8 @@ def test_estado_ligero_lleva_los_campos_nuevos_de_la_transcripcion(gestor, reloj
     gestor.transcriptor = Transcriptor2(reloj, pendiente_s=12.34, retraso_s=3.26, velocidad_x=1.234, alcance=True, perdidos_s=5.44)
     tr = gestor.estado_ligero()["transcripcion"]
     assert tr == {"estado": "listo", "error": "", "pendiente_s": 12.3, "retraso_s": 3.3, "velocidad_x": 1.23, "rapido": True, "perdidos_s": 5.4,
-                  "aplazado_s": 0.0, "retraso_reunion_s": 0.0, "rezagado_s": 0.0, "eco_descartado_s": 0.0}
+                  "aplazado_s": 0.0, "retraso_reunion_s": 0.0, "rezagado_s": 0.0, "eco_descartado_s": 0.0,
+                  "motor": "local", "motor_activo": "local", "nube": None}   # nube: motor, quién transcribió y bloque (None sin nube)
 
 
 def test_estado_ligero_valores_por_defecto_y_sin_transcriptor(gestor, reloj):
@@ -599,7 +600,7 @@ def test_esperar_deja_una_linea_de_resumen_solo_con_medidas(gestor, reloj):
     esperar(gestor)
     (linea,) = lineas_log("transcripcion resumen")
     assert linea.endswith("transcripcion resumen audio=300s calculo=250s vel_media=1.2x lat_max_reunion=14s lat_max_micro=6s rezagado_total=20s "
-                          "perdidos=0s eco_descartado=8s aplazados=5 rezagados=2 reintentos=1 nucleos=- hilos=- prioridad=normal prompt_med=-")
+                          "perdidos=0s eco_descartado=8s aplazados=5 rezagados=2 reintentos=1 nucleos=- hilos=- prioridad=normal prompt_med=- motor=local")
     assert SECRETO not in registro.RUTA_LOG.read_text(encoding="utf-8")
 
 
@@ -972,7 +973,7 @@ def test_el_resumen_lleva_nucleos_hilos_prioridad_prompt_y_demanda():
                        eco_descartado_s=8.0, tramos_aplazados=5, tramos_rezagados=2, reintentos=1)
     G.Gestor._registrar_resumen_transcripcion(tr, 300.0, "alta")
     (linea,) = lineas_log("transcripcion resumen")
-    assert linea.endswith("aplazados=5 rezagados=2 reintentos=1 nucleos=2.1 hilos=4 prioridad=alta prompt_med=300 demanda=1.40")
+    assert linea.endswith("aplazados=5 rezagados=2 reintentos=1 nucleos=2.1 hilos=4 prioridad=alta prompt_med=300 demanda=1.40 motor=local")
     assert "transcripcion resumen audio=300s calculo=250s vel_media=1.2x" in linea
 
 
@@ -980,7 +981,7 @@ def test_el_resumen_sin_duracion_ni_datos_no_inventa_nada():
     tr = Transcriptor2(None, audio_total_s=60.0, calculo_total_s=30.0)
     G.Gestor._registrar_resumen_transcripcion(tr)
     (linea,) = lineas_log("transcripcion resumen")
-    assert linea.endswith("reintentos=0 nucleos=- hilos=- prioridad=normal prompt_med=-") and "demanda" not in linea
+    assert linea.endswith("reintentos=0 nucleos=- hilos=- prioridad=normal prompt_med=- motor=local") and "demanda" not in linea
 
 
 def test_esperar_registra_la_prioridad_real_del_gestor_en_el_resumen(gestor, reloj):

@@ -1,10 +1,12 @@
-"""Configuración persistente (datos/config.json). Sin secretos: no se guarda ninguna clave."""
+"""Configuración persistente (datos/config.json). Sin secretos: no se guarda ninguna clave. La de la transcripción en la nube vive aparte
+(`clave_nube.py`: variable de entorno o fichero cifrado con DPAPI); aquí solo están los ajustes no secretos de esa nube."""
 from __future__ import annotations
 
 import contextlib
 import copy
 import getpass
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -184,6 +186,12 @@ DEFAULTS: dict = {
     "modo_local": False,                   # sin agentes en vivo: solo transcripción y Monitor; ninguna llamada sale (conmutable por sesión)
     "cartera_ventana_dias": 30,            # «sesiones recientes» de la vista de cartera
     "cartera_pendiente_antiguo_dias": 14,  # un pendiente abierto de hace más de estos días cuenta como antiguo
+    # transcripción en la nube (apuntes/nube.py, motor_nube.py); apagada por defecto. La clave NO está aquí (clave_nube.py)
+    "transcripcion_motor": "local",        # local | nube: se decide en cada trozo, también a mitad de reunión
+    "nube_url_base": "https://api.openai.com/v1",
+    "nube_modelo": "gpt-transcribe",
+    "nube_autenticacion": "bearer",        # bearer (Authorization: Bearer) | api-key (cabecera api-key, Azure)
+    "nube_dialecto": "auto",               # auto | gpt-transcribe | clasico (whisper-1, Groq, Azure whisper, servidores locales)
 }
 
 _CLAVES_LISTA = {"sin_razonamiento"}
@@ -298,6 +306,85 @@ def validar_vocabulario_estricto(lista) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------- transcripción en la nube (validación estricta; `nube.py` los importa)
+MOTORES = ("local", "nube")
+AUTENTICACIONES = ("bearer", "api-key")
+DIALECTOS = ("auto", "gpt-transcribe", "clasico")
+HOSTS_LOCALES = ("127.0.0.1", "localhost", "[::1]")
+_RE_MODELO_NUBE = re.compile(r"^[A-Za-z0-9._:\-/]{1,80}$")
+_RE_URL_NUBE = re.compile(r"^(https?)://([^/\s]+)(/[^\s?#]*)?$", re.I)
+
+
+def validar_motor(valor) -> str:
+    if valor not in MOTORES:
+        raise ValueError("El motor de transcripción es local o nube.")
+    return valor
+
+
+def validar_url_nube(valor) -> str:
+    """`https://host[:puerto][/ruta]` (o `http://` solo hacia este equipo), sin usuario, `?` ni `#`, sin la `/` final."""
+    if not isinstance(valor, str):
+        raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+    v = valor.strip()
+    if not v or len(v) > 200 or re.search(r"\s", v):
+        raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+    if "?" in v or "#" in v:
+        raise ValueError("La dirección no puede llevar usuario, contraseña, ? ni #.")
+    m = _RE_URL_NUBE.match(v)
+    if not m:
+        raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+    esquema, autoridad, ruta = m.group(1).lower(), m.group(2), m.group(3) or ""
+    if "@" in autoridad:
+        raise ValueError("La dirección no puede llevar usuario, contraseña, ? ni #.")
+    host = autoridad
+    if autoridad.startswith("["):   # IPv6 entre corchetes, con puerto opcional
+        fin = autoridad.find("]")
+        if fin < 0:
+            raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+        host, puerto = autoridad[:fin + 1], autoridad[fin + 1:]
+        if puerto and not re.fullmatch(r":\d{1,5}", puerto):
+            raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+    elif ":" in autoridad:
+        host, _, puerto = autoridad.rpartition(":")
+        if not re.fullmatch(r"\d{1,5}", puerto):
+            raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+    if not re.fullmatch(r"[A-Za-z0-9.\-]+|\[[0-9A-Fa-f:.]+\]", host):
+        raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+    if esquema == "http" and host.lower() not in HOSTS_LOCALES:
+        raise ValueError("La dirección debe empezar por https:// (http:// solo en este equipo).")
+    return f"{esquema}://{autoridad}{ruta.rstrip('/')}"
+
+
+def validar_modelo_nube(valor) -> str:
+    if not isinstance(valor, str) or not _RE_MODELO_NUBE.match(valor.strip()):
+        raise ValueError("Nombre de modelo no válido.")
+    return valor.strip()
+
+
+def validar_autenticacion(valor) -> str:
+    if valor not in AUTENTICACIONES:
+        raise ValueError("La autenticación es bearer o api-key.")
+    return valor
+
+
+def validar_dialecto(valor) -> str:
+    if valor not in DIALECTOS:
+        raise ValueError("El dialecto es auto, gpt-transcribe o clasico.")
+    return valor
+
+
+def dialecto_efectivo(modelo: str, dialecto: str) -> str:
+    """El dialecto con el que se habla de verdad: `gpt-transcribe` si se fijó así o si en automático el modelo empieza por ese nombre; si no, `clasico`."""
+    if dialecto == "gpt-transcribe" or (dialecto == "auto" and str(modelo or "").lower().startswith("gpt-transcribe")):
+        return "gpt-transcribe"
+    return "clasico"
+
+
+# Cómo se valida cada clave de la nube cuando llega de un fichero escrito a mano (`Config.actualizar`): lo inválido se ignora y queda el valor anterior.
+_VALIDADORES_NUBE = {"transcripcion_motor": validar_motor, "nube_url_base": validar_url_nube, "nube_modelo": validar_modelo_nube,
+                     "nube_autenticacion": validar_autenticacion, "nube_dialecto": validar_dialecto}
+
+
 class Config:
     def __init__(self, ruta: Path | None = None):
         self.ruta = ruta or (DATOS_DIR / "config.json")
@@ -348,6 +435,9 @@ class Config:
                     for kk, vv in v.items():
                         with contextlib.suppress(ValueError):
                             self.datos[k] = validar_autonomia({kk: vv}, self.datos[k])
+                elif k in _VALIDADORES_NUBE:
+                    with contextlib.suppress(ValueError):
+                        self.datos[k] = _VALIDADORES_NUBE[k](v)
                 elif k in _OLA4_BOOL and isinstance(v, bool):   # ola 4
                     self.datos[k] = v
                 elif k in _OLA4_INT and isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 3650:

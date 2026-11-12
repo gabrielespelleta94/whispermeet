@@ -497,11 +497,29 @@
     return c.total.entrada + c.total.cache_creacion + c.total.cache_lectura + c.total.salida;
   }
 
+  // Chip del motor de transcripción: solo si el servidor manda `transcripcion.nube` (oculto con motor local sin uso de la nube y con un servidor anterior)
+  const TEXTO_MOTOR = { activa: "Nube", sonda: "Nube", respaldo: "Nube · local", bloqueada: "Local (nube caída)", sin_clave: "Local (sin clave)", solo_local: "Local", local: "Local" };
+  const AYUDA_MOTOR = { activa: "La transcripción se hace en la nube.", sonda: "Probando si la nube vuelve a responder.", respaldo: "La nube no responde: la transcripción sigue en este equipo.",
+    bloqueada: "La nube está bloqueada: la transcripción sigue en este equipo.", sin_clave: "No hay clave de la nube: la transcripción se hace en este equipo.", solo_local: "Modo solo local: la transcripción se hace en este equipo.", local: "Ahora se transcribe en este equipo." };
+  function pintarMotor(tr) {
+    const m = $("#r-motor");
+    if (!m) return;
+    const n = tr && tr.nube;
+    if (!n) { m.hidden = true; return; }
+    const t = TEXTO_MOTOR[n.estado] || "Nube", ayuda = n.mensaje || AYUDA_MOTOR[n.estado] || "Transcripción en la nube";
+    m.hidden = false;
+    const cuerpo = m.firstElementChild;
+    if (cuerpo.textContent !== t) cuerpo.textContent = t;
+    if (m.dataset.estado !== n.estado) m.dataset.estado = n.estado;
+    if (m.title !== ayuda) { m.title = ayuda; m.setAttribute("aria-label", ayuda); }
+  }
+
   // Cabecera: ●REC, retraso de transcripción bajo «Reunión» y medidores
   function cabecera() {
     const rec = $("#r-rec");
     if (rec) rec.dataset.estado = S.estado === "grabando" ? "grabando" : "parado";
     const tr = S.transcripcion, r = $("#r-retraso");
+    pintarMotor(tr);
     if (r) {
       const p = AP.retrasoDe(tr);
       r.hidden = !(p > 5);
@@ -527,7 +545,7 @@
     else if (d.origen) ctx = "Contexto · " + ({ generado: "resumido ahora", cache: "desde caché" }[d.origen] || d.origen);
     const pc = $("#p-digest"); pc.textContent = ctx; pc.title = nombres.join("\n");
     const tr = S.transcripcion;
-    $("#p-trans").textContent = tr && tr.estado === "error" ? tr.error : "";
+    $("#p-trans").textContent = tr && tr.estado === "error" ? tr.error : AP.nubeCaida(tr) ? tr.nube.mensaje || "" : "";
     const c = S.consumo, cuenta = (k) => Object.entries((c && c.por_modelo) || {}).filter(([m]) => m.toLowerCase().includes(k)).reduce((n, [, u]) => n + u.llamadas, 0);
     $("#p-consumo").textContent = (S.estado === "inactivo") ? "" : `Tokens sesión ${kfmt(tokensTotal())} · haiku ${cuenta("haiku")} · sonnet ${cuenta("sonnet")} · opus ${cuenta("opus")}`;
   };

@@ -11,7 +11,9 @@ from difflib import SequenceMatcher
 
 import numpy as np
 
-from .config import APP_DIR
+from .config import APP_DIR, dialecto_efectivo
+from .motor_nube import VOZ_MIN_S, MotorNube
+from .nube import wav_pcm16
 from .rutas import sin_acentos
 
 MODELOS_DIR = APP_DIR / "modelos"
@@ -361,15 +363,42 @@ def es_copia_del_prompt(texto: str, prompt: str, vocabulario=(), continuidad: st
     return len(c) >= 3 and r == c
 
 
+# Transcripción en la nube (apuntes/motor_nube.py, apuntes/nube.py). En la nube «rápido» solo acorta las pistas: no hay beam ni probabilidad por palabra.
+MAX_KEYWORDS = 30           # términos del vocabulario que viajan como `keywords[]` (gpt-transcribe)
+MAX_KEYWORDS_RAPIDO = 10
+REINTENTO_CARGA_LOCAL_S = 60.0   # si falla la carga perezosa del modelo de respaldo, no se vuelve a intentar antes de esto
+
+
+def timestamps_voz(audio: np.ndarray, min_silencio_ms: int) -> list[dict] | None:
+    """Tramos con voz del Silero VAD de faster-whisper ([{start, end}] en muestras), sin cargar Whisper. None si el VAD no se puede usar:
+    entonces se sube el trozo entero."""
+    try:
+        from faster_whisper.vad import VadOptions, get_speech_timestamps
+        return list(get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=int(min_silencio_ms)), sampling_rate=SR_WHISPER))
+    except Exception:  # noqa: BLE001  (sin VAD, o un fallo suyo: el trozo entero)
+        return None
+
+
 class Transcriptor:
     tope_retraso_s: float | None = RETRASO_TOPE_S   # None = orden de llegada estricto, sin prioridad entre fuentes ni rezagados (el dictado)
+    forzar_local = False                            # True = nunca la nube (el dictado del contexto, que se hace antes de la reunión)
 
-    def __init__(self, config, on_texto):
-        """`on_texto(fuente, t_inicio, texto)` se llama desde el hilo del transcriptor."""
+    def __init__(self, config, on_texto, *, clave_nube=None, permitir_nube=None):
+        """`on_texto(fuente, t_inicio, texto)` se llama desde el hilo del transcriptor. `clave_nube()`: la clave de la nube o None;
+        `permitir_nube()`: False si la nube está vetada ahora (modo solo local)."""
         self.config, self.on_texto = config, on_texto
+        self.nube = None if self.forzar_local else MotorNube(config, clave_nube or (lambda: None), permitir_nube or (lambda: True))
+        self._ultimo_motor: str | None = None   # quién transcribió el último trozo: local | nube
+        self._resuelto_por: str | None = None   # lo mismo, pero solo del trozo en curso (lo pone `_segmentos`)
+        self.error_respaldo = ""                # no se pudo cargar el modelo local de respaldo
+        self._carga_local_fallida_en: float | None = None
+        self.tramos_nube = 0
+        self.tramos_local = 0
         self.estado = "sin_cargar"  # sin_cargar | cargando | listo | error
         self.error = ""
         self._modelo = None
+        self._solo_en_disco = False                 # True mientras `_cargar_solo_en_disco` llama a `cargar_modelo` (`local_files_only=True`)
+        self._cerrojo_modelo = threading.Lock()     # una sola carga del modelo a la vez (precarga del respaldo y carga perezosa)
         # Las tres colas guardan (fuente, audio, t_inicio, instante de encolado) en orden de llegada y solo se tocan con `_lock` cogido.
         self._normales: deque = deque()    # lo que toca transcribir ya
         self._rezagados: deque = deque()   # normales que superaron `tope_retraso_s`: se atienden del final (el más reciente) al principio
@@ -483,8 +512,9 @@ class Transcriptor:
         from faster_whisper import WhisperModel
         MODELOS_DIR.mkdir(parents=True, exist_ok=True)
         self.hilos = hilos_efectivos(self.config)   # num_workers se queda en 1 (el valor por defecto): un solo tramo a la vez
+        extra = {"local_files_only": True} if self._solo_en_disco else {}   # el respaldo de la nube NUNCA descarga el modelo en plena reunión
         return WhisperModel(self.config["whisper_modelo"], device="cpu", compute_type="int8",
-                            cpu_threads=self.hilos, download_root=str(MODELOS_DIR))
+                            cpu_threads=self.hilos, download_root=str(MODELOS_DIR), **extra)
 
     def _instalar_ventana(self, modelo) -> None:
         """Hace que el codificador vea solo `_frames_ventana` características en vez de los 30 s que faster-whisper rellena siempre. Se envuelve
@@ -622,21 +652,83 @@ class Transcriptor:
         normal_detras_s = self._pendiente_s - self._aplazado_s - self._rezagado_s - (dur if clase == NORMAL else 0.0)
         return en_cola_s, max(0.0, normal_detras_s)
 
-    def _bucle(self) -> None:
-        self.estado = "cargando"
-        self._n_tarea += 1
-        carga = self._n_tarea
-        self._avisar("inicio", carga, etiqueta="carga del modelo")
-        ini_carga = time.perf_counter()
-        try:
-            self._modelo = self.cargar_modelo()
-            self.estado = "listo"
-            self._avisar("fin", carga, ok=True, ms=int((time.perf_counter() - ini_carga) * 1000))
-        except Exception as e:  # noqa: BLE001
-            self.estado, self.error = "error", f"No se pudo cargar el modelo de transcripción: {e}"
-            self._avisar("fin", carga, ok=False, error=self.error, ms=int((time.perf_counter() - ini_carga) * 1000))
+    def _motor_previsto(self) -> str:
+        """local | nube: el motor que se usaría ahora mismo (la `decidir()` de este momento)."""
+        return "local" if self.nube is None else self.nube.decidir().motor
+
+    @property
+    def motor_activo(self) -> str:
+        """Quién transcribió el último trozo; antes del primero, el que se usaría."""
+        return self._ultimo_motor or self._motor_previsto()
+
+    def _asegurar_local(self) -> None:
+        """Carga perezosa de Whisper cuando el motor local hace falta y aún no está (respaldo de la nube, o cambio de motor a mitad de reunión).
+        Si falla no pone `estado = "error"`: la nube puede seguir. Reintenta como mucho cada `REINTENTO_CARGA_LOCAL_S` y relanza."""
+        if self._modelo is not None:
             return
-        self._instalar_ventana(self._modelo)
+        with self._cerrojo_modelo:   # la precarga y la carga perezosa no duplican el modelo
+            if self._modelo is not None:
+                return
+            ahora = time.monotonic()
+            if self._carga_local_fallida_en is not None and ahora - self._carga_local_fallida_en < REINTENTO_CARGA_LOCAL_S:
+                raise RuntimeError(self.error_respaldo)
+            self._n_tarea += 1
+            ident = self._n_tarea
+            self._avisar("inicio", ident, etiqueta="carga del modelo (respaldo)")
+            ini = time.perf_counter()
+            try:
+                self._modelo = self._cargar_solo_en_disco()
+                self._instalar_ventana(self._modelo)
+                self.error_respaldo, self._carga_local_fallida_en = "", None
+                self._avisar("fin", ident, ok=True, ms=int((time.perf_counter() - ini) * 1000))
+            except Exception:  # noqa: BLE001
+                self._modelo = None
+                self.error_respaldo, self._carga_local_fallida_en = "No se pudo cargar el modelo local de respaldo.", ahora
+                self._avisar("fin", ident, ok=False, error=self.error_respaldo, ms=int((time.perf_counter() - ini) * 1000))
+                if self.nube is not None:
+                    self.nube.anotar_sin_modelo()
+                raise
+
+    def _cargar_solo_en_disco(self):
+        """`cargar_modelo()` con `local_files_only=True`: si el modelo no está en disco falla en vez de descargarlo (cientos de MB en plena reunión)."""
+        self._solo_en_disco = True
+        try:
+            return self.cargar_modelo()
+        finally:
+            self._solo_en_disco = False
+
+    def _precargar_respaldo(self) -> None:
+        """Con el motor en la nube: carga el modelo local en un hilo aparte para que el respaldo esté listo sin parar el transcriptor. Solo desde disco
+        y sin avisos si no está (la pantalla de requisitos ya lo dice). Nunca lanza."""
+        try:
+            with self._cerrojo_modelo:
+                if self._modelo is not None or self._parar.is_set():
+                    return
+                self._modelo = self._cargar_solo_en_disco()
+                self._instalar_ventana(self._modelo)
+                self.error_respaldo, self._carga_local_fallida_en = "", None
+        except Exception:  # noqa: BLE001  (sin modelo en disco: el aviso llegará si de verdad hace falta el respaldo)
+            self._modelo = None
+
+    def _bucle(self) -> None:
+        if self._motor_previsto() == "nube":   # con la nube no se carga Whisper al empezar: el hilo no espera; el respaldo se precarga aparte (o en `_asegurar_local`)
+            self.estado = "listo"
+            threading.Thread(target=self._precargar_respaldo, daemon=True, name="precarga-whisper").start()
+        else:
+            self.estado = "cargando"
+            self._n_tarea += 1
+            carga = self._n_tarea
+            self._avisar("inicio", carga, etiqueta="carga del modelo")
+            ini_carga = time.perf_counter()
+            try:
+                self._modelo = self.cargar_modelo()
+                self.estado = "listo"
+                self._avisar("fin", carga, ok=True, ms=int((time.perf_counter() - ini_carga) * 1000))
+            except Exception as e:  # noqa: BLE001
+                self.estado, self.error = "error", f"No se pudo cargar el modelo de transcripción: {e}"
+                self._avisar("fin", carga, ok=False, error=self.error, ms=int((time.perf_counter() - ini_carga) * 1000))
+                return
+            self._instalar_ventana(self._modelo)
         while not self._parar.is_set():
             tramo = self._siguiente()
             if tramo is None:
@@ -664,6 +756,7 @@ class Transcriptor:
                     (REZAGADO, False): "tramo atrasado", (REZAGADO, True): "tramo atrasado · rápido"}.get((clase, rapido))
         self._avisar("inicio", ident, fuente=fuente, audio_s=dur, **({"etiqueta": etiqueta} if etiqueta else {}))
         cpu0, ini = time.process_time(), time.perf_counter()
+        self._resuelto_por = None
         try:
             try:
                 segmentos = self._segmentos(audio, fuente, rapido=rapido)
@@ -672,18 +765,19 @@ class Transcriptor:
                     raise
                 self.reintentos += 1
                 gc.collect()
-                segmentos = self._segmentos(audio, fuente, rapido=True)
+                segmentos = self._segmentos(audio, fuente, rapido=True, solo_local=True)   # la nube ya tuvo su turno: este reintento es de Whisper
             calc = time.perf_counter() - ini
             cpu = time.process_time() - cpu0   # de todo el proceso (también hilos ajenos al cálculo): una cota alta de lo que consiguió Whisper
-            if calc > 0:
+            if calc > 0 and self._resuelto_por != "nube":   # la velocidad habla de Whisper local: un trozo de la nube no cuenta
                 self.velocidad_x = dur / calc
-            self.audio_total_s += dur
-            self.calculo_total_s += calc
-            self.cpu_total_s += cpu
+            if self._resuelto_por != "nube":   # la velocidad media y los núcleos hablan de Whisper: un trozo de la nube no cuenta
+                self.audio_total_s += dur
+                self.calculo_total_s += calc
+                self.cpu_total_s += cpu
             # un rezagado se transcribe fuera de su sitio: su última frase no sirve de continuidad al tramo que venga después
             texto = self._entregar(fuente, t0, " ".join(t for _i, t, _p in segmentos), [w for _i, _t, p in segmentos for w in p],
                                    continuidad=clase != REZAGADO)
-            self._avisar("fin", ident, ok=True, ms=int(calc * 1000), palabras=len(texto.split()))
+            self._avisar("fin", ident, ok=True, ms=int(calc * 1000), palabras=len(texto.split()), motor=self._resuelto_por)
         except Exception as e:  # noqa: BLE001
             self.error = f"Fallo al transcribir un tramo: {e}"
             with self._lock:   # `perdidos_s` también lo sube `_descartar`, desde los hilos de captura
@@ -824,9 +918,98 @@ class Transcriptor:
         except Exception:  # noqa: BLE001
             return None
 
-    def _segmentos(self, audio: np.ndarray, fuente: str, rapido: bool = False) -> list[tuple[float, str, list]]:
-        """[(inicio_s, texto, [(palabra, probabilidad)])] de los segmentos que pasan el filtro de calidad.
-        `rapido` (hay cola): beam `BEAM_RAPIDO`, un solo reintento de temperatura, sin probabilidad por palabra y con el idioma vigente de la fuente."""
+    def _segmentos(self, audio: np.ndarray, fuente: str, rapido: bool = False, solo_local: bool = False) -> list[tuple[float, str, list]]:
+        """[(inicio_s, texto, [(palabra, probabilidad)])] de los segmentos que pasan el filtro de calidad. Aquí se decide el motor DE ESTE TROZO
+        (no al empezar la reunión): la nube si `MotorNube.decidir()` lo permite y, ante cualquier fallo suyo, Whisper local para ese mismo trozo.
+        `solo_local`: sin nube (el reintento de `_procesar`)."""
+        if solo_local or self.forzar_local or self.nube is None:
+            return self._resolver_local(audio, fuente, rapido)
+        d = self.nube.decidir()
+        if d.motor == "nube":
+            try:
+                segs = self._segmentos_nube(audio, fuente, rapido, d.sonda)
+                self._ultimo_motor = self._resuelto_por = "nube"
+                self.tramos_nube += 1
+                return segs
+            except Exception:  # noqa: BLE001  (NubeFallo o cualquier otra cosa: el texto del trozo no se pierde, lo hace Whisper local)
+                if self._parar.is_set():
+                    raise
+        if d.motivo != "config":   # motor configurado en la nube y trozo resuelto en local: respaldo
+            self.nube.anotar_respaldo(audio.size / SR_WHISPER)
+        return self._resolver_local(audio, fuente, rapido)
+
+    def _resolver_local(self, audio: np.ndarray, fuente: str, rapido: bool) -> list[tuple[float, str, list]]:
+        segs = self._segmentos_local(audio, fuente, rapido=rapido)
+        self._ultimo_motor = self._resuelto_por = "local"
+        self.tramos_local += 1
+        return segs
+
+    def _voz_para_nube(self, audio: np.ndarray) -> np.ndarray:
+        """Solo se sube la voz: el trozo con los silencios quitados (Silero VAD de faster-whisper; `whisper_vad` y `whisper_vad_min_silencio_ms`).
+        Si el VAD no está o falla, el trozo entero."""
+        if not self._cfg("whisper_vad", True):
+            return audio
+        tramos = timestamps_voz(audio, int(self._cfg("whisper_vad_min_silencio_ms", 500)))
+        if tramos is None:
+            return audio
+        if not tramos:
+            return audio[:0]
+        return np.concatenate([audio[int(t["start"]):int(t["end"])] for t in tramos])
+
+    def _idiomas_de_partida(self, fuente: str) -> list[str]:
+        """Idiomas que se ofrecen a la nube: el fijo, o `idiomas_auto` empezando por el último usado en esa fuente."""
+        m = self.modo_idioma
+        if m in IDIOMAS_TRANSCRIPCION:
+            return [m]
+        lista = self.idiomas_auto()
+        ultimo = self._ultimo_idioma.get(fuente) or self._idioma_usado.get(fuente)
+        return ([ultimo] + [i for i in lista if i != ultimo]) if ultimo in lista else list(lista)
+
+    def _segmentos_nube(self, audio: np.ndarray, fuente: str, rapido: bool, sonda: bool) -> list[tuple[float, str, list]]:
+        """El trozo por la nube. Lanza `NubeFallo` (o cualquier excepción) si hay que caer a local; quien llama lo resuelve.
+        El plazo total del trozo (`PLAZO_TROZO_S`) nace aquí y lo comparten todos sus intentos."""
+        hasta = self.nube.nuevo_plazo()
+        voz = self._voz_para_nube(audio)
+        voz_s = voz.size / SR_WHISPER
+        if voz_s < VOZ_MIN_S:   # sin voz suficiente no se envía nada: texto vacío
+            self.nube.anotar_silencio()
+            return []
+        auto = self.modo_idioma not in IDIOMAS_TRANSCRIPCION
+        idiomas = self._idiomas_de_partida(fuente)
+        idioma_p = self._idioma_prompt(fuente)
+        base = {"ca": self.prompt_ca, "en": self.prompt_en}.get(idioma_p) or self.prompt
+        dialecto = dialecto_efectivo(str(self._cfg("nube_modelo", "gpt-transcribe")), str(self._cfg("nube_dialecto", "auto")))
+        if dialecto == "gpt-transcribe":
+            tope = MAX_PROMPT_CHARS_RAPIDO if rapido else MAX_PROMPT_CHARS
+            prompt = construir_prompt(base, (), "" if rapido else self._ultima.get(fuente, ""), tope=tope)
+            claves = list(self.vocabulario)[:MAX_KEYWORDS_RAPIDO if rapido else MAX_KEYWORDS]
+        else:
+            prompt = self.prompt_para(fuente, idioma_p, rapido=rapido)
+            claves = []
+        self.prompt_chars_total += len(prompt)
+        self.prompt_llamadas += 1
+        wav = wav_pcm16(voz)
+        res = self.nube.transcribir(wav, voz_s, idiomas=idiomas, prompt=prompt, palabras_clave=claves, rapido=rapido, sonda=sonda, hasta=hasta)
+        codigo = (res.idioma or "").split("-")[0]
+        if auto and codigo:
+            if codigo not in self.idiomas_auto():
+                # Un idioma fuera de la lista nunca se acepta: se repite UNA vez con el de partida de la fuente (la regla de siempre: no se acaba en otro idioma)
+                partida = idiomas[0]
+                self.nube.anotar_idioma_repetido()
+                # Sin permiso o sin plazo, `transcribir` lanza `NubeFallo`: lo ya obtenido tiene un idioma NO admisible (por eso se repite), así que el trozo va a local
+                res = self.nube.transcribir(wav, voz_s, idiomas=[partida], prompt=prompt, palabras_clave=claves, rapido=rapido, sonda=False,
+                                            hasta=hasta, repeticion=True)
+                codigo = partida
+            self._idioma_usado[fuente] = self._ultimo_idioma[fuente] = codigo
+        if res.segmentos is not None:   # dialecto clásico: el mismo filtro de calidad que el local
+            return [(float(s.get("start", 0.0) or 0.0), s["text"], []) for s in res.segmentos
+                    if s.get("text") and s.get("no_speech_prob", 0.0) < 0.7 and s.get("avg_logprob", 0.0) > -1.3]
+        return [(0.0, res.texto, [])] if res.texto else []
+
+    def _segmentos_local(self, audio: np.ndarray, fuente: str, rapido: bool = False) -> list[tuple[float, str, list]]:
+        """El cuerpo de siempre: Whisper local. `rapido` (hay cola): beam `BEAM_RAPIDO`, un solo reintento de temperatura, sin probabilidad por
+        palabra y con el idioma vigente de la fuente."""
+        self._asegurar_local()
         dur = audio.size / SR_WHISPER
         self._fijar_ventana(ventana_frames(dur))   # vale para la detección de idioma y para la transcripción de este tramo
         try:

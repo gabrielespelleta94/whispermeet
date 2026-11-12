@@ -12,6 +12,8 @@ main.av { display: block; width: 100%; height: auto; flex: none; padding: 16px 2
 .av-logo { border-radius: var(--r-m); }
 .av-detalle .input { background: transparent; }
 .av-no { flex: none; margin-top: -2px; }
+.av-nube { margin: 12px 0 0; overflow-wrap: anywhere; color: var(--ink); }
+.av-nube + .av-check { margin-top: 8px; }
 .av-check { margin-top: 12px; }
 .av-check input { flex: none; }
 .av-acciones { display: flex; gap: 8px; margin-top: 12px; }
